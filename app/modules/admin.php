@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/product_import.php';
 require_once __DIR__.'/admin_password_reset.php';
 require_once __DIR__.'/admin_account.php';
+require_once __DIR__.'/probeshop.php';
 
 function yw_admin_product_ids(mixed $raw): array {
     if(!is_array($raw))throw new RuntimeException('Produktauswahl ist ungültig.');
@@ -163,6 +164,7 @@ function handle_admin_action(): never {
     yw_admin_action();
     $action=(string)($_POST['action'] ?? '');
     if(str_starts_with($action,'handover_'))yw_admin_handover_action($action);
+    if(str_starts_with($action,'probeshop_'))yw_probeshop_admin_action($action);
     if(str_starts_with($action,'account_') || in_array($action,['admin_invite','admin_toggle'],true))yw_admin_account_action($action);
     try {
         if ($action==='inquiry_status') {
@@ -820,6 +822,8 @@ function handle_admin_action(): never {
             $id=(int)($_POST['inquiry_id']??0);
             $stmt=db()->prepare('DELETE FROM inquiries WHERE id=?');$stmt->execute([$id]);
             if(!$stmt->rowCount())throw new RuntimeException('Anfrage wurde nicht gefunden.');
+            $q=db()->prepare('SELECT id FROM yw_probeshops WHERE inquiry_id=?');$q->execute([$id]);
+            foreach($q->fetchAll(PDO::FETCH_COLUMN) as $probeshopId)yw_probeshop_delete((int)$probeshopId);
             audit_log('inquiry.deleted','inquiry',$id);
             flash('success','Anfrage wurde endgültig gelöscht.');
             redirect('/admin?tab=inquiries');
@@ -879,6 +883,13 @@ function admin_backend_style(): string {
     .inquiry-card.new{border-left:5px solid var(--accent)}
     .inquiry-meta{display:flex;gap:12px;flex-wrap:wrap;color:#667085;font-size:.9rem;margin:8px 0 12px}
     .inquiry-message{background:#f7f8fa;border-radius:10px;padding:14px;white-space:pre-wrap}
+    .probeshop-box{margin-top:16px;padding:14px;border:1px solid #e6e9ef;border-radius:12px;background:#fbfcfd;display:grid;gap:9px;max-width:330px}
+    .probeshop-box .actions{display:flex;gap:7px;flex-wrap:wrap}.probeshop-box form{margin:0}.probeshop-box p{margin:0}
+    .probeshop-box-logo{max-width:150px;max-height:60px;object-fit:contain;background:repeating-conic-gradient(#eef1f4 0 25%,#fff 0 50%) 0 0/14px 14px;padding:6px;border-radius:8px;border:1px solid #e6e9ef}
+    .probeshop-box summary{cursor:pointer;font-weight:750}
+    .probeshop-create{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:14px;align-items:end}.probeshop-create input[type=color]{height:42px;padding:3px}
+    .probeshop-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:20px}.probeshop-item{border:1px solid #e6e9ef;border-radius:14px;padding:16px}.probeshop-item h3{margin:0}.probeshop-item .probeshop-box{margin-top:10px;max-width:none}
+    @media(max-width:1100px){.probeshop-create{grid-template-columns:1fr 1fr}}@media(max-width:640px){.probeshop-create{grid-template-columns:1fr}}
     .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
     .settings-card{background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:22px}
     .company-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
@@ -1114,10 +1125,12 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
 }
 
 function render_admin_inquiries(array $inquiries): void {
+    yw_probeshop_admin_panel();
     if(!$inquiries){
         echo '<div class="empty">Noch keine Anfragen vorhanden.</div>';
         return;
     }
+    $probeshops=yw_probeshops_by_inquiry();
 
     echo '<div class="inquiry-list">';
     foreach($inquiries as $i){
@@ -1130,7 +1143,7 @@ function render_admin_inquiries(array $inquiries): void {
         if(!empty($i['employees'])) echo '<span>'.(int)$i['employees'].' Mitarbeitende</span>';
         echo '</div>';
         echo '<div class="inquiry-message">'.e($i['message']).'</div></div>';
-        echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form></div>';
+        echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen (inklusive Probeshop und Logo)? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form>'.yw_probeshop_admin_box($probeshops[(int)$i['id']]??null,$i).'</div>';
         echo '</article>';
     }
     echo '</div>';
@@ -1394,6 +1407,10 @@ function yw_audit_labels(): array {
         'admin.activated'=>'Administrator aktiviert',
         'company.status_toggled'=>'Firmen-Shop aktiviert/deaktiviert',
         'inquiry.deleted'=>'Anfrage gelöscht',
+        'probeshop.created'=>'Probeshop erzeugt',
+        'probeshop.regenerated'=>'Probeshop-Link neu erzeugt',
+        'probeshop.deleted'=>'Probeshop gelöscht',
+        'probeshop.expired_deleted'=>'Abgelaufene Probeshops gelöscht',
         'admin.password_reset_requested'=>'Admin-Passwort-Link angefordert',
         'admin.password_reset_completed'=>'Admin-Passwort geändert',
         'yw_company'=>'Firmenbudget und Registrierung geändert',

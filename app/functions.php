@@ -17,7 +17,7 @@ function color_ok(string $color): bool { return (bool)preg_match('/^#[0-9a-f]{6}
 function slug_ok(string $slug): bool { return (bool)preg_match('/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/', $slug) && !yw_slug_reserved($slug); }
 /** Kurznamen, die mit festen Seiten, Ordnern oder Systemdateien kollidieren würden. */
 function yw_slug_reserved(string $slug): bool {
-    return in_array($slug,['admin','leistungen','ueber-uns','so-funktionierts','kontakt','anfrage','impressum','datenschutz','mustershop','agb','assets','uploads','app','tests','update','cron','index','config','sitemap','robots','well-known','api','login','logout','shop','www','mail','zugang','kunden','kunden-login','2fa'],true);
+    return in_array($slug,['admin','leistungen','ueber-uns','so-funktionierts','kontakt','anfrage','impressum','datenschutz','mustershop','agb','assets','uploads','app','tests','update','cron','index','config','sitemap','robots','well-known','api','login','logout','shop','www','mail','zugang','kunden','kunden-login','2fa','probeshop'],true);
 }
 function yw_upload_path_ok(string $path,string $folder): bool {
     return (bool)preg_match('#^uploads/'.preg_quote($folder,'#').'/[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:png|jpe?g|webp)$#D',$path);
@@ -473,7 +473,7 @@ function render_head(string $title, ?array $brand = null): void {
         $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
     }
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
-    echo '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/v9.css?v='.e(app_version()).'">'.($public||$path==='/zugang'?'<link rel="stylesheet" href="/assets/site.css?v='.e(app_version()).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
+    echo '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/v9.css?v='.e(app_version()).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="/assets/site.css?v='.e(app_version()).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
 }
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '">' . e($f[1]) . '</div>'; }
 function render_foot(): void { echo '<script src="/assets/app.js?v='.e(app_version()).'" defer></script></body></html>'; }

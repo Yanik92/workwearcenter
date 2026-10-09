@@ -287,21 +287,25 @@ function privacy_page(): void {
 }
 
 /** Darstellung der Anfrageseite (Verarbeitung in inquiry_page). */
-function site_inquiry_render(bool $success,string $error): void {
+function site_inquiry_render(bool $success,string $error,?string $probeshopToken=null): void {
     hp_page_start('Unternehmensshop anfragen – '.current_site_setting('site_title','WorkwearCenter'));
     hp_page_hero('Anfrage','Firmenshop anfragen','<p>Beschreiben Sie kurz, was Ihr Team braucht. Wir melden uns persönlich – unverbindlich und kostenlos.</p>',[],true);
     echo '<section class="s-section"><div class="s-wrap s-inquiry"><div class="s-form-card">';
     if($success){
-        echo '<div class="s-success"><span class="s-success-mark">'.hp_check_icon().'</span><h2>Vielen Dank für Ihre Anfrage!</h2><p>Wir haben Ihre Angaben erhalten und melden uns zeitnah persönlich bei Ihnen.</p><a class="s-btn s-btn-navy" href="/mustershop">In der Zwischenzeit: Mustershop ansehen</a></div>';
+        echo '<div class="s-success"><span class="s-success-mark">'.hp_check_icon().'</span><h2>Vielen Dank für Ihre Anfrage!</h2><p>Wir haben Ihre Angaben erhalten und melden uns zeitnah persönlich bei Ihnen.</p>';
+        if($probeshopToken!==null)echo '<div class="s-probe-ready"><strong>Ihr persönlicher Probeshop ist fertig.</strong><p>So könnte Ihr Firmenshop mit Ihrem Logo aussehen. Den Link haben wir Ihnen auch per E-Mail geschickt; er ist 30 Tage gültig.</p><a class="s-btn s-btn-orange" href="/probeshop/'.e($probeshopToken).'" rel="noreferrer">Probeshop ansehen</a></div>';
+        else echo '<a class="s-btn s-btn-navy" href="/mustershop">In der Zwischenzeit: Mustershop ansehen</a>';
+        echo '</div>';
     }else{
         if($error)echo '<div class="flash error">'.e($error).'</div>';
-        echo '<form method="post" class="s-form">'.csrf_field();
+        echo '<form method="post" enctype="multipart/form-data" class="s-form">'.csrf_field();
         echo '<div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>';
         echo '<div class="s-form-row"><label>Unternehmen<input name="company" autocomplete="organization" value="'.e((string)($_POST['company']??'')).'" required></label><label>Ansprechpartner<input name="name" autocomplete="name" value="'.e((string)($_POST['name']??'')).'" required></label></div>';
         echo '<div class="s-form-row"><label>E-Mail<input type="email" name="email" autocomplete="email" value="'.e((string)($_POST['email']??'')).'" required></label><label>Telefon <small>optional, für Rückfragen</small><input name="phone" type="tel" autocomplete="tel" value="'.e((string)($_POST['phone']??'')).'"></label></div>';
         echo '<label>Anzahl Mitarbeitende <small>ungefähr, optional</small><input type="number" min="0" name="employees" value="'.e((string)($_POST['employees']??'')).'"></label>';
         echo '<label>Was benötigen Sie?<textarea name="message" rows="6" placeholder="z. B. ca. 30 Mitarbeitende, Polos und Softshelljacken, Stick Brust links, Rückendruck …" required>'.e((string)($_POST['message']??'')).'</textarea></label>';
-        echo '<label class="s-check"><input type="checkbox" name="privacy" value="1" required><span>Ich bin einverstanden, dass meine Angaben zur Bearbeitung der Anfrage verwendet werden. <a href="/datenschutz" target="_blank" rel="noopener">Datenschutzhinweise</a></span></label>';
+        echo '<div class="s-upload"><label>Ihr Logo <small>optional · PNG, JPG, WebP oder SVG, max. 4 MB</small><input type="file" name="logo" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"></label><p>Mit Logo erstellen wir Ihnen sofort einen <strong>persönlichen Probeshop</strong>: Ihre Firmenkleidung mit Ihrem Logo – zum Ansehen und Weiterleiten im Team. Der Link ist 30 Tage gültig, danach löschen wir Shop und Logo automatisch.</p></div>';
+        echo '<label class="s-check"><input type="checkbox" name="privacy" value="1" required><span>Ich bin einverstanden, dass meine Angaben (und ein ggf. hochgeladenes Logo für den Probeshop) zur Bearbeitung der Anfrage verwendet werden. <a href="/datenschutz" target="_blank" rel="noopener">Datenschutzhinweise</a></span></label>';
         echo '<button class="s-btn s-btn-orange" type="submit">Anfrage absenden</button></form>';
     }
     echo '</div><aside class="s-inquiry-side"><h2>So geht es weiter</h2><ol class="s-mini-steps"><li><strong>Wir melden uns</strong><span>persönlich, meist innerhalb eines Werktags.</span></li><li><strong>Wir stimmen ab</strong><span>Artikel, Logo, Veredelung und Regeln – auf Wunsch mit Mustern.</span></li><li><strong>Ihr Shop startet</strong><span>Wir richten alles ein und laden Ihr Team ein.</span></li></ol><p class="s-inquiry-mail">Lieber per E-Mail?<br><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p></aside></div></section>';

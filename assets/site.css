@@ -340,3 +340,11 @@ html body{background:var(--s-white);color:var(--s-text);font-family:Inter,ui-san
   .s-phone{width:min(260px,76%)}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* 10.11: Logo-Upload im Anfrageformular, Probeshop-Hinweis */
+.s-upload{border:1px dashed #c3cfdc;border-radius:var(--s-radius);padding:18px 18px 16px;background:var(--s-grey)}
+.s-upload label > input[type=file]{display:block;margin-top:10px;width:100%;font:inherit;font-size:15px}
+.s-upload p{margin:10px 0 0;font-size:14px;line-height:1.55;color:var(--s-body)}
+.s-probe-ready{margin:4px auto 0;max-width:560px;padding:22px 24px;border-radius:var(--s-radius);background:color-mix(in srgb,var(--s-orange) 9%,#fff);border:1px solid color-mix(in srgb,var(--s-orange) 30%,#fff)}
+.s-probe-ready strong{display:block;font-size:18px;margin-bottom:6px}
+.s-probe-ready p{margin-bottom:16px!important}

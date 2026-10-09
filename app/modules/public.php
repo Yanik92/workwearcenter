@@ -668,7 +668,8 @@ function send_inquiry_mail(array $data): bool {
         ."E-Mail: ".$data['email']."\n"
         ."Telefon: ".$data['phone']."\n"
         ."Mitarbeitende: ".$data['employees']."\n\n"
-        ."Nachricht:\n".$data['message']."\n";
+        ."Nachricht:\n".$data['message']."\n"
+        .(!empty($data['probeshop'])?"\nProbeshop mit Logo (30 Tage gültig): ".yw_probeshop_url((string)$data['probeshop'])."\n":'');
 
     return send_system_mail($to,$subject,$body,false,(string)$data['email']);
 }
@@ -676,6 +677,7 @@ function send_inquiry_mail(array $data): bool {
 function inquiry_page(): void {
     $error='';
     $success=false;
+    $probeshopToken=null;
 
     if(is_post()){
         verify_csrf();
@@ -705,25 +707,40 @@ function inquiry_page(): void {
             elseif(!$message || mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
             elseif(!$privacy) $error='Bitte bestätigen Sie die Datenschutzhinweise.';
             else {
+                $logo='';
                 try{
+                    // Optionales Logo: daraus entsteht ein persönlicher Probeshop (10.11).
+                    $logo=yw_probeshop_store_logo($_FILES['logo']??null);
+                    db()->beginTransaction();
                     $stmt=db()->prepare('INSERT INTO inquiries(company,name,email,phone,employees,message,status) VALUES(?,?,?,?,?,?,?)');
                     $stmt->execute([$company,$name,$email,$phone,$employees,$message,'new']);
                     $inquiryId=(int)db()->lastInsertId();
-                    audit_log('inquiry.created','inquiry',$inquiryId);
+                    if($logo!=='')$probeshopToken=yw_probeshop_create($company,$logo,$inquiryId,'inquiry')['token'];
+                    db()->commit();
+                    $logo=''; // gehört jetzt zum gespeicherten Probeshop
+                    audit_log('inquiry.created','inquiry',$inquiryId,$logo!==''?['probeshop'=>true]:[]);
                     send_inquiry_mail([
                         'company'=>$company,'name'=>$name,'email'=>$email,'phone'=>$phone,
-                        'employees'=>$employees,'message'=>$message
+                        'employees'=>$employees,'message'=>$message,'probeshop'=>$probeshopToken
                     ]);
+                    yw_inquiry_confirmation_mail($email,$name,$company,$probeshopToken);
                     $success=true;
                 }catch(Throwable $e){
-                    error_log('Public inquiry: '.$e->getMessage());
-                    $error='Ihre Anfrage konnte gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut oder kontaktieren Sie uns telefonisch.';
+                    if(db()->inTransaction())db()->rollBack();
+                    if($logo!=='')yw_probeshop_delete_logo($logo);
+                    $probeshopToken=null;
+                    if($e instanceof RuntimeException && !$e instanceof PDOException){
+                        $error=$e->getMessage().' Sie können die Anfrage auch ohne Logo absenden.';
+                    }else{
+                        error_log('Public inquiry: '.$e->getMessage());
+                        $error='Ihre Anfrage konnte gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut oder kontaktieren Sie uns telefonisch.';
+                    }
                 }
             }
         }
     }
 
-    site_inquiry_render($success,$error);
+    site_inquiry_render($success,$error,$probeshopToken);
 }
 
 
@@ -770,22 +787,25 @@ Wir verwenden ausschließlich ein technisch notwendiges Sitzungs-Cookie („yani
 4. Anfrageformular
 Angaben im Anfrageformular (Firma, Name, E-Mail, Telefon, Mitarbeiterzahl, Nachricht) verwenden wir zur Bearbeitung der Anfrage. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Erledigte Anfragen werden nach spätestens 24 Monaten gelöscht.
 
-5. Unternehmensshops für Mitarbeitende
+5. Probeshop für Interessenten
+Laden Sie im Anfrageformular freiwillig Ihr Firmenlogo hoch (oder geben Sie es uns bei einem Termin), erstellen wir daraus einen persönlichen Vorschau-Shop mit Ihrem Firmennamen und Logo auf Musterartikeln. Gespeichert werden nur Firmenname, Logo-Datei, Ablaufdatum und die Anzahl der Aufrufe. Der Probeshop ist nur über einen zufällig erzeugten, nicht erratbaren Link erreichbar, wird nicht von Suchmaschinen erfasst und ist nur lesend. Die Logo-Datei liegt unter einem zufälligen Dateinamen in einem nicht auflistbaren Ordner. Nach 30 Tagen läuft der Probeshop ab; Eintrag und Logo werden danach automatisch gelöscht, auf Wunsch jederzeit früher. Rechtsgrundlage: Art. 6 Abs. 1 lit. a und b DSGVO (Ihre Anfrage bzw. vorvertragliche Maßnahme).
+
+6. Unternehmensshops für Mitarbeitende
 Im Auftrag des jeweiligen Arbeitgebers verarbeiten wir: Name, dienstliche E-Mail-Adresse, Abteilung, Kostenstelle, Standort, Personalnummer, Beschäftigungszeitraum, Rolle, Ausstattungsprofil, Budgetangaben, Bestellungen (Artikel, Größen, Mengen, Preise, Eigenanteil) sowie Anmeldezeitpunkte. Zweck ist die Bereitstellung und Abwicklung der Firmenbekleidung. Rechtsgrundlage: Art. 6 Abs. 1 lit. b und f DSGVO bzw. [Vertrag mit dem Arbeitgeber / Auftragsverarbeitung nach Art. 28 DSGVO – bitte rechtlich klären]. Passwörter werden ausschließlich als sicherer Hash gespeichert.
 
-6. Bestellabwicklung, Produktion und Buchhaltung
+7. Bestellabwicklung, Produktion und Buchhaltung
 Freigegebene Bestellungen werden in unsere Auftragsverwaltung übertragen und für Beschaffung, Veredelung, Versand und Rechnungsstellung verwendet. Rechnungen erstellen wir mit [Lexware Office, Haufe-Lexware GmbH & Co. KG]. Bestellungen bewahren wir entsprechend den handels- und steuerrechtlichen Aufbewahrungspflichten (bis zu 10 Jahre) auf. Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO.
 
-7. E-Mails
+8. E-Mails
 Für Systemnachrichten (Zugang, Bestellbestätigung, Freigabe, Status) nutzen wir [E-Mail-Anbieter / SMTP-Dienst]. Kopien versendeter Systemnachrichten werden nach 90 Tagen gelöscht.
 
-8. Löschung von Konten
+9. Löschung von Konten
 Ausgeschiedene Mitarbeitende können vom Arbeitgeber oder von uns anonymisiert werden. Dabei werden Name, E-Mail-Adresse und weitere Kontodaten dauerhaft entfernt; Bestellungen bleiben im Rahmen der Aufbewahrungspflichten erhalten.
 
-9. Ihre Rechte
+10. Ihre Rechte
 Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie das Recht auf Beschwerde bei einer Aufsichtsbehörde, z. B. [Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen].
 
-10. Kontakt in Datenschutzfragen
+11. Kontakt in Datenschutzfragen
 [E-Mail-Adresse; ggf. Datenschutzbeauftragter]
 
 Stand: [Datum]

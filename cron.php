@@ -9,6 +9,7 @@ if(PHP_SAPI!=='cli'){
 
 require __DIR__.'/app/bootstrap.php';
 require_once __DIR__.'/app/modules/system.php';
+require_once __DIR__.'/app/modules/probeshop.php';
 
 try{
     set_site_setting('cron_last_run',date('Y-m-d H:i:s'));
@@ -16,6 +17,8 @@ try{
     $handed=yw_process_handover_queue(25);
     yw_cleanup_expired_security_rows();
     $reminded=yw_send_reminders(3);
+    $probeshops=yw_probeshop_cleanup(); // abgelaufene Probeshops samt Logo löschen (DSGVO)
+    fwrite(STDOUT,"Abgelaufene Probeshops gelöscht: ".$probeshops."\n");
     fwrite(STDOUT,"Erinnerungen an Verantwortliche: ".$reminded."\n");
     fwrite(STDOUT,"Übergaben an die Auftragsverwaltung: ".$handed."\n");
     fwrite(STDOUT,"WorkwearCenter-Mailwarteschlange und Sicherheitsbereinigung verarbeitet.\n");

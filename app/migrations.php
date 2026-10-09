@@ -400,5 +400,26 @@ function run_schema_updates(PDO $pdo): array {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     schema_mark_version($pdo,'10.8.0',$changes);
 
+    // ---- Version 10.11: Probeshops für Interessenten (Vorschau mit eigenem Logo, läuft nach 30 Tagen ab) ----
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_probeshops (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        token CHAR(64) NOT NULL,
+        inquiry_id INT UNSIGNED NULL,
+        company_name VARCHAR(190) NOT NULL,
+        logo_path VARCHAR(255) NULL,
+        garment_tone VARCHAR(10) NOT NULL DEFAULT 'dark',
+        primary_color VARCHAR(7) NULL,
+        source VARCHAR(20) NOT NULL DEFAULT 'inquiry',
+        created_by INT UNSIGNED NULL,
+        view_count INT UNSIGNED NOT NULL DEFAULT 0,
+        last_viewed_at DATETIME NULL,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_yw_probeshop_token (token),
+        KEY idx_yw_probeshop_inquiry (inquiry_id),
+        KEY idx_yw_probeshop_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    schema_mark_version($pdo,'10.11.0',$changes);
+
     return $changes;
 }
