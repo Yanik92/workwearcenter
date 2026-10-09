@@ -1275,7 +1275,7 @@ function render_new_company(array $products): void {
     echo '<section class="card"><h2>Stammdaten und Shopregeln</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="create_company"><input type="hidden" name="return_tab" value="new">';
 
     echo '<div class="grid2"><label>Firmenname<input name="legal_name" maxlength="190" required></label><label>Angezeigter Shopname<input name="shop_name" maxlength="190" placeholder="Musterbau Mitarbeiter-Shop" required></label></div>';
-    echo '<label>Shop-Kurzname <small>Beispiel: „musterbau“ ergibt '.e(workwearcenter_domain()).'/musterbau</small><input name="slug" maxlength="63" pattern="[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]" required></label>';
+    echo '<label>Shop-Kurzname <small>Beispiel: „musterbau“ ergibt '.e(workwearcenter_domain()).'/musterbau</small><input name="slug" maxlength="63" pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]|[a-z0-9]" required></label>';
 
     echo '<div class="grid2"><label>Primärfarbe<input type="color" name="primary_color" value="#101b2d"></label><label>Akzentfarbe<input type="color" name="accent_color" value="#ff6b00"></label></div>';
 
