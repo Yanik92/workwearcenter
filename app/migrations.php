@@ -521,6 +521,13 @@ function run_schema_updates(PDO $pdo): array {
     // Sprache des Mailrahmens (Gruß, Schaltflächen); Inhalt wird beim Einreihen übersetzt.
     schema_add_column($pdo,'yw_mail_queue','language','VARCHAR(5) NULL',$changes);
     schema_mark_version($pdo,'10.12.0',$changes);
+    // ---- Großkunden (1.500 Konten, 20.000+ Aufträge): Indizes ----
+    // Budget- und Mengenprüfung je Person (Shop, Checkout) statt aller Firmenaufträge des Jahres.
+    schema_add_index($pdo,'orders','idx_yw_orders_account','`employee_account_id`,`status`,`created_at`',$changes);
+    schema_add_index($pdo,'orders','idx_yw_orders_invite','`invite_id`',$changes);
+    // Verlauf in der Auftragsansicht; audit_log wächst unbegrenzt.
+    schema_add_index($pdo,'audit_log','idx_audit_entity','`entity_type`,`entity_id`',$changes);
+    schema_add_index($pdo,'yw_exchange_requests','idx_yw_exchange_item','`order_item_id`',$changes);
     // ---- Version 10.14: API-Schlüssel auf eine Firma beschränken (NULL = alle Firmen) ----
     schema_add_column($pdo,'yw_api_keys','company_id','INT UNSIGNED NULL',$changes);
     schema_mark_version($pdo,'10.14.0',$changes);
