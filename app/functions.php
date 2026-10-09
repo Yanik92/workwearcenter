@@ -260,7 +260,9 @@ function yw_mail_transport(string $to,string $subject,string $message,?string $r
     if((string)(cfg('mail_transport')?:'mail')==='smtp'){yw_smtp_deliver($to,$subject,$message,$from,$reply);return;}
     $boundary='yw_'.bin2hex(random_bytes(12));$body=yw_mail_multipart($subject,$message,$boundary);
     $headers=['MIME-Version: 1.0','Content-Type: multipart/alternative; boundary="'.$boundary.'"','From: WorkwearCenter <'.$from.'>','Reply-To: '.$reply];
-    if(!@mail($to,'=?UTF-8?B?'.base64_encode($subject).'?=',$body,implode("\r\n",$headers))) throw new RuntimeException('Mailtransport hat die Nachricht nicht angenommen.');
+    // Absender auch im Umschlag setzen (-f), sonst nutzen viele Hoster den Webserver-Benutzer und SPF/DMARC schlagen fehl.
+    $params=preg_match('/^[A-Za-z0-9._%+@-]+$/',$from)?'-f'.$from:'';
+    if(!@mail($to,'=?UTF-8?B?'.base64_encode($subject).'?=',$body,implode("\r\n",$headers),$params)) throw new RuntimeException('Mailtransport hat die Nachricht nicht angenommen.');
 }
 
 function yw_smtp_read($socket): array {

@@ -20,6 +20,8 @@ if(is_post()){
             $staticPath=__DIR__.'/'.$staticFile;
             if(is_file($staticPath) && strlen((string)@file_get_contents($staticPath))<4000 && str_contains((string)@file_get_contents($staticPath),$marker) && @unlink($staticPath))$changes[]='Veraltete '.$staticFile.' entfernt (wird jetzt automatisch erzeugt)';
         }
+        // 10.10: Katalogprodukte mit gemeinsamer SKU eindeutig machen (SKU-FARBE).
+        if(function_exists('yw_katalog_fix_duplicate_skus')){$fixedSkus=yw_katalog_fix_duplicate_skus();if($fixedSkus)$changes[]=$fixedSkus.' Katalogprodukte mit eindeutiger Artikelnummer versehen';}
         $versionQuery=db()->prepare('SELECT auth_version FROM admins WHERE id=? LIMIT 1');
         $versionQuery->execute([(int)$_SESSION['admin_id']]);
         $_SESSION['admin_auth_version']=(int)$versionQuery->fetchColumn();
@@ -35,7 +37,7 @@ render_head('WorkwearCenter aktualisieren');
 echo '<main class="install-card"><div class="eyebrow">SYSTEMUPDATE</div><h1>WorkwearCenter aktualisieren</h1>';
 if($error) echo '<div class="flash error">'.e($error).'</div>';
 elseif(is_post()) echo '<div class="flash success">Update abgeschlossen. '.count($changes).' Datenbankanpassungen wurden ausgeführt.</div><p><a class="btn primary" href="/admin">Zur Verwaltung</a></p>';
-else echo '<p><strong>Version '.e(app_version()).'</strong> erneuert die öffentliche Website und ordnet die Verwaltung nach realen Arbeitsabläufen. Bestehende Firmen, Produkte, Konten, Bestellungen und individuell gepflegte Inhalte bleiben erhalten.</p><p><strong>Vor dem Update Webspace und Datenbank vollständig sichern.</strong></p><form method="post">'.csrf_field().'<label><input type="checkbox" name="backup_confirmed" value="yes" required> Aktuelle Sicherung vorhanden</label><button class="btn primary" type="submit">Datenbank jetzt aktualisieren</button></form>';
+else echo '<p><strong>Version '.e(app_version()).'</strong> bringt Sicherheits- und Datenschutzkorrekturen, Auftragsstorno und Verbesserungen am Lieferantenkatalog. Bestehende Firmen, Produkte, Konten, Bestellungen und individuell gepflegte Inhalte bleiben erhalten.</p><p><strong>Vor dem Update Webspace und Datenbank vollständig sichern.</strong></p><form method="post">'.csrf_field().'<label><input type="checkbox" name="backup_confirmed" value="yes" required> Aktuelle Sicherung vorhanden</label><button class="btn primary" type="submit">Datenbank jetzt aktualisieren</button></form>';
 // Diagnose: prüft, ob alle Programmteile laden und die Datenbank vollständig ist.
 $diag=['Programmversion'=>app_version(),'PHP-Version'=>PHP_VERSION.(version_compare(PHP_VERSION,'8.1.0','<')?' – ZU ALT, mindestens 8.1 nötig':' – in Ordnung')];
 $modulesOk=true;

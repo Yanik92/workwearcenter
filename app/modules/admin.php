@@ -763,6 +763,27 @@ function handle_admin_action(): never {
             }else flash('success','Der Auftrag hatte diesen Status bereits. Es wurde keine neue E-Mail versendet.');
             redirect(!empty($_POST['return_order'])?yw_order_url((int)$_POST['return_order']):'/admin?tab=orders');
         }
+        if ($action==='order_cancel') {
+            // Storno eines Auftrags durch die Verwaltung (z. B. Größentausch, Ware nicht lieferbar).
+            $orderId=(int)($_POST['order_id']??0);$reason=trim((string)($_POST['cancel_reason']??''));
+            if($reason===''||mb_strlen($reason)>1000)throw new RuntimeException('Bitte einen Stornogrund (höchstens 1.000 Zeichen) angeben.');
+            $orderQuery=db()->prepare("SELECT o.id,o.status,o.company_id,c.slug FROM orders o JOIN companies c ON c.id=o.company_id WHERE o.id=? LIMIT 1");
+            $orderQuery->execute([$orderId]);$order=$orderQuery->fetch();
+            if(!$order||!in_array($order['status'],['pending','approved'],true))throw new RuntimeException('Nur offene oder freigegebene Aufträge können storniert werden.');
+            db()->beginTransaction();
+            $stmt=db()->prepare("UPDATE orders SET status='cancelled',cancelled_at=NOW(),internal_note=TRIM(CONCAT(COALESCE(internal_note,''),?)) WHERE id=? AND status IN ('pending','approved')");
+            $stmt->execute(["\n[Storno ".date('d.m.Y H:i')."] ".$reason,$orderId]);
+            // Noch nicht gesendete Übergaben anhalten; bereits übergebene muss die Auftragszentrale selbst stornieren.
+            db()->prepare("UPDATE yw_handover SET status='cancelled',last_error='Auftrag storniert' WHERE order_id=? AND status IN ('pending','failed')")->execute([$orderId]);
+            $handed=db()->prepare("SELECT COUNT(*) FROM yw_handover WHERE order_id=? AND status IN ('sending','delivered','acknowledged')");$handed->execute([$orderId]);$wasHanded=(int)$handed->fetchColumn()>0;
+            db()->commit();
+            audit_log('order.cancelled_by_admin','order',$orderId,['company_id'=>(int)$order['company_id'],'previous_status'=>$order['status'],'reason'=>$reason]);
+            $msg="Deine Bestellung ".yw_order_number($orderId)." wurde storniert.\n\nGrund: ".$reason."\n\nDas Budget ist wieder frei. Bestellungen ansehen: ".workwearcenter_url((string)$order['slug'].'/bestellungen');
+            notify_order_employee($orderId,'Bestellung '.yw_order_number($orderId).' storniert',$msg);
+            if($order['status']==='approved')notify_company_managers((int)$order['company_id'],'Bestellung '.yw_order_number($orderId).' storniert',$msg);
+            flash('success','Auftrag storniert. Budget und Stückzahlen sind wieder frei.'.($wasHanded?' Achtung: Der Auftrag war schon an die Auftragszentrale übergeben – dort bitte ebenfalls stornieren.':''));
+            redirect(yw_order_url($orderId));
+        }
         if ($action==='admin_add_manager') {
             $companyId=(int)($_POST['company_id']??0);
             $name=trim((string)($_POST['name']??''));$email=strtolower(trim((string)($_POST['email']??'')));
@@ -808,7 +829,14 @@ function handle_admin_action(): never {
         if(db()->inTransaction())db()->rollBack();
         if($exception instanceof PDOException){error_log('WorkwearCenter admin database action failed: '.$exception->getMessage());$message='Speichern fehlgeschlagen. Bitte Eingaben prüfen und erneut versuchen.';}
         else $message=$exception->getMessage();
-        flash('error',$message);redirect('/admin?tab=' . urlencode((string)($_POST['return_tab']??'orders')));
+        flash('error',$message);
+        // Ohne return_tab zurück auf die Seite, von der das Formular kam (statt immer auf „Aufträge“).
+        if(!isset($_POST['return_tab'])){
+            $ref=(string)($_SERVER['HTTP_REFERER']??'');$refHost=strtolower((string)parse_url($ref,PHP_URL_HOST));$refPath=(string)parse_url($ref,PHP_URL_PATH);
+            $ownHost=strtolower((string)preg_replace('/:\d+$/','',(string)($_SERVER['HTTP_HOST']??'')));
+            if($refHost!==''&&$refHost===$ownHost&&$refPath==='/admin'){$query=(string)parse_url($ref,PHP_URL_QUERY);redirect('/admin'.($query!==''?'?'.$query:''));}
+        }
+        redirect('/admin?tab=' . urlencode((string)($_POST['return_tab']??'orders')));
     }
 }
 
@@ -1344,6 +1372,7 @@ function yw_audit_labels(): array {
         'employee.created_by_admin'=>'Konto durch Admin angelegt',
         'employee.anonymized'=>'Mitarbeiterdaten gelöscht (DSGVO)',
         'order.cancelled'=>'Bestellung zurückgezogen',
+        'order.cancelled_by_admin'=>'Auftrag storniert (Verwaltung)',
         'order.status_from_auftragszentrale'=>'Status aus Auftragszentrale übernommen',
         'order.note_updated'=>'Auftragsnotiz geändert',
         'company.note_updated'=>'Kundennotiz geändert',

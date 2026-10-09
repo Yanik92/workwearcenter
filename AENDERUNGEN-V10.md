@@ -246,3 +246,34 @@ API-Schlüssel ließen sich auf MySQL 8 nicht anlegen („Speichern fehlgeschlag
 - Neue Daiber-Listen können jederzeit hochgeladen werden (Excel wird direkt auf dem Server gelesen, keine Zusatzsoftware).
 
 Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
+
+## Nachtrag 10.10.0 – Marktreife: Sicherheit, Storno, Datenschutz, Katalog
+
+**`update.php` ausführen** (keine neuen Tabellen; macht doppelte Katalog-Artikelnummern eindeutig). `uploads/.htaccess` unbedingt mit hochladen.
+
+**Sicherheit**
+- Die eingelesene Daiber-Liste mit Händler-Einkaufspreisen lag bisher öffentlich abrufbar unter `uploads/katalog/daiber.json`. Sie liegt jetzt im privaten Datenordner (`app/private` oder `private_dir` aus der config.php, am besten außerhalb des Webroots) und wird beim ersten Aufruf automatisch dorthin verschoben.
+- `uploads/` liefert keine Listen und Datenexporte mehr aus (JSON, CSV, Excel, ZIP, TXT).
+- SVG-Logos: Links mit eigenem Namensraum-Präfix (`x:href="javascript:…"`) wurden nicht entfernt. Behoben.
+- Bilder aus ZIP-Uploads im Lieferantenkatalog werden jetzt wie Einzelbilder geprüft.
+
+**Systemstatus: neue Prüfungen**
+- „Interne Dateien gesperrt“: prüft von außen, ob Programmordner, Lieferantenpreise und Anleitungen wirklich gesperrt sind (wichtig bei nginx oder abweichender Hoster-Konfiguration).
+- „Cronjob läuft“, „Datensicherung aktuell“, „Zwei-Faktor für alle Admins“, „Impressum vollständig“.
+
+**Aufträge**
+- Neu: **Auftrag stornieren** auf der Auftragsseite (offene und freigegebene Aufträge, mit Grund). Budget und Stückzahlen sind sofort wieder frei. Besteller und ggf. Verantwortliche bekommen eine E-Mail. Noch nicht gesendete Übergaben werden angehalten; ist der Auftrag schon übergeben, weist die Verwaltung darauf hin, ihn auch in der Auftragszentrale zu stornieren.
+- **Vier-Augen-Prinzip:** Verantwortliche können ihre eigenen Bestellungen nicht mehr selbst freigeben, sobald es eine weitere verantwortliche Person gibt. Ist nur eine da, bleibt es erlaubt und wird im Verlauf vermerkt.
+
+**Datenschutz (DSGVO)**
+- „Daten löschen“ entfernt Name und E-Mail jetzt auch aus Bestell-Schnappschüssen, Übergabe-Datensätzen und Einladungen und löscht noch nicht versendete Mails an die Person.
+
+**Lieferantenkatalog**
+- Jede Farbe bekommt eine eigene Artikelnummer (`JN840-NAVY`). Vorher hatten alle Farben dieselbe, wodurch Produkte nicht mehr gespeichert und die Produkt-CSV nicht wieder eingelesen werden konnten. Bestehende Produkte korrigiert `update.php`.
+- Übergrößen mit höherem Einkaufspreis (z. B. 4XL–6XL): Sind sie angehakt, wird der höhere Einkaufspreis für den Verkaufspreis verwendet. Vorher wurden sie zum Normalpreis verkauft.
+
+**Kleinere Korrekturen**
+- Kundenakte → Design: Die Farbfelder waren leer, und „Design speichern“ setzte beide Firmenfarben auf Schwarz. Behoben.
+- E-Mails über den Hoster-Mailversand setzen den Absender jetzt auch im Umschlag (bessere Zustellbarkeit, SPF/DMARC).
+- API-Schlüssel (`Authorization: Bearer …`) werden auch unter PHP-FPM/CGI an PHP weitergereicht.
+- Fehlermeldungen in der Verwaltung erscheinen wieder auf der Seite, von der das Formular kam.

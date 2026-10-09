@@ -1545,11 +1545,24 @@ function company_portal_page(string $slug,string $section='overview'): void {
                 redirect('/'.$slug.'/freigaben');
             }
 
+            // Vier-Augen-Prinzip: Eigene Bestellungen gibt eine andere verantwortliche Person frei.
+            // Nur wenn es keine weitere aktive verantwortliche Person gibt, ist das erlaubt (wird protokolliert).
+            $ownerQuery=db()->prepare('SELECT employee_account_id FROM orders WHERE id=? AND company_id=? LIMIT 1');
+            $ownerQuery->execute([$orderId,(int)$company['id']]);
+            $selfDecision=(int)$ownerQuery->fetchColumn()===(int)$account['id'];
+            if($selfDecision && $decision==='approved'){
+                $otherManagers=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND anonymized_at IS NULL AND id<>?");
+                $otherManagers->execute([(int)$company['id'],(int)$account['id']]);
+                if((int)$otherManagers->fetchColumn()>0){
+                    flash('error','Eigene Bestellungen gibt eine andere verantwortliche Person frei (Vier-Augen-Prinzip).');
+                    redirect('/'.$slug.'/freigaben');
+                }
+            }
             $stmt=db()->prepare("UPDATE orders SET status=?,decision_note=?,decided_by_account_id=?,decided_at=NOW() WHERE id=? AND company_id=? AND status='pending'");
             $stmt->execute([$decision,$decisionNote!==''?$decisionNote:null,(int)$account['id'],$orderId,(int)$company['id']]);
             $changed=$stmt->rowCount()>0;
             if($changed){
-                audit_log('order.decision','order',$orderId,['company_id'=>(int)$company['id'],'decision'=>$decision]);
+                audit_log('order.decision','order',$orderId,['company_id'=>(int)$company['id'],'decision'=>$decision]+($selfDecision?['self_decision'=>true]:[]));
                 if($decision==='approved')yw_handover_enqueue($orderId);
                 $decisionText=$decision==='approved'?'Deine Bestellung wurde freigegeben und wird nun bearbeitet.':'Deine Bestellung wurde abgelehnt.';
                 if($decisionNote!=='')$decisionText.="\nHinweis: ".$decisionNote;

@@ -122,15 +122,18 @@ function yw_sanitize_svg(string $raw): string {
         if(in_array(strtolower($el->localName),$banned,true)){$remove[]=$el;continue;}
         $dropAttrs=[];
         foreach(iterator_to_array($el->attributes) as $attr){
-            $name=strtolower($attr->nodeName);$value=trim((string)$attr->nodeValue);
-            if(str_starts_with($name,'on'))$dropAttrs[]=$attr->nodeName;
-            elseif(in_array($name,['href','xlink:href','src'],true)){
+            // localName statt nodeName: sonst rutscht z. B. <a x:href="javascript:…"> mit eigenem Präfix durch.
+            $name=strtolower((string)($attr->localName??$attr->nodeName));$value=trim((string)$attr->nodeValue);
+            $compact=strtolower((string)preg_replace('/[\s\x00-\x1f]+/','',$value));
+            if(str_starts_with($name,'on'))$dropAttrs[]=$attr;
+            elseif(str_contains($compact,'javascript:')||str_contains($compact,'vbscript:'))$dropAttrs[]=$attr;
+            elseif(in_array($name,['href','src'],true)){
                 // nur Verweise innerhalb der Datei (#id) oder eingebettete Rasterbilder
-                if(!(str_starts_with($value,'#')||preg_match('#^data:image/(png|jpeg|webp);base64,#i',$value)))$dropAttrs[]=$attr->nodeName;
+                if(!(str_starts_with($value,'#')||preg_match('#^data:image/(png|jpeg|webp);base64,#i',$value)))$dropAttrs[]=$attr;
             }
-            elseif($name==='style' && preg_match('/url\s*\(|expression|javascript:|@import/i',$value))$dropAttrs[]=$attr->nodeName;
+            elseif($name==='style' && preg_match('/url\s*\(|expression|javascript:|@import/i',$value))$dropAttrs[]=$attr;
         }
-        foreach($dropAttrs as $a)$el->removeAttribute($a);
+        foreach($dropAttrs as $a)$el->removeAttributeNode($a);
     }
     foreach($remove as $el)if($el->parentNode)$el->parentNode->removeChild($el);
     foreach($xpath->query('//*[local-name()="style"]') as $style){

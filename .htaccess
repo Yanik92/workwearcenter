@@ -27,6 +27,8 @@ DirectoryIndex index.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    # API-Schlüssel (Authorization: Bearer …) auch unter PHP-FPM/CGI an PHP weitergeben
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
     # Selbst bei einer fehlerhaften Fremdkonfiguration nie Skripte aus Uploads ausführen.
     RewriteRule ^uploads/.*\.(?:php[0-9]?|phtml|phar)$ - [F,L,NC]

@@ -63,6 +63,9 @@ function yw_admin_order_page(int $orderId): void {
         echo '</select></label><button class="btn primary small">Stand speichern</button></form>';
         echo '<p class="muted">Der Besteller wird bei jeder Änderung per E-Mail informiert.</p>';
     }else echo '<p class="muted">Nur freigegebene Aufträge gehen in die Produktion.</p>';
+    if(in_array($o['status'],['pending','approved'],true)){
+        echo '<details class="details space-top"><summary>Auftrag stornieren</summary><div class="details-inner"><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="order_cancel"><input type="hidden" name="order_id" value="'.$orderId.'"><input type="hidden" name="return_tab" value="orders"><label>Grund <small>geht per E-Mail an den Besteller</small><textarea name="cancel_reason" rows="3" maxlength="1000" required placeholder="z. B. Größe getauscht, Artikel nicht lieferbar"></textarea></label><button class="btn small danger" type="submit">Jetzt stornieren</button></form><p class="muted">Budget und Stückzahlen werden sofort wieder frei. Wurde der Auftrag schon übergeben, bitte auch in der Auftragszentrale stornieren.</p></div></details>';
+    }
     if(!empty($o['tracking_number']))echo '<p><strong>Sendung:</strong> '.e(trim(($o['tracking_carrier']??'').' '.$o['tracking_number'])).(yw_tracking_link((string)$o['tracking_carrier'],(string)$o['tracking_number'],(string)($o['tracking_url']??''))?' · <a href="'.e(yw_tracking_link((string)$o['tracking_carrier'],(string)$o['tracking_number'],(string)($o['tracking_url']??''))).'" target="_blank" rel="noopener">verfolgen</a>':'').'</p>';
     if(!empty($o['external_reference']))echo '<p><strong>Auftragszentrale:</strong> '.e((string)$o['external_reference']).'</p>';
     echo '</section>';

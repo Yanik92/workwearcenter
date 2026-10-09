@@ -116,7 +116,7 @@ function yw_anonymize_employee(int $companyId,int $accountId): void {
     $ownTransaction=!db()->inTransaction();
     if($ownTransaction)db()->beginTransaction();
     try{
-        $q=db()->prepare('SELECT id,role,active,registration_status,anonymized_at FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');
+        $q=db()->prepare('SELECT id,name,email,invite_id,role,active,registration_status,anonymized_at FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');
         $q->execute([$accountId,$companyId]);$target=$q->fetch();
         if(!$target)throw new DomainException('Mitarbeiterkonto wurde nicht gefunden.');
         if($target['anonymized_at'])throw new DomainException('Dieses Konto wurde bereits anonymisiert.');
@@ -129,9 +129,39 @@ function yw_anonymize_employee(int $companyId,int $accountId): void {
         db()->prepare("UPDATE employee_accounts SET name=?,email=?,password_hash=?,role='employee',active=0,registration_status='rejected',location=NULL,employee_number=NULL,employment_start=NULL,employment_end=NULL,budget_override_cents=NULL,last_login_at=NULL,auth_version=auth_version+1,anonymized_at=NOW() WHERE id=? AND company_id=?")
             ->execute(['Gelöschtes Konto #'.$accountId,$placeholder,password_hash(random_token(),PASSWORD_DEFAULT),$accountId,$companyId]);
         db()->prepare('DELETE FROM yw_password_resets WHERE account_id=?')->execute([$accountId]);
+        yw_anonymize_employee_traces($accountId,(string)$target['name'],(string)$target['email'],(int)($target['invite_id']??0),'Gelöschtes Konto #'.$accountId,$placeholder);
         if($ownTransaction)db()->commit();
     }catch(Throwable $e){if($ownTransaction && db()->inTransaction())db()->rollBack();throw $e;}
     audit_log('employee.anonymized','employee',$accountId,['company_id'=>$companyId]);
+}
+
+/**
+ * Name und E-Mail stecken auch in Bestell-Schnappschüssen, Übergabe-Datensätzen,
+ * Einladungen und noch nicht versendeten Mails. Beträge, Artikel und Kostenstellen
+ * bleiben für die Aufbewahrungspflichten erhalten.
+ */
+function yw_anonymize_employee_traces(int $accountId,string $name,string $email,int $inviteId,string $newName,string $newEmail): void {
+    $pairs=[];
+    foreach([[$name,$newName],[$email,$newEmail]] as [$old,$new]){
+        if(trim($old)==='')continue;
+        $pairs[$old]=$new;
+        $escaped=substr((string)json_encode($old),1,-1);if($escaped!==$old)$pairs[$escaped]=substr((string)json_encode($new),1,-1);
+        $escapedSlashes=substr((string)json_encode($old,JSON_UNESCAPED_UNICODE),1,-1);if($escapedSlashes!==$old)$pairs[$escapedSlashes]=$new;
+    }
+    if($pairs){
+        uksort($pairs,fn($a,$b)=>strlen($b)<=>strlen($a));
+        $orders=db()->prepare('SELECT id,delivery_snapshot_json FROM orders WHERE employee_account_id=?');$orders->execute([$accountId]);
+        $updateOrder=db()->prepare('UPDATE orders SET delivery_snapshot_json=? WHERE id=?');
+        $handover=db()->prepare('SELECT id,payload_json FROM yw_handover WHERE order_id=?');
+        $updateHandover=db()->prepare('UPDATE yw_handover SET payload_json=? WHERE id=?');
+        foreach($orders->fetchAll() as $o){
+            if(($o['delivery_snapshot_json']??'')!=='')$updateOrder->execute([strtr((string)$o['delivery_snapshot_json'],$pairs),(int)$o['id']]);
+            $handover->execute([(int)$o['id']]);
+            foreach($handover->fetchAll() as $h)if(($h['payload_json']??'')!=='')$updateHandover->execute([strtr((string)$h['payload_json'],$pairs),(int)$h['id']]);
+        }
+    }
+    if($inviteId>0)db()->prepare('UPDATE invites SET employee_name=?,active=0 WHERE id=?')->execute([$newName,$inviteId]);
+    if(trim($email)!=='')db()->prepare("DELETE FROM yw_mail_queue WHERE to_email=? AND status IN ('pending','failed')")->execute([$email]);
 }
 
 function yw_customer_employee_export(string $slug): never {

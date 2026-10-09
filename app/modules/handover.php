@@ -463,6 +463,7 @@ function yw_handover_status_label(string $status): array {
         'delivered'=>['Übergeben','approved'],
         'acknowledged'=>['Übernommen','approved'],
         'failed'=>['Fehlgeschlagen','rejected'],
+        'cancelled'=>['Angehalten (storniert)',''],
         default=>[$status,''],
     };
 }

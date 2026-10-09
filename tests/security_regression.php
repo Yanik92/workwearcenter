@@ -129,4 +129,10 @@ $_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['HTTPS']='on';test_ok(yw_api_http
 test_ok(preg_match('/^Bearer\s+(wwc_[a-f0-9]{48})$/','Bearer wwc_'.str_repeat('a',48))===1 && preg_match('/^Bearer\s+(wwc_[a-f0-9]{48})$/','Bearer wwc_'.str_repeat('a',47).'G')===0,'nur korrekt aufgebaute API-Schlüssel werden überhaupt geprüft');
 test_ok(count(YW_API_SCOPES)===4 && isset(YW_API_SCOPES['orders:write']),'API-Rechte sind fest definiert');
 
+// 10.10: SVG-Präfix-Trick, Katalog-SKUs je Farbe
+$prefixed=yw_sanitize_svg('<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><a x:href="javascript:alert(1)"><rect width="5" height="5"/></a><a href=" java&#x09;script:alert(2)">t</a><use href="#r"/></svg>');
+test_ok(!str_contains(strtolower($prefixed),'javascript')&&str_contains($prefixed,'href="#r"'),'SVG-Logo: Verweise mit eigenem Namensraum-Präfix werden entfernt, interne bleiben');
+test_ok(yw_katalog_product_sku('jn840','Navy Blue')==='JN840-NAVYBLUE','Katalog: SKU je Farbe');
+test_ok(yw_katalog_base_sku('JN840-NAVYBLUE','navy blue')==='JN840' && yw_katalog_base_sku('JN840','navy')==='JN840','Katalog: Grund-SKU wird erkannt (alt und neu)');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

@@ -193,8 +193,35 @@ function yw_katalog_search(array $catalog,string $q,int $limit=60): array {
 /** Welche Daiber-Produkte (Artikel+Farbe) gibt es schon? */
 function yw_katalog_existing(): array {
     $map=[];
-    try{foreach(db()->query("SELECT id,sku,color,image_path,active FROM products WHERE supplier_name='Daiber'") as $p)$map[strtoupper((string)$p['sku']).'|'.mb_strtolower((string)$p['color'])]=$p;}catch(Throwable $e){}
+    try{foreach(db()->query("SELECT id,sku,color,image_path,active FROM products WHERE supplier_name='Daiber'") as $p){
+        $color=mb_strtolower((string)$p['color']);
+        $map[yw_katalog_base_sku((string)$p['sku'],$color).'|'.$color]=$p;
+    }}catch(Throwable $e){}
     return $map;
+}
+
+/**
+ * Je Farbe entsteht ein eigenes Produkt. Damit SKU-Prüfung, Produkt-CSV und
+ * Beschaffung eindeutig bleiben, bekommt es die Artikelnummer „JN840-NAVY“.
+ */
+function yw_katalog_color_code(string $color): string { return strtoupper((string)preg_replace('/[^a-z0-9]+/i','',$color)); }
+function yw_katalog_product_sku(string $sku,string $color): string { return strtoupper($sku).'-'.yw_katalog_color_code($color); }
+function yw_katalog_base_sku(string $productSku,string $color): string {
+    $productSku=strtoupper($productSku);$suffix='-'.yw_katalog_color_code($color);
+    return $suffix!=='-'&&str_ends_with($productSku,$suffix)?substr($productSku,0,-strlen($suffix)):$productSku;
+}
+
+/** Ältere Katalogprodukte (bis 10.9.0) teilen sich eine SKU je Artikel – eindeutig machen. */
+function yw_katalog_fix_duplicate_skus(): int {
+    $rows=db()->query("SELECT id,sku,color FROM products WHERE supplier_name='Daiber' AND TRIM(COALESCE(sku,''))<>''")->fetchAll();
+    $count=[];foreach($rows as $r)$count[strtoupper(trim((string)$r['sku']))]=($count[strtoupper(trim((string)$r['sku']))]??0)+1;
+    $update=db()->prepare('UPDATE products SET sku=? WHERE id=?');$fixed=0;
+    foreach($rows as $r){
+        $sku=strtoupper(trim((string)$r['sku']));
+        if(($count[$sku]??0)<2||trim((string)$r['color'])==='')continue;
+        $update->execute([yw_katalog_product_sku($sku,(string)$r['color']),(int)$r['id']]);$fixed++;
+    }
+    return $fixed;
 }
 
 function yw_katalog_color_label(string $color): string { return mb_strtoupper(mb_substr($color,0,1)).mb_substr($color,1); }
@@ -255,7 +282,7 @@ function yw_katalog_assign_images(): array {
     $products=db()->query("SELECT id,sku,color,name FROM products WHERE supplier_name='Daiber' AND (image_path IS NULL OR image_path='')")->fetchAll();
     $update=db()->prepare('UPDATE products SET image_path=? WHERE id=?');
     foreach($products as $p){
-        $want=yw_katalog_expected_image((string)$p['sku'],(string)$p['color']);
+        $want=yw_katalog_expected_image(yw_katalog_base_sku((string)$p['sku'],mb_strtolower((string)$p['color'])),(string)$p['color']);
         $file=null;foreach($want as $candidate)if(isset($index[$candidate])){$file=$index[$candidate];break;}
         if($file===null){$missing[]=$want[0];continue;}
         try{$path=yw_katalog_store_image($file);$update->execute([$path,(int)$p['id']]);$assigned++;}
@@ -315,11 +342,14 @@ function yw_katalog_create_products(string $sku,array $colors,array $sizesPerCol
             if(isset($existing[$sku.'|'.mb_strtolower($label)])){$skipped[]=$label;continue;}
             $sizes=array_values(array_intersect($c['sz'],$sizesPerColor[$color]??$c['sz']));
             if(!$sizes)$sizes=$c['sz'];
-            $purchase=(int)round($c['p']*100);
+            // Übergrößen kosten bei Daiber teils mehr. Ein Produkt hat einen Preis – deshalb
+            // gilt der höchste Einkaufspreis der gewählten Größen, damit nichts unter Plan verkauft wird.
+            $cost=(float)$c['p'];foreach($sizes as $sz)$cost=max($cost,(float)($c['ps'][$sz]??0));
+            $purchase=(int)round($cost*100);
             $sale=$priceMode==='fixed'?$fixedCents:(int)(ceil($purchase*$factor/10)*10); // auf 10 Cent aufrunden
             $image=null;
             if($index){foreach(yw_katalog_expected_image($sku,$label) as $cand)if(isset($index[$cand])){try{$image=yw_katalog_store_image($index[$cand]);$withImage++;}catch(Throwable $e){$image=null;}break;}}
-            $insert->execute([$a['n'],$categoryId?:null,$categoryName,$description,$sale,$purchase,json_encode($sizes,JSON_UNESCAPED_UNICODE),$label,$image,'','',$sku,$brand,'Daiber']);
+            $insert->execute([$a['n'],$categoryId?:null,$categoryName,$description,$sale,$purchase,json_encode($sizes,JSON_UNESCAPED_UNICODE),$label,$image,'','',yw_katalog_product_sku($sku,$label),$brand,'Daiber']);
             $created[]=['id'=>(int)db()->lastInsertId(),'color'=>$label,'sale'=>$sale,'purchase'=>$purchase,'image'=>$image!==null];
         }
         db()->commit();
@@ -442,7 +472,7 @@ function yw_admin_katalog_page(): void {
         // Größen
         echo '<section class="card"><div class="katalog-section-head"><div><h3>Größen</h3><p class="muted">Gilt für alle gewählten Farben; Größen, die es in einer Farbe nicht gibt, werden dort weggelassen.</p></div><div class="katalog-tools"><button type="button" class="btn small" data-katalog-sizes="all">Alle</button><button type="button" class="btn small" data-katalog-sizes="standard">Ohne Aufpreis</button></div></div><div class="katalog-sizes">';
         foreach($allSizes as $sz){$sur=$surcharge[$sz]??0;echo '<label class="ksize'.($sur>0.001?' has-extra':'').'"><input type="checkbox" name="sizes[]" value="'.e($sz).'" checked><span>'.e($sz).'</span>'.($sur>0.001?'<small>+'.money((int)round($sur*100)).'</small>':'').'</label>';}
-        echo '</div>'.($surcharge?'<p class="muted katalog-note">Größen mit Aufpreis kosten bei Daiber mehr. Der Shop führt einen Preis je Produkt – entweder diese Größen abwählen oder den Aufpreis in den Faktor einrechnen.</p>':'').'</section>';
+        echo '</div>'.($surcharge?'<p class="muted katalog-note">Größen mit Aufpreis kosten bei Daiber mehr. Der Shop führt einen Preis je Produkt: Sind solche Größen angehakt, wird der höhere Einkaufspreis für alle Größen dieser Farbe verwendet. Für den günstigeren Normalpreis diese Größen abwählen.</p>':'').'</section>';
         echo '</div>'; // main
 
         // Seitenleiste: Preis & Anlegen
