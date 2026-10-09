@@ -254,18 +254,25 @@ function yw_private_exposure_check(bool $force=false): array {
             $secure=(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https');
             $host=(string)($_SERVER['HTTP_HOST']??yw_public_host());
             $base=($secure?'https://':'http://').$host;
-            $targets=['/app/private/sperrtest.txt'=>$token,'/app/data/katalog-daiber.json'=>'"articles"','/config.example.php'=>'db_pass','/AENDERUNGEN-V10.md'=>'WorkwearCenter','/uploads/.htaccess'=>'FilesMatch'];
-            $open=[];$reached=0;
-            foreach($targets as $path=>$marker){
+            // Zusätzlich: Sperre in uploads/ (Datenlisten) und Schutz-Header für SVG-Logos, die direkt aufgerufen werden können
+            $uploads=dirname(__DIR__,2).'/uploads';$name='sperrtest-'.$token;
+            $uploadProbes=is_dir($uploads)&&is_writable($uploads)&&@file_put_contents($uploads.'/'.$name.'.json',$token)!==false&&@file_put_contents($uploads.'/'.$name.'.svg','<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')!==false;
+            $targets=['/app/private/sperrtest.txt'=>$token,'/app/data/katalog-daiber.json'=>'"articles"','/config.example.php'=>'db_pass','/AENDERUNGEN-V10.md'=>'WorkwearCenter','/uploads/.htaccess'=>'FilesMatch','/.htaccess'=>'RewriteRule'];
+            if($uploadProbes)$targets['/uploads/'.$name.'.json']=$token;
+            $open=[];$reached=0;$svgUnprotected=false;
+            foreach($targets+($uploadProbes?['/uploads/'.$name.'.svg'=>null]:[]) as $path=>$marker){
                 $ch=curl_init($base.$path);
-                curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>4,CURLOPT_CONNECTTIMEOUT=>3,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_RANGE=>'0-65535']);
+                curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>true,CURLOPT_TIMEOUT=>4,CURLOPT_CONNECTTIMEOUT=>3,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_RANGE=>'0-65535']);
                 $body=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE);curl_close($ch);
                 if($body===false||$code===0)continue;
                 $reached++;
+                if($marker===null){if($code>=200&&$code<300&&!preg_match("/^Content-Security-Policy:[^\r\n]*default-src 'none'/mi",(string)$body))$svgUnprotected=true;continue;}
                 if($code>=200&&$code<300&&str_contains((string)$body,$marker))$open[]=$path;
             }
             @unlink($probe);
+            if($uploadProbes){@unlink($uploads.'/'.$name.'.json');@unlink($uploads.'/'.$name.'.svg');}
             if($open)$result=[false,'Öffentlich abrufbar: '.implode(', ',$open).' – der Webserver beachtet die .htaccess nicht. Beim Hoster AllowOverride aktivieren oder (nginx) die Sperren aus der Installationsanleitung eintragen.'];
+            elseif($svgUnprotected)$result=[false,'SVG-Dateien in uploads/ werden ohne Content-Security-Policy ausgeliefert (mod_headers fehlt oder nginx). Header aus uploads/.htaccess bzw. der Installationsanleitung beim Hoster eintragen.'];
             elseif($reached>0)$result=[true,''];
             else $result=[null,'Die eigene Adresse war vom Server aus nicht erreichbar – bitte die Prüfung später erneut starten.'];
         }catch(Throwable $e){$result=[null,'Prüfung fehlgeschlagen: '.$e->getMessage()];}
