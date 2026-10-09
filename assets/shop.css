@@ -405,3 +405,35 @@ details.cp-card[open] summary{margin-bottom:14px}
 }
 @media(prefers-reduced-motion:reduce){.sp-card,.sp-toast,.shop-mobile-cart{transition:none}.sp-card:hover{transform:none}}
 .cp-content input,.cp-content textarea,.cp-content select,.sp-detail select,.cp-login input{font-weight:400}
+
+/* 10.12: Sprachwahl (Kopfzeile, Handy-Kopf, Login/Registrierung) */
+.cp-top-tools{display:flex;align-items:center;gap:12px}
+.yw-lang{position:relative;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+.yw-lang>summary{list-style:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer;border:1px solid var(--cp-line);background:#fff;color:var(--cp-text);border-radius:8px;padding:8px 11px;font-weight:750;font-size:.84rem;line-height:1.1;white-space:nowrap}
+.yw-lang>summary::-webkit-details-marker{display:none}
+.yw-lang>summary:after{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-2px,-1px);opacity:.6}
+.yw-lang .cp-icon{width:16px;height:16px;flex-basis:16px}
+.yw-lang-code{display:none}
+.yw-lang form{position:absolute;right:0;top:calc(100% + 6px);z-index:90;min-width:170px;margin:0;padding:6px;background:#fff;border:1px solid var(--cp-line);border-radius:8px;box-shadow:0 14px 34px rgba(16,30,45,.16);display:flex;flex-direction:column;gap:2px}
+.yw-lang form button{all:unset;box-sizing:border-box;display:block;width:100%;padding:9px 12px;border-radius:6px;color:var(--cp-text);font-size:.9rem;font-weight:600;cursor:pointer}
+.yw-lang form button:hover{background:var(--cp-bg)}
+.yw-lang form button:focus-visible{outline:2px solid var(--cp-primary-ink);outline-offset:1px}
+.yw-lang form button[aria-current]{background:color-mix(in srgb,var(--cp-accent) 12%,#fff);color:var(--cp-accent-ink);font-weight:800}
+.yw-lang form button[aria-current]:after{content:" ✓"}
+.cp-side-lang{display:none}
+.cp-login-lang{align-self:center;width:min(100%,440px);display:flex;justify-content:flex-end}
+.cp-login-lang>summary{background:transparent}
+@media(max-width:860px){
+  .cp-side-head{gap:8px}
+  .cp-side-head .cp-brand{min-width:0}
+  .cp-side-lang{display:block;flex:0 0 auto;margin-left:auto}
+  .cp-side-lang>summary{background:transparent;color:inherit;border-color:color-mix(in srgb,var(--cp-on-primary) 28%,transparent);padding:9px 10px}
+  .cp-side-lang .yw-lang-name{display:none}
+  .cp-side-lang .yw-lang-code{display:inline}
+  .cp-login-lang{width:100%}
+}
+@media(max-width:480px){
+  .cp-side-head .cp-brand-text small{display:none}
+  .cp-side-lang>summary{gap:5px;padding:9px 8px}
+  .cp-side-lang>summary:after{display:none}
+}

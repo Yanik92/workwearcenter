@@ -487,6 +487,7 @@ function company_portal_header(array $company,array $account,string $section): v
     echo '<a class="cp-skip" href="#inhalt">'.e(t('nav.skip')).'</a><div class="cp-app">';
     echo '<aside class="cp-side" data-cp-side><div class="cp-side-head"><a class="cp-brand'.($hasLogo?' has-logo':'').'" href="'.e($slug).'">'.yw_shop_brand_mark($company);
     echo '<span class="cp-brand-text">'.($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'<small>'.e(t('shop.staff_shop')).'</small></span></a>';
+    echo yw_lang_switcher($company,'cp-side-lang'); // Handy: Sprachwahl neben dem Menü-Knopf
     echo '<button class="cp-menu-toggle" type="button" aria-expanded="false" aria-controls="cp-menu" hidden>'.yw_shop_icon('menu').'<span>'.e(t('nav.menu')).'</span></button></div>';
     echo '<div class="cp-menu" id="cp-menu"><nav class="cp-nav" aria-label="'.e(t('nav.aria')).'">';
     foreach($nav as $key=>[$label,$href,$icon]){

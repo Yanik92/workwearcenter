@@ -218,7 +218,7 @@ function yw_lang_switcher(array $company, string $class = ''): string {
     $back = (string)($_SERVER['REQUEST_URI'] ?? '/'.$company['slug']);
     $html = '<details class="yw-lang '.e($class).'"><summary aria-label="'.e(t('lang.choose')).'">'
         .'<svg class="cp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>'
-        .'<span>'.e(YW_LANGS[$current]).'</span></summary>'
+        .'<span class="yw-lang-name">'.e(YW_LANGS[$current]).'</span><span class="yw-lang-code" aria-hidden="true">'.e(strtoupper($current)).'</span></summary>'
         .'<form method="post" action="/'.e($company['slug']).'/sprache">'.csrf_field().'<input type="hidden" name="back" value="'.e($back).'">';
     foreach ($langs as $code) {
         $html .= '<button type="submit" name="lang" value="'.e($code).'" lang="'.e($code).'"'.($code === $current ? ' aria-current="true"' : '').'>'.e(YW_LANGS[$code]).'</button>';
