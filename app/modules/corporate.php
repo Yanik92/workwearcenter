@@ -13,6 +13,10 @@ require_once __DIR__.'/content.php';
 require_once __DIR__.'/mockup.php';
 require_once __DIR__.'/admin_customer.php';
 require_once __DIR__.'/admin_tools.php';
+require_once __DIR__.'/order_schedule.php';
+require_once __DIR__.'/order_mail_actions.php';
+require_once __DIR__.'/magic_login.php';
+require_once __DIR__.'/exchange.php';
 
 function yw_locked_company(int $id): array {
     $q=db()->prepare('SELECT * FROM companies WHERE id=? FOR UPDATE'); $q->execute([$id]);
@@ -118,14 +122,15 @@ function yw_budget_used(array $company,array $account): int {
     [$start,$end]=yw_period((int)$company['budget_reset_month']);
     $q=db()->prepare("SELECT COALESCE(SUM(company_total_cents),0) FROM orders WHERE company_id=? AND (employee_account_id=? OR (employee_account_id IS NULL AND invite_id=?)) AND status IN ('pending','approved') AND created_at>=? AND created_at<?");
     $q->execute([$company['id'],$account['id'],$account['invite_id']??0,$start,$end]);
-    return (int)$q->fetchColumn();
+    // 10.11: Rückgaben (Gutschrift) und Preisdifferenzen beim Größentausch
+    return (int)$q->fetchColumn()+yw_exchange_budget_adjustment($company,$account,$start,$end);
 }
 
 function yw_quantity_used(array $company,array $account,int $productId): int {
     [$start,$end]=yw_period((int)$company['budget_reset_month']);
     $q=db()->prepare("SELECT COALESCE(SUM(i.quantity),0) FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.company_id=? AND (o.employee_account_id=? OR (o.employee_account_id IS NULL AND o.invite_id=?)) AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? AND i.product_id=?");
     $q->execute([$company['id'],$account['id'],$account['invite_id']??0,$start,$end,$productId]);
-    return (int)$q->fetchColumn();
+    return max(0,(int)$q->fetchColumn()-yw_exchange_returned_qty($company,$account,$productId,$start,$end)); // 10.11: zurückgegebene Stücke zählen nicht
 }
 
 function yw_checkout_fields(array $company): string {
@@ -156,6 +161,7 @@ function yw_shop_rules_summary(array $company,array $account): void {
     echo '<small class="cp-budget-period">Budgetjahr '.e($from).' – '.e($to).'</small></div>';
     echo '<ul class="cp-budget-facts"><li>'.e(financing_label($company)).'</li><li>'.e(shipping_rule_label($company)).'</li><li>'.(((int)($company['approval_required']??1)===1)?'Bestellungen werden intern freigegeben':'Keine interne Freigabe nötig').'</li>';
     if($profile)echo '<li>Ausstattungsprofil: '.e($profile['name']).'</li>';
+    if($batchDate=yw_company_batch_date($company))echo '<li>Nächster Sammeltermin: '.e($batchDate->format('d.m.Y')).'</li>';
     echo '</ul>';
     $limits=[];
     $q=db()->prepare('SELECT p.name,cp.custom_name,cp.product_id,cp.yearly_limit_qty FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=?');
@@ -231,7 +237,7 @@ function place_account_order(array $company,array $account): never {
     audit_log('order.created','order',$orderId,['company_id'=>(int)$company['id'],'status'=>$status]);
     if($status==='approved')yw_handover_enqueue($orderId);
     $summary=yw_order_mail_summary($orderId);
-    notify_company_managers((int)$company['id'],'Neue Bestellung #'.$orderId,"Eine neue Bestellung wurde im Firmenshop eingereicht.\n\n".$summary."\n\nBestellung prüfen: ".workwearcenter_url((string)$company['slug'].'/freigaben'));
+    yw_notify_managers_new_order($company,$orderId,(int)$account['id'],$summary,$status); // 10.11: mit Freigabe-Links je Verantwortlichem
     notify_order_employee($orderId,'Bestellbestätigung #'.$orderId,"Hallo ".$account['name'].",\n\ndeine Bestellung wurde erfolgreich gespeichert.\n\n".$summary."\n\nBestellstatus ansehen: ".workwearcenter_url((string)$company['slug'].'/bestellungen'));
     flash('success','Bestellung #'.$orderId.' gespeichert. '.($status==='pending'?'Dein Budget ist bis zur Entscheidung reserviert.':'Die Bestellung ist freigegeben.'));
     redirect('/'.$company['slug'].'/bestellungen');

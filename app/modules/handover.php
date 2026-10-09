@@ -189,8 +189,9 @@ function yw_handover_enqueue(int $orderId): void {
         $deliveryId=bin2hex(random_bytes(16));
         $payload=yw_handover_payload($orderId,'order.approved',$deliveryId);
         $json=json_encode($payload,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-        $q=db()->prepare("INSERT IGNORE INTO yw_handover(order_id,event,delivery_id,payload_json,status) VALUES(?,?,?,?,'pending')");
-        $q->execute([$orderId,'order.approved',$deliveryId,$json]);
+        // 10.11: Sammelbestellung – bis zum Stichtag zurückhalten (available_at), sonst sofort.
+        $q=db()->prepare("INSERT IGNORE INTO yw_handover(order_id,event,delivery_id,payload_json,status,available_at) VALUES(?,?,?,?,'pending',?)");
+        $q->execute([$orderId,'order.approved',$deliveryId,$json,yw_batch_available_at($orderId)]);
     }catch(Throwable $e){
         error_log('WorkwearCenter handover enqueue #'.$orderId.': '.$e->getMessage());
     }
@@ -324,7 +325,13 @@ function yw_handover_deliver(int $id): bool {
     if(!$claim->rowCount())return false;
     $q=db()->prepare('SELECT * FROM yw_handover WHERE id=?');$q->execute([$id]);$row=$q->fetch();
     if(!$row)return false;
-    [$status,$response,$error]=yw_handover_send((string)$row['event'],(string)$row['delivery_id'],(string)$row['payload_json']);
+    // 10.11: Tauschaufträge (event exchange.approved:<id>) versteht die Auftragszentrale noch nicht – manuell übertragen.
+    $event=(string)preg_replace('/:\d+$/','',(string)$row['event']);
+    if(str_starts_with($event,'exchange.') && yw_handover_config()['format']==='auftragszentrale'){
+        db()->prepare("UPDATE yw_handover SET status='manual',available_at=NOW() WHERE id=?")->execute([$id]);
+        return false;
+    }
+    [$status,$response,$error]=yw_handover_send($event,(string)$row['delivery_id'],(string)$row['payload_json']);
     if($status>=200 && $status<300){
         $reference=null;
         $decoded=json_decode($response,true);
@@ -421,9 +428,10 @@ function yw_api_route(string $path): never {
         $status=(string)($_GET['status']??'offen');
         $limit=max(1,min(200,(int)($_GET['limit']??50)));
         $where=match($status){
-            'offen'=>"acknowledged_at IS NULL AND status<>'delivered'",
-            'alle'=>'1=1',
-            'quittiert'=>'acknowledged_at IS NOT NULL',
+            // 10.11: nur Bestellaufträge; zurückgehaltene Sammelaufträge erst ab dem Stichtag
+            'offen'=>"event='order.approved' AND acknowledged_at IS NULL AND status NOT IN ('delivered','cancelled') AND available_at<=NOW()",
+            'alle'=>"event='order.approved'",
+            'quittiert'=>"event='order.approved' AND acknowledged_at IS NOT NULL",
             default=>null,
         };
         if($where===null)yw_api_json(400,['error'=>'invalid_status','message'=>'status muss offen, quittiert oder alle sein.']);
@@ -464,6 +472,7 @@ function yw_handover_status_label(string $status): array {
         'acknowledged'=>['Übernommen','approved'],
         'failed'=>['Fehlgeschlagen','rejected'],
         'cancelled'=>['Angehalten (storniert)',''],
+        'manual'=>['Manuell übertragen','pending'],
         default=>[$status,''],
     };
 }
@@ -549,16 +558,19 @@ function yw_admin_handover(): void {
     if($missing>0)echo '<div class="flash info space-top"><strong>'.$missing.' ältere freigegebene Aufträge</strong> (aus der Zeit vor Version 10) haben noch keinen Übergabedatensatz.<form method="post" class="space-top actions" data-confirm="Ältere Aufträge für die Übergabe vorbereiten?">'.csrf_field().'<input type="hidden" name="action" value="handover_backfill"><input type="hidden" name="return_tab" value="handover"><label class="check"><input type="checkbox" name="only_open" value="1" checked><span>Nur noch nicht ausgelieferte Aufträge</span></label><button class="btn small">Für Übergabe vorbereiten</button></form></div>';
     echo '</section>';
 
-    $rows=[];try{$rows=db()->query("SELECT h.*,c.legal_name FROM yw_handover h JOIN orders o ON o.id=h.order_id JOIN companies c ON c.id=o.company_id ORDER BY FIELD(h.status,'failed','pending','sending','delivered','acknowledged'),h.id DESC LIMIT 100")->fetchAll();}catch(Throwable $e){}
+    $rows=[];try{$rows=db()->query("SELECT h.*,c.legal_name FROM yw_handover h JOIN orders o ON o.id=h.order_id JOIN companies c ON c.id=o.company_id ORDER BY FIELD(h.status,'failed','manual','pending','sending','delivered','acknowledged'),h.id DESC LIMIT 100")->fetchAll();}catch(Throwable $e){}
     echo '<section class="card"><div class="title-row"><div><h2>Übergabeprotokoll</h2><p class="muted">Die letzten 100 Übergaben, Probleme zuerst.</p></div></div>';
     if(!$rows){echo '<div class="empty">Noch keine freigegebenen Aufträge.</div></section>';return;}
     echo '<div class="table-wrap"><table class="table"><thead><tr><th>Auftrag</th><th>Firma</th><th>Status</th><th>Versuche</th><th>Referenz / Hinweis</th><th></th></tr></thead><tbody>';
     foreach($rows as $r){
         [$label,$class]=yw_handover_status_label((string)$r['status']);
         $when=$r['acknowledged_at']?:($r['delivered_at']?:$r['created_at']);
-        echo '<tr><td><strong>'.e(yw_order_number((int)$r['order_id'])).'</strong><br><span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$when))).'</span></td><td>'.e($r['legal_name']).'</td><td><span class="badge '.e($class).'">'.e($label).'</span></td><td>'.(int)$r['attempts'].'</td><td>';
+        $exchangeId=preg_match('/^exchange\.approved:(\d+)$/',(string)$r['event'],$xm)?(int)$xm[1]:0;
+        echo '<tr><td><strong>'.e(yw_order_number((int)$r['order_id'])).($exchangeId?'</strong> <span class="badge">Tausch #'.$exchangeId.'</span><strong>':'').'</strong><br><span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$when))).'</span></td><td>'.e($r['legal_name']).'</td><td><span class="badge '.e($class).'">'.e($label).'</span></td><td>'.(int)$r['attempts'].'</td><td>';
         if($r['external_reference'])echo 'Ref. <strong>'.e($r['external_reference']).'</strong>';
         elseif($r['last_error'])echo '<span class="muted">'.e(mb_substr((string)$r['last_error'],0,160)).'</span>';
+        elseif($r['status']==='manual')echo '<span class="muted">Format „Auftragszentrale“: bitte manuell übertragen und unter <a href="/admin?tab=exchanges">Umtausch & Retouren</a> als übertragen markieren.</span>';
+        elseif($r['status']==='pending' && strtotime((string)$r['available_at'])>time()+60)echo '<span class="muted">Sammelbestellung: Übergabe am '.e(date('d.m.Y',strtotime((string)$r['available_at']))).'</span>';
         elseif($r['status']==='pending')echo '<span class="muted">'.(yw_handover_push_enabled()?'Nächster Versuch '.e(date('H:i',strtotime((string)$r['available_at']))).' Uhr':'Bereit zum Abruf').'</span>';
         else echo '–';
         echo '<details class="details"><summary>Daten ansehen</summary><pre class="json-view">'.e(json_encode(json_decode((string)$r['payload_json'],true),JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'</pre></details></td><td>';

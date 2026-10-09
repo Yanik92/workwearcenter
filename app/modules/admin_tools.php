@@ -87,6 +87,7 @@ function yw_admin_order_page(int $orderId): void {
     // Interne Notiz
     echo '<section class="card"><h2>Interne Notiz</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="save_order_note"><input type="hidden" name="order_id" value="'.$orderId.'"><textarea name="internal_note" rows="4" maxlength="3000" placeholder="z. B. Lieferung erst nach dem 15., Logo-Datei nachgereicht">'.e((string)($o['internal_note']??'')).'</textarea><button class="btn small">Notiz speichern</button></form></section>';
     echo '</div></div>';
+    yw_exchange_admin_order_card($orderId); // 10.11: Umtausch & Retouren zu diesem Auftrag
 
     // Verlauf
     $labels=yw_audit_labels();

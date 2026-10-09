@@ -211,6 +211,7 @@ function yw_customer_file(array $company,array $products): void {
         case 'regeln':
             yw_customer_section_rules($company);
             yw_customer_section_budget($company);
+            yw_customer_section_order_options($company); // 10.11: app/modules/order_schedule.php
             break;
         case 'auftraege': yw_customer_section_orders($company); break;
         case 'zugaenge':  yw_customer_section_links($company); break;

@@ -16,6 +16,9 @@ try{
     $handed=yw_process_handover_queue(25);
     yw_cleanup_expired_security_rows();
     $reminded=yw_send_reminders(3);
+    $budgetMails=yw_send_budget_year_mails(500);
+    yw_orders_cleanup();
+    fwrite(STDOUT,"Mails zum neuen Budgetjahr: ".$budgetMails."\n");
     fwrite(STDOUT,"Erinnerungen an Verantwortliche: ".$reminded."\n");
     fwrite(STDOUT,"Übergaben an die Auftragsverwaltung: ".$handed."\n");
     fwrite(STDOUT,"WorkwearCenter-Mailwarteschlange und Sicherheitsbereinigung verarbeitet.\n");

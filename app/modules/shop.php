@@ -1494,6 +1494,7 @@ function employee_account_login_page(string $slug): void {
         .'<label>E-Mail<input type="email" name="email" autocomplete="email" required></label>'
         .'<label>Passwort<input type="password" name="password" autocomplete="current-password" required></label>'
         .'<button class="btn primary" type="submit">Im Shop anmelden</button></form>';
+    echo yw_magic_login_form($company); // 10.11: Anmeldelink per E-Mail (app/modules/magic_login.php)
     echo '<div class="portal-login-help"><a href="/'.e($company['slug']).'/passwort-vergessen">Passwort vergessen?</a><span>Noch kein Zugang? <a href="/'.e($company['slug']).'/registrieren">Registrieren</a></span></div>';
     echo '</div></section></main>';
 
@@ -1532,44 +1533,13 @@ function company_portal_page(string $slug,string $section='overview'): void {
             place_account_order($company,$account);
         }
 
+        // 10.11: Umtausch & Rückgabe (app/modules/exchange.php)
+        if(str_starts_with($action,'exchange_')) yw_exchange_portal_action($company,$account,$action,$section);
+
+        // Freigabe – gemeinsame Regeln für Shop und E-Mail-Link (app/modules/order_mail_actions.php)
         if($manager && $action==='decision' && $section==='freigaben'){
-            $orderId=(int)($_POST['order_id']??0);
-            $decision=(string)($_POST['decision']??'');
-            $decisionNote=trim(is_string($_POST['decision_note']??null)?$_POST['decision_note']:'');
-            if(!in_array($decision,['approved','rejected'],true)){
-                flash('error','Ungültige Entscheidung.');
-                redirect('/'.$slug.'/freigaben');
-            }
-            if(mb_strlen($decisionNote)>1000 || ($decision==='rejected' && $decisionNote==='')){
-                flash('error',$decision==='rejected'?'Bitte einen kurzen Ablehnungsgrund angeben.':'Der Hinweis darf höchstens 1.000 Zeichen enthalten.');
-                redirect('/'.$slug.'/freigaben');
-            }
-
-            // Vier-Augen-Prinzip: Eigene Bestellungen gibt eine andere verantwortliche Person frei.
-            // Nur wenn es keine weitere aktive verantwortliche Person gibt, ist das erlaubt (wird protokolliert).
-            $ownerQuery=db()->prepare('SELECT employee_account_id FROM orders WHERE id=? AND company_id=? LIMIT 1');
-            $ownerQuery->execute([$orderId,(int)$company['id']]);
-            $selfDecision=(int)$ownerQuery->fetchColumn()===(int)$account['id'];
-            if($selfDecision && $decision==='approved'){
-                $otherManagers=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND anonymized_at IS NULL AND id<>?");
-                $otherManagers->execute([(int)$company['id'],(int)$account['id']]);
-                if((int)$otherManagers->fetchColumn()>0){
-                    flash('error','Eigene Bestellungen gibt eine andere verantwortliche Person frei (Vier-Augen-Prinzip).');
-                    redirect('/'.$slug.'/freigaben');
-                }
-            }
-            $stmt=db()->prepare("UPDATE orders SET status=?,decision_note=?,decided_by_account_id=?,decided_at=NOW() WHERE id=? AND company_id=? AND status='pending'");
-            $stmt->execute([$decision,$decisionNote!==''?$decisionNote:null,(int)$account['id'],$orderId,(int)$company['id']]);
-            $changed=$stmt->rowCount()>0;
-            if($changed){
-                audit_log('order.decision','order',$orderId,['company_id'=>(int)$company['id'],'decision'=>$decision]+($selfDecision?['self_decision'=>true]:[]));
-                if($decision==='approved')yw_handover_enqueue($orderId);
-                $decisionText=$decision==='approved'?'Deine Bestellung wurde freigegeben und wird nun bearbeitet.':'Deine Bestellung wurde abgelehnt.';
-                if($decisionNote!=='')$decisionText.="\nHinweis: ".$decisionNote;
-                notify_order_employee($orderId,'Entscheidung zu Bestellung #'.$orderId,$decisionText."\n\n".yw_order_mail_summary($orderId)."\n\nBestellstatus ansehen: ".workwearcenter_url($slug.'/bestellungen'));
-            }
-
-            flash($changed?'success':'error',$changed?($decision==='approved'?'Bestellung wurde freigegeben.':'Bestellung wurde abgelehnt.'):'Die Bestellung wurde bereits bearbeitet oder vom Mitarbeiter zurückgezogen.');
+            [$type,$message]=yw_order_decide($company,$account,(int)($_POST['order_id']??0),(string)($_POST['decision']??''),is_string($_POST['decision_note']??null)?$_POST['decision_note']:'');
+            flash($type,$message);
             redirect('/'.$slug.'/freigaben');
         }
 
@@ -1659,6 +1629,7 @@ function company_portal_overview(array $company,array $account): void {
     echo '<span class="cp-role-badge">'.($manager?'Verantwortlicher · erweiterte Rechte':'Mitarbeiterkonto').'</span></section>';
 
     $equipmentProfile=yw_account_equipment_profile($account);
+    echo yw_batch_shop_notice($company); // 10.11: Sammelbestellung
 
     // Erste Bestellung? Dann direkt zur Grundausstattung führen.
     $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND employee_account_id=?");$q->execute([(int)$company['id'],(int)$account['id']]);
@@ -1832,6 +1803,7 @@ function company_portal_my_orders(array $company,array $account): void {
         if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>Versand</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
         echo '</div>';
         echo company_portal_progress($o);
+        echo yw_exchange_order_panel($company,$account,$o,$items); // 10.11: Umtausch & Rückgabe
         echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>Gesamt brutto</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>Dein Anteil</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>Firma übernimmt</span><strong>'.money($companyShare).'</strong></div></div>';
         if(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>Hinweis zur Entscheidung</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
         $own=(int)($o['employee_account_id']??0)===(int)$account['id'];
@@ -1865,6 +1837,7 @@ function company_portal_approvals(array $company,array $account): void {
 
     echo '<div class="cp-section-head"><div><h1>Freigaben</h1><p>Bestellungen deines Unternehmens prüfen, freigeben oder ablehnen.</p></div></div>';
     if($pending>0) echo '<div class="cp-manager-alert"><strong>'.$pending.' offene Freigabe'.($pending===1?'':'n').'</strong> wartet auf deine Entscheidung.</div>';
+    echo yw_exchange_manager_panel($company,$account); // 10.11: Anträge auf Umtausch & Rückgabe
 
     if(!$orders){
         echo '<div class="empty">Noch keine Bestellungen vorhanden.</div>';

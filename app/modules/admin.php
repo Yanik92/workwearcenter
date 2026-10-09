@@ -78,7 +78,7 @@ function admin_page(): void {
     require_admin();
     if (is_post()) { verify_csrf(); handle_admin_action(); }
 
-    $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog'];
+    $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges'];
     $tab=(string)($_GET['tab'] ?? 'dashboard');
     if(!in_array($tab,$allowedTabs,true))$tab='dashboard';
 
@@ -151,6 +151,7 @@ function admin_page(): void {
     elseif($tab==='suche') yw_admin_search_page((string)($_GET['q']??''));
     elseif($tab==='api') yw_admin_api_page();
     elseif($tab==='katalog') yw_admin_katalog_page();
+    elseif($tab==='exchanges') yw_admin_exchanges(); // 10.11: app/modules/exchange.php
     elseif($tab==='audit') render_admin_audit($auditLogs);
     else render_admin_dashboard($companies,$products,$orders,$inquiries);
 
@@ -162,6 +163,7 @@ function admin_page(): void {
 function handle_admin_action(): never {
     yw_admin_action();
     $action=(string)($_POST['action'] ?? '');
+    yw_orders_admin_action($action); // 10.11: Umtausch, Firmeneinstellungen (app/modules/order_schedule.php)
     if(str_starts_with($action,'handover_'))yw_admin_handover_action($action);
     if(str_starts_with($action,'account_') || in_array($action,['admin_invite','admin_toggle'],true))yw_admin_account_action($action);
     try {
@@ -1016,6 +1018,7 @@ function admin_context_header(string $tab): string {
         'suche'=>['Suche','Kunden, Mitarbeitende, Aufträge und Produkte finden.'],
         'api'=>['API-Zugänge','Schlüssel für Auftragszentrale, Fan-Bande und Partner.'],
         'katalog'=>['Lieferantenkatalog','Produkte aus der Daiber-Liste anlegen und Bilder automatisch zuordnen.'],
+        'exchanges'=>['Umtausch & Retouren','Größentausch und Rückgaben aus den Firmenshops bearbeiten.'],
     ];
     if($tab==='companies'&&!empty($_GET['company']))$data['companies']=['Kundenakte','Alles zu diesem Kunden an einem Ort.'];
     if($tab==='orders'&&!empty($_GET['auftrag']))$data['orders']=['Auftrag','Positionen, Produktion, Übergabe und Verlauf.'];
@@ -1034,6 +1037,7 @@ function admin_sidebar(string $active): string {
         $counts['companies']=(int)db()->query("SELECT COUNT(*) FROM employee_accounts WHERE registration_status='pending'")->fetchColumn();
         $counts['system']=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();
         $counts['handover']=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();
+        $counts['exchanges']=yw_admin_exchange_open_count();
     } catch(Throwable $e) {}
 
     $counts['website']=0;$counts['systemgroup']=$counts['system']+$counts['handover'];
@@ -1043,6 +1047,7 @@ function admin_sidebar(string $active): string {
             'inquiries'=>['Anfragen','mail'],
             'orders'=>['Aufträge','box'],
             'production'=>['Produktion','check'],
+            'exchanges'=>['Umtausch & Retouren','layers'],
         ],
         'Kunden & Katalog'=>[
             'companies'=>['Kunden','building'],
