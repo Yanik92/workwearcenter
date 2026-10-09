@@ -366,6 +366,11 @@ function handle_admin_action(): never {
             redirect('/admin?tab=content');
         }
 
+        if ($action==='save_trust_settings') {
+            yw_save_trust_settings();
+            flash('success','Vertrauensbereich der Startseite wurde gespeichert.');
+            redirect('/admin?tab=content');
+        }
         if ($action==='content_apply_defaults') {
             $n=yw_content_apply_defaults();
             audit_log('site.content_defaults_applied','site',null,['fields'=>$n]);
@@ -882,6 +887,7 @@ function admin_backend_style(): string {
     .inquiry-card{background:#fff;border:1px solid #e6e9ef;border-radius:15px;padding:20px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px}
     .inquiry-card.new{border-left:5px solid var(--accent)}
     .inquiry-meta{display:flex;gap:12px;flex-wrap:wrap;color:#667085;font-size:.9rem;margin:8px 0 12px}
+    .trust-logo-admin{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:10px 0 16px}.trust-logo-admin-item{border:1px solid #e6e9ef;border-radius:12px;padding:12px;display:grid;gap:8px}.trust-logo-admin-item img{height:54px;width:100%;object-fit:contain;background:#f6f7f9;border-radius:8px}
     .inquiry-message{background:#f7f8fa;border-radius:10px;padding:14px;white-space:pre-wrap}
     .probeshop-box{margin-top:16px;padding:14px;border:1px solid #e6e9ef;border-radius:12px;background:#fbfcfd;display:grid;gap:9px;max-width:330px}
     .probeshop-box .actions{display:flex;gap:7px;flex-wrap:wrap}.probeshop-box form{margin:0}.probeshop-box p{margin:0}
@@ -1366,6 +1372,7 @@ function yw_audit_labels(): array {
         'inquiry.status_updated'=>'Anfragestatus geändert',
         'site.design_updated'=>'Website-Design geändert',
         'site.content_updated'=>'Website-Inhalte geändert',
+        'site.trust_updated'=>'Referenzen/Kundenstimme geändert',
         'site.content_defaults_applied'=>'Neue Standardtexte übernommen',
         'site.content_backup_restored'=>'Gesicherte Texte wiederhergestellt',
         'product_category.created'=>'Produktkategorie angelegt',

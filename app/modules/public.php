@@ -625,6 +625,7 @@ function render_content_settings(): void {
 
     echo '<button class="btn primary" type="submit" style="margin-top:20px">Inhalte speichern</button></form>';
     echo rich_editor_script();
+    render_trust_settings();
 }
 
 function render_design_settings(): void {
@@ -810,4 +811,98 @@ Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Ve
 
 Stand: [Datum]
 TXT;
+}
+
+/* ---------- 10.11: Vertrauen auf der Startseite (Referenzen, Zitat, Ansprechpartner) ---------- */
+
+/** Gepflegte Kundenlogos: Liste [path, name]; nur gültige Bildpfade. */
+function yw_trust_logos(): array {
+    $list=json_decode(current_site_setting('trust_logos_json','[]'),true);
+    $out=[];
+    foreach(is_array($list)?$list:[] as $item){
+        if(!is_array($item)||!yw_upload_path_ok((string)($item['path']??''),'branding'))continue;
+        $out[]=['path'=>(string)$item['path'],'name'=>mb_substr(trim((string)($item['name']??'')),0,120)];
+    }
+    return array_slice($out,0,12);
+}
+
+/** Alle Inhalte des Abschnitts; leer, wenn nichts gepflegt ist. */
+function yw_trust_content(): array {
+    $t=fn(string $k)=>trim(current_site_setting($k,''));
+    $photo=yw_local_image_path($t('trust_contact_photo'),['branding']);
+    $c=[
+        'title'=>$t('trust_title')?:'Unternehmen, die uns vertrauen',
+        'logos'=>yw_trust_logos(),
+        'quote'=>['text'=>$t('trust_quote_text'),'name'=>$t('trust_quote_name'),'company'=>$t('trust_quote_company')],
+        'contact'=>['photo'=>$photo,'name'=>$t('trust_contact_name'),'role'=>$t('trust_contact_role'),'text'=>$t('trust_contact_text')],
+    ];
+    $c['has_quote']=$c['quote']['text']!=='';
+    $c['has_contact']=$c['contact']['name']!=='';
+    $c['empty']=!$c['logos']&&!$c['has_quote']&&!$c['has_contact'];
+    return $c;
+}
+
+function render_trust_settings(): void {
+    $c=yw_trust_content();$v=fn(string $k)=>e(current_site_setting($k,''));
+    echo '<form method="post" enctype="multipart/form-data" class="settings-form trust-settings">'.csrf_field().'<input type="hidden" name="action" value="save_trust_settings"><input type="hidden" name="return_tab" value="content">';
+    echo '<details class="settings-group"'.($c['empty']?'':' open').'><summary>Startseite – Vertrauen (Referenzen, Kundenstimme, Ansprechpartner)</summary><div class="settings-group-inner"><p class="muted">Erscheint auf der Startseite nur, wenn mindestens ein Teil gepflegt ist. Nur Logos und Zitate mit Einverständnis der Kunden verwenden.</p>';
+    echo '<label>Überschrift<input name="trust_title" maxlength="160" value="'.$v('trust_title').'" placeholder="Unternehmen, die uns vertrauen"></label>';
+    echo '<div class="editor-block"><h3>Kundenlogos / Referenzen <small class="muted">(max. 12)</small></h3>';
+    if($c['logos']){
+        echo '<div class="trust-logo-admin">';
+        foreach($c['logos'] as $i=>$logo)echo '<div class="trust-logo-admin-item"><img src="/'.e($logo['path']).'" alt=""><label>Firmenname <small>für Bildbeschreibung</small><input name="trust_logo_name['.$i.']" maxlength="120" value="'.e($logo['name']).'"></label><label class="check"><input type="checkbox" name="trust_logo_remove['.$i.']" value="1"><span>Entfernen</span></label></div>';
+        echo '</div>';
+    }
+    echo '<label>Logos hinzufügen <small>PNG, JPG oder WebP, gern mit transparentem Hintergrund</small><input type="file" name="trust_logo_new[]" multiple accept="image/png,image/jpeg,image/webp"></label></div>';
+    echo '<div class="editor-block"><h3>Kundenstimme</h3><label>Zitat<textarea name="trust_quote_text" rows="3" maxlength="600">'.$v('trust_quote_text').'</textarea></label><div class="grid2"><label>Name<input name="trust_quote_name" maxlength="120" value="'.$v('trust_quote_name').'"></label><label>Firma / Funktion<input name="trust_quote_company" maxlength="160" value="'.$v('trust_quote_company').'"></label></div></div>';
+    echo '<div class="editor-block"><h3>Ihr Ansprechpartner</h3><label>Foto<input type="file" name="trust_contact_photo" accept="image/png,image/jpeg,image/webp"></label>';
+    if($c['contact']['photo']!=='')echo '<div class="editor-image-preview"><img src="/'.e($c['contact']['photo']).'" alt=""><label class="check"><input type="checkbox" name="remove_trust_contact_photo" value="1"><span>Foto löschen</span></label></div>';
+    echo '<div class="grid2"><label>Name<input name="trust_contact_name" maxlength="120" value="'.$v('trust_contact_name').'"></label><label>Rolle<input name="trust_contact_role" maxlength="120" value="'.$v('trust_contact_role').'" placeholder="z. B. Inhaber und Ihr Ansprechpartner"></label></div><label>Kurzer Satz<input name="trust_contact_text" maxlength="300" value="'.$v('trust_contact_text').'" placeholder="z. B. Ich berate Sie persönlich – vom ersten Muster bis zur Lieferung."></label></div>';
+    echo '<button class="btn primary" type="submit">Vertrauensbereich speichern</button></div></details></form>';
+}
+
+/** Hochgeladene Mehrfachdateien in Einzel-Arrays zerlegen. */
+function yw_files_list(array $files): array {
+    $out=[];
+    foreach((array)($files['name']??[]) as $i=>$name)$out[]=['name'=>$name,'type'=>$files['type'][$i]??'','tmp_name'=>$files['tmp_name'][$i]??'','error'=>$files['error'][$i]??UPLOAD_ERR_NO_FILE,'size'=>$files['size'][$i]??0];
+    return $out;
+}
+
+function yw_save_trust_settings(): void {
+    $text=function(string $k,int $max): string{
+        $v=trim(str_replace("\r",'',(string)($_POST[$k]??'')));
+        if(mb_strlen($v)>$max)throw new RuntimeException('Der Inhalt im Feld „'.str_replace(['trust_','_'],['',' '],$k).'“ ist zu lang.');
+        return $v;
+    };
+    $fields=['trust_title'=>$text('trust_title',160),'trust_quote_text'=>$text('trust_quote_text',600),'trust_quote_name'=>$text('trust_quote_name',120),'trust_quote_company'=>$text('trust_quote_company',160),'trust_contact_name'=>$text('trust_contact_name',120),'trust_contact_role'=>$text('trust_contact_role',120),'trust_contact_text'=>$text('trust_contact_text',300)];
+    $logos=[];$removed=[];$new=[];
+    try{
+        foreach(yw_trust_logos() as $i=>$logo){
+            if(!empty($_POST['trust_logo_remove'][$i])){$removed[]=$logo['path'];continue;}
+            $logos[]=['path'=>$logo['path'],'name'=>mb_substr(trim((string)($_POST['trust_logo_name'][$i]??$logo['name'])),0,120)];
+        }
+        foreach(yw_files_list((array)($_FILES['trust_logo_new']??[])) as $file){
+            if((int)$file['error']===UPLOAD_ERR_NO_FILE)continue;
+            if(count($logos)>=12)throw new RuntimeException('Es sind höchstens 12 Kundenlogos möglich.');
+            // Die Datei kommt einzeln durch dieselbe Prüfung wie alle Website-Bilder.
+            $path=upload_site_image($file,'','referenz');$new[]=$path;
+            $logos[]=['path'=>$path,'name'=>''];
+        }
+        $oldPhoto=current_site_setting('trust_contact_photo','');
+        $base=!empty($_POST['remove_trust_contact_photo'])?'':$oldPhoto;
+        $photo=upload_site_image($_FILES['trust_contact_photo']??null,$base,'ansprechpartner');
+        if($photo!==$base&&$photo!=='')$new[]=$photo;
+        $fields['trust_contact_photo']=$photo;
+        $fields['trust_logos_json']=json_encode($logos,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        db()->beginTransaction();
+        foreach($fields as $k=>$val)set_site_setting($k,(string)$val);
+        db()->commit();
+    }catch(Throwable $e){
+        if(db()->inTransaction())db()->rollBack();
+        foreach($new as $path)delete_site_image($path);
+        throw $e;
+    }
+    foreach($removed as $path)delete_site_image($path);
+    if($oldPhoto!==''&&$oldPhoto!==$fields['trust_contact_photo'])delete_site_image($oldPhoto);
+    audit_log('site.trust_updated','site',null,['logos'=>count($logos)]);
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 /*
  * Öffentliche Website (ab 10.5): klares Raster in Navyblau, Orange und Weiß.
  * Regeln: ein Container, linksbündige Abschnittsköpfe, einheitliche Karten und Bildformate,
- * keine Telefonnummer. Texte bleiben unter Admin → Inhalte pflegbar (yw_text).
+ * Telefonnummer nur im Impressum (falls gepflegt). Texte bleiben unter Admin → Inhalte pflegbar (yw_text).
  */
 
 function s_mail(): string { return current_site_setting('imprint_email','info@yanik-textildruck.de'); }
@@ -103,6 +103,32 @@ function s_phone_mock(): string {
     return '<div class="s-phone"><img src="/assets/media/screens/shop-mobile.webp" width="560" height="1211" loading="lazy" alt="Der Firmenshop auf dem Smartphone"></div>';
 }
 
+/** Referenzen, Kundenstimme und Ansprechpartner – erscheint nur, wenn etwas gepflegt ist (10.11). */
+function s_trust_section(): void {
+    $c=yw_trust_content();
+    if($c['empty'])return;
+    echo '<section class="s-section s-trust" aria-labelledby="s-trust-title"><div class="s-wrap">';
+    echo '<div class="s-head"><div><h2 id="s-trust-title">'.e($c['title']).'</h2></div></div>';
+    if($c['logos']){
+        echo '<ul class="s-trust-logos">';
+        foreach($c['logos'] as $logo)echo '<li><img src="/'.e($logo['path']).'" alt="'.e($logo['name']!==''?$logo['name']:'Kundenlogo').'" decoding="async"></li>';
+        echo '</ul>';
+    }
+    if($c['has_quote']||$c['has_contact']){
+        echo '<div class="s-trust-grid'.($c['has_quote']&&$c['has_contact']?'':' s-trust-single').'">';
+        if($c['has_quote']){
+            $q=$c['quote'];$by=implode(', ',array_filter([$q['name'],$q['company']]));
+            echo '<figure class="s-quote"><blockquote><p>'.nl2br(e($q['text'])).'</p></blockquote>'.($by!==''?'<figcaption>'.($q['name']!==''?'<strong>'.e($q['name']).'</strong>':'').($q['company']!==''?'<span>'.e($q['company']).'</span>':'').'</figcaption>':'').'</figure>';
+        }
+        if($c['has_contact']){
+            $p=$c['contact'];$mail=s_mail();
+            echo '<div class="s-person">'.($p['photo']!==''?'<img src="/'.e($p['photo']).'" alt="'.e($p['name']).'" width="104" height="104" decoding="async">':'<span class="s-person-initial" aria-hidden="true">'.e(mb_strtoupper(mb_substr($p['name'],0,1))).'</span>').'<div><p class="s-person-kicker">Ihr Ansprechpartner</p><strong>'.e($p['name']).'</strong>'.($p['role']!==''?'<span class="s-person-role">'.e($p['role']).'</span>':'').($p['text']!==''?'<p>'.e($p['text']).'</p>':'').'<a class="s-more" href="mailto:'.e($mail).'">'.e($mail).s_arrow().'</a></div></div>';
+        }
+        echo '</div>';
+    }
+    echo '</div></section>';
+}
+
 /* ---------- Startseite ---------- */
 function landing_page(): void {
     render_head('Firmenkleidung mit eigenem Online-Shop | Yanik Textildruck Salzkotten');
@@ -160,6 +186,9 @@ function landing_page(): void {
     echo '<div class="s-workshop-copy"><h2>'.e(yw_text('intro_title')).'</h2><div class="s-intro">'.rich_text(yw_text('intro_text')).'</div>';
     echo '<ul class="s-ticks"><li>Stick, DTF-Transfer und Textildruck</li><li>Beratung zu Logo-Größe und Position</li><li>Qualitätskontrolle vor jeder Auslieferung</li></ul>';
     echo '<a class="s-btn s-btn-navy" href="/ueber-uns">Mehr über uns</a></div></div></section>';
+
+    // 5b · Vertrauen (nur wenn gepflegt)
+    s_trust_section();
 
     // 6 · Fragen
     echo '<section class="s-section s-section-grey"><div class="s-wrap s-faq-grid"><div class="s-faq-intro"><h2>Häufige Fragen</h2><p>Ihre Frage ist nicht dabei? Schreiben Sie uns an <a href="mailto:'.e($mail).'">'.e($mail).'</a> – wir antworten persönlich.</p></div>';
@@ -270,7 +299,8 @@ function imprint_page(): void {
     hp_page_hero('Rechtliches','Impressum','',[],true);
     echo '<section class="s-section"><div class="s-wrap"><article class="s-legal">';
     echo '<h2>Angaben gemäß § 5 DDG</h2><p><strong>'.e(current_site_setting('imprint_company','Yanik Textildruck')).'</strong><br>Inhaber: '.e(current_site_setting('imprint_owner','Jens Yanik')).'<br>'.e(current_site_setting('imprint_street','Geseker Straße 19')).'<br>'.e(current_site_setting('imprint_city','33154 Salzkotten')).'</p>';
-    echo '<h2>Kontakt</h2><p>E-Mail: <a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a><br>Kontaktformular: <a href="/anfrage">workwearcenter.de/anfrage</a></p>';
+    $phone=trim(current_site_setting('imprint_phone',''));$tel=(string)preg_replace('/[^\d+]/','',$phone);
+    echo '<h2>Kontakt</h2><p>'.($phone!==''?'Telefon: '.($tel!==''?'<a href="tel:'.e($tel).'">'.e($phone).'</a>':e($phone)).'<br>':'').'E-Mail: <a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a><br>Kontaktformular: <a href="/anfrage">workwearcenter.de/anfrage</a></p>';
     $vat=trim(current_site_setting('imprint_vat_id',''));$register=trim(current_site_setting('imprint_register',''));
     if($vat!=='')echo '<h2>Umsatzsteuer</h2><p>Umsatzsteuer-Identifikationsnummer gemäß § 27a Umsatzsteuergesetz: '.e($vat).'</p>';
     if($register!=='')echo '<h2>Registereintrag</h2><p>'.e($register).'</p>';
