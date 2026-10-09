@@ -57,7 +57,7 @@ function yw_magic_login_request(string $slug): void {
             }
         }
     }
-    simple_message('E-Mail wird geprüft','Falls ein aktiver Zugang zu dieser Adresse existiert, haben wir dir einen Anmeldelink geschickt. Er ist '.YW_LOGIN_LINK_MINUTES.' Minuten gültig.');
+    yw_shop_auth_message($company,(string)$company['slug'],'E-Mail wird geprüft','Falls ein aktiver Zugang zu dieser Adresse existiert, haben wir dir einen Anmeldelink geschickt. Er ist '.YW_LOGIN_LINK_MINUTES.' Minuten gültig.',yw_magic_login_intro());
 }
 
 /** Gültiges Token → [Linkzeile, Konto] oder null. */
@@ -82,7 +82,7 @@ function yw_magic_login_page(string $slug,string $token): void {
     if(!$row){
         record_login_failure($throttleKey);
         http_response_code(410);
-        simple_message('Link abgelaufen oder bereits verwendet','Anmeldelinks gelten '.YW_LOGIN_LINK_MINUTES.' Minuten und nur einmal. Bitte fordere auf der Anmeldeseite einen neuen Link an.');return;
+        yw_shop_auth_message($company,$slug,'Link abgelaufen oder bereits verwendet','Anmeldelinks gelten '.YW_LOGIN_LINK_MINUTES.' Minuten und nur einmal. Bitte fordere auf der Anmeldeseite einen neuen Link an.',yw_magic_login_intro());return;
     }
     if(is_post()){
         verify_csrf();
@@ -96,7 +96,7 @@ function yw_magic_login_page(string $slug,string $token): void {
         }catch(Throwable $e){
             if(db()->inTransaction())db()->rollBack();
             if(!$e instanceof DomainException)error_log('WorkwearCenter login link: '.$e->getMessage());
-            http_response_code(410);simple_message('Link abgelaufen oder bereits verwendet','Bitte fordere auf der Anmeldeseite einen neuen Link an.');return;
+            http_response_code(410);yw_shop_auth_message($company,$slug,'Link abgelaufen oder bereits verwendet','Bitte fordere auf der Anmeldeseite einen neuen Link an.',yw_magic_login_intro());return;
         }
         clear_login_failures('employee-'.(int)$company['id'].'-'.hash('sha256',strtolower((string)$row['email'])));
         session_regenerate_id(true);
@@ -106,12 +106,11 @@ function yw_magic_login_page(string $slug,string $token): void {
         audit_log('employee.login_link_used','employee',(int)$row['id'],['company_id'=>(int)$company['id']]);
         redirect('/'.$slug);
     }
-    render_head('Anmelden – '.$company['shop_name'],$company);
-    echo company_shop_style($company).'<style>body{background:#f4f6f9}.login-shell{background:#10263a}.login-card{overflow:hidden}.reset-shop-logo{min-height:82px;display:flex;align-items:center;justify-content:center;padding:20px;background:#f8fafc;border-bottom:1px solid #e7ebf0}.reset-shop-logo img{display:block;max-width:260px;max-height:72px;object-fit:contain}.reset-shop-logo strong{color:#112a40;font-size:1.4rem}</style>';
-    echo '<main class="login-shell"><section class="login-card"><div class="login-accent"></div><div class="reset-shop-logo">';
-    $logo=yw_company_logo_path($company);
-    echo $logo!==''?'<img src="/'.e($logo).'" alt="'.e($company['legal_name']).'">':'<strong>'.e($company['legal_name']).'</strong>';
-    echo '</div><div class="login-body"><h1>Anmelden</h1><p>Hallo '.e($row['name']).', bestätige die Anmeldung im Firmenshop '.e($company['shop_name']).'.</p><form method="post" class="form-stack">'.csrf_field().'<button class="btn primary" type="submit">Jetzt anmelden</button></form><p class="muted">Der Link funktioniert nur einmal.</p></div></section></main>';
-    company_shop_footer($company);
-    render_foot();
+    $card='<h2>Anmelden</h2><p>Hallo '.e($row['name']).', bestätige die Anmeldung im Firmenshop '.e($company['shop_name']).'.</p><form method="post" class="form-stack">'.csrf_field().'<button class="cp-btn-primary" type="submit">Jetzt anmelden</button></form><div class="cp-login-help"><span>Der Link funktioniert nur einmal.</span></div>';
+    yw_shop_auth_page($company,'Anmelden – '.$company['shop_name'],yw_magic_login_intro(),$card);
+}
+
+/** Linke Spalte der Anmeldelink-Seiten (gleicher Rahmen wie die Anmeldeseite). */
+function yw_magic_login_intro(): array {
+    return ['Mitarbeiter-Shop','Anmelden ohne Passwort.','Ein Link per E-Mail genügt. Er gilt '.YW_LOGIN_LINK_MINUTES.' Minuten und funktioniert nur einmal.'];
 }
