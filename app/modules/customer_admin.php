@@ -62,7 +62,7 @@ function yw_customer_employee_action(array $company,array $actor,string $action)
             $q->execute([$company['id'],$name,$email,password_hash(random_token(),PASSWORD_DEFAULT),yw_customer_text($_POST['department']??'',120),yw_customer_text($_POST['cost_center']??'',120),yw_customer_text($_POST['location']??'',120),yw_customer_text($_POST['employee_number']??'',80),$employmentStart,$employmentEnd,$profileId]);
             $created[]=['id'=>(int)db()->lastInsertId(),'name'=>$name,'email'=>$email];$message=t('people.created');
         }elseif($action==='customer_employee_save'){
-            $id=(int)($_POST['account_id']??0);$q=db()->prepare('SELECT * FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.not_found'));
+            $id=(int)($_POST['account_id']??0);$q=db()->prepare('SELECT * FROM employee_accounts WHERE id=? AND company_id=? AND anonymized_at IS NULL FOR UPDATE');$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.not_found')); // anonymisierte Konten bleiben endgültig gesperrt
             $role=(string)($_POST['role']??'employee');$status=(string)($_POST['registration_status']??'approved');$active=isset($_POST['active'])?1:0;
             if(!in_array($role,['employee','manager'],true)||!in_array($status,['pending','approved','rejected'],true))throw new DomainException(t('people.err.role'));
             if($id===(int)$actor['id']){$role='manager';$status='approved';$active=1;}
@@ -80,7 +80,7 @@ function yw_customer_employee_action(array $company,array $actor,string $action)
             yw_anonymize_employee((int)$company['id'],$id);
             $message=t('people.anonymized');
         }elseif($action==='customer_employee_link'){
-            $id=(int)($_POST['account_id']??0);$q=db()->prepare("SELECT id,name,email FROM employee_accounts WHERE id=? AND company_id=? AND active=1 AND registration_status='approved' FOR UPDATE");$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.link'));$created[]=['id'=>(int)$target['id'],'name'=>$target['name'],'email'=>$target['email']];$message=t('people.link_sent');
+            $id=(int)($_POST['account_id']??0);$q=db()->prepare("SELECT id,name,email FROM employee_accounts WHERE id=? AND company_id=? AND active=1 AND registration_status='approved' AND anonymized_at IS NULL FOR UPDATE");$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.link'));$created[]=['id'=>(int)$target['id'],'name'=>$target['name'],'email'=>$target['email']];$message=t('people.link_sent');
         }else{
             $profileNames=[];foreach(yw_equipment_profile_options((int)$company['id']) as $profile)$profileNames[mb_strtolower(trim((string)$profile['name']))]=(int)$profile['id'];
             $find=db()->prepare('SELECT id FROM employee_accounts WHERE company_id=? AND email=? FOR UPDATE');

@@ -321,4 +321,7 @@ foreach(['password_reset.php','admin_password_reset.php'] as $resetFile){$resetS
 $accountSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_account.php');
 test_ok(str_contains($accountSrc,'(totp_last_step IS NULL OR totp_last_step<?)') && str_contains($accountSrc,'AND recovery_codes_json=?') && str_contains($accountSrc,'return $u->rowCount()===1;'),'TOTP-Code und Wiederherstellungscode werden atomar nur einmal verbraucht (keine Mehrfachanmeldung durch parallele Anfragen)');
 
+$customerSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/customer_admin.php');
+test_ok(substr_count($customerSrc,'AND company_id=? AND anonymized_at IS NULL FOR UPDATE')>=1 && str_contains($customerSrc,"registration_status='approved' AND anonymized_at IS NULL FOR UPDATE"),'anonymisierte Konten lassen sich im Firmenshop weder reaktivieren noch mit Passwort-Link versehen');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
