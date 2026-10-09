@@ -368,6 +368,6 @@ test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/co
 $crossSite=static fn(string $site): string => (string)shell_exec(escapeshellarg(PHP_BINARY).' -r '.escapeshellarg('$_SERVER["HTTP_SEC_FETCH_SITE"]='.var_export($site,true).';require '.var_export(dirname(__DIR__).'/app/functions.php',true).';yw_block_cross_site_get();echo "weiter";').' 2>&1');
 test_ok(!str_contains($crossSite('cross-site'),'weiter')&&str_contains($crossSite('same-origin'),'weiter')&&str_contains($crossSite(''),'weiter'),'Fremdseiten-Aufruf (Sec-Fetch-Site: cross-site) wird abgewiesen, eigene Links und alte Browser nicht');
 $adminTools=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_tools.php');
-test_ok(substr_count($adminTools,'yw_block_cross_site_get();')>=3,'Vorschau starten/beenden und Datensicherung prüfen Sec-Fetch-Site');
+test_ok(substr_count($adminTools,'yw_block_cross_site_get();')>=2,'Vorschau beenden und Datensicherung prüfen Sec-Fetch-Site (Vorschau starten nur per POST+CSRF)');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
