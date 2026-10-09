@@ -625,6 +625,7 @@ function render_content_settings(): void {
 
     echo '<button class="btn primary" type="submit" style="margin-top:20px">Inhalte speichern</button></form>';
     echo rich_editor_script();
+    render_trust_settings();
 }
 
 function render_design_settings(): void {
@@ -668,7 +669,8 @@ function send_inquiry_mail(array $data): bool {
         ."E-Mail: ".$data['email']."\n"
         ."Telefon: ".$data['phone']."\n"
         ."Mitarbeitende: ".$data['employees']."\n\n"
-        ."Nachricht:\n".$data['message']."\n";
+        ."Nachricht:\n".$data['message']."\n"
+        .(!empty($data['probeshop'])?"\nProbeshop mit Logo (30 Tage gültig): ".yw_probeshop_url((string)$data['probeshop'])."\n":'');
 
     return send_system_mail($to,$subject,$body,false,(string)$data['email']);
 }
@@ -676,6 +678,7 @@ function send_inquiry_mail(array $data): bool {
 function inquiry_page(): void {
     $error='';
     $success=false;
+    $probeshopToken=null;
 
     if(is_post()){
         verify_csrf();
@@ -705,25 +708,40 @@ function inquiry_page(): void {
             elseif(!$message || mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
             elseif(!$privacy) $error='Bitte bestätigen Sie die Datenschutzhinweise.';
             else {
+                $logo='';
                 try{
+                    // Optionales Logo: daraus entsteht ein persönlicher Probeshop (10.11).
+                    $logo=yw_probeshop_store_logo($_FILES['logo']??null);
+                    db()->beginTransaction();
                     $stmt=db()->prepare('INSERT INTO inquiries(company,name,email,phone,employees,message,status) VALUES(?,?,?,?,?,?,?)');
                     $stmt->execute([$company,$name,$email,$phone,$employees,$message,'new']);
                     $inquiryId=(int)db()->lastInsertId();
-                    audit_log('inquiry.created','inquiry',$inquiryId);
+                    if($logo!=='')$probeshopToken=yw_probeshop_create($company,$logo,$inquiryId,'inquiry')['token'];
+                    db()->commit();
+                    $logo=''; // gehört jetzt zum gespeicherten Probeshop
+                    audit_log('inquiry.created','inquiry',$inquiryId,$logo!==''?['probeshop'=>true]:[]);
                     send_inquiry_mail([
                         'company'=>$company,'name'=>$name,'email'=>$email,'phone'=>$phone,
-                        'employees'=>$employees,'message'=>$message
+                        'employees'=>$employees,'message'=>$message,'probeshop'=>$probeshopToken
                     ]);
+                    yw_inquiry_confirmation_mail($email,$name,$company,$probeshopToken);
                     $success=true;
                 }catch(Throwable $e){
-                    error_log('Public inquiry: '.$e->getMessage());
-                    $error='Ihre Anfrage konnte gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut oder kontaktieren Sie uns telefonisch.';
+                    if(db()->inTransaction())db()->rollBack();
+                    if($logo!=='')yw_probeshop_delete_logo($logo);
+                    $probeshopToken=null;
+                    if($e instanceof RuntimeException && !$e instanceof PDOException){
+                        $error=$e->getMessage().' Sie können die Anfrage auch ohne Logo absenden.';
+                    }else{
+                        error_log('Public inquiry: '.$e->getMessage());
+                        $error='Ihre Anfrage konnte gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut oder kontaktieren Sie uns telefonisch.';
+                    }
                 }
             }
         }
     }
 
-    site_inquiry_render($success,$error);
+    site_inquiry_render($success,$error,$probeshopToken);
 }
 
 
@@ -770,24 +788,121 @@ Wir verwenden ausschließlich ein technisch notwendiges Sitzungs-Cookie („yani
 4. Anfrageformular
 Angaben im Anfrageformular (Firma, Name, E-Mail, Telefon, Mitarbeiterzahl, Nachricht) verwenden wir zur Bearbeitung der Anfrage. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Erledigte Anfragen werden nach spätestens 24 Monaten gelöscht.
 
-5. Unternehmensshops für Mitarbeitende
+5. Probeshop für Interessenten
+Laden Sie im Anfrageformular freiwillig Ihr Firmenlogo hoch (oder geben Sie es uns bei einem Termin), erstellen wir daraus einen persönlichen Vorschau-Shop mit Ihrem Firmennamen und Logo auf Musterartikeln. Gespeichert werden nur Firmenname, Logo-Datei, Ablaufdatum und die Anzahl der Aufrufe. Der Probeshop ist nur über einen zufällig erzeugten, nicht erratbaren Link erreichbar, wird nicht von Suchmaschinen erfasst und ist nur lesend. Die Logo-Datei liegt unter einem zufälligen Dateinamen in einem nicht auflistbaren Ordner. Nach 30 Tagen läuft der Probeshop ab; Eintrag und Logo werden danach automatisch gelöscht, auf Wunsch jederzeit früher. Rechtsgrundlage: Art. 6 Abs. 1 lit. a und b DSGVO (Ihre Anfrage bzw. vorvertragliche Maßnahme).
+
+6. Unternehmensshops für Mitarbeitende
 Im Auftrag des jeweiligen Arbeitgebers verarbeiten wir: Name, dienstliche E-Mail-Adresse, Abteilung, Kostenstelle, Standort, Personalnummer, Beschäftigungszeitraum, Rolle, Ausstattungsprofil, Budgetangaben, Bestellungen (Artikel, Größen, Mengen, Preise, Eigenanteil) sowie Anmeldezeitpunkte. Zweck ist die Bereitstellung und Abwicklung der Firmenbekleidung. Rechtsgrundlage: Art. 6 Abs. 1 lit. b und f DSGVO bzw. [Vertrag mit dem Arbeitgeber / Auftragsverarbeitung nach Art. 28 DSGVO – bitte rechtlich klären]. Passwörter werden ausschließlich als sicherer Hash gespeichert.
 
-6. Bestellabwicklung, Produktion und Buchhaltung
+7. Bestellabwicklung, Produktion und Buchhaltung
 Freigegebene Bestellungen werden in unsere Auftragsverwaltung übertragen und für Beschaffung, Veredelung, Versand und Rechnungsstellung verwendet. Rechnungen erstellen wir mit [Lexware Office, Haufe-Lexware GmbH & Co. KG]. Bestellungen bewahren wir entsprechend den handels- und steuerrechtlichen Aufbewahrungspflichten (bis zu 10 Jahre) auf. Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO.
 
-7. E-Mails
+8. E-Mails
 Für Systemnachrichten (Zugang, Bestellbestätigung, Freigabe, Status) nutzen wir [E-Mail-Anbieter / SMTP-Dienst]. Kopien versendeter Systemnachrichten werden nach 90 Tagen gelöscht.
 
-8. Löschung von Konten
+9. Löschung von Konten
 Ausgeschiedene Mitarbeitende können vom Arbeitgeber oder von uns anonymisiert werden. Dabei werden Name, E-Mail-Adresse und weitere Kontodaten dauerhaft entfernt; Bestellungen bleiben im Rahmen der Aufbewahrungspflichten erhalten.
 
-9. Ihre Rechte
+10. Ihre Rechte
 Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie das Recht auf Beschwerde bei einer Aufsichtsbehörde, z. B. [Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen].
 
-10. Kontakt in Datenschutzfragen
+11. Kontakt in Datenschutzfragen
 [E-Mail-Adresse; ggf. Datenschutzbeauftragter]
 
 Stand: [Datum]
 TXT;
+}
+
+/* ---------- 10.11: Vertrauen auf der Startseite (Referenzen, Zitat, Ansprechpartner) ---------- */
+
+/** Gepflegte Kundenlogos: Liste [path, name]; nur gültige Bildpfade. */
+function yw_trust_logos(): array {
+    $list=json_decode(current_site_setting('trust_logos_json','[]'),true);
+    $out=[];
+    foreach(is_array($list)?$list:[] as $item){
+        if(!is_array($item)||!yw_upload_path_ok((string)($item['path']??''),'branding'))continue;
+        $out[]=['path'=>(string)$item['path'],'name'=>mb_substr(trim((string)($item['name']??'')),0,120)];
+    }
+    return array_slice($out,0,12);
+}
+
+/** Alle Inhalte des Abschnitts; leer, wenn nichts gepflegt ist. */
+function yw_trust_content(): array {
+    $t=fn(string $k)=>trim(current_site_setting($k,''));
+    $photo=yw_local_image_path($t('trust_contact_photo'),['branding']);
+    $c=[
+        'title'=>$t('trust_title')?:'Unternehmen, die uns vertrauen',
+        'logos'=>yw_trust_logos(),
+        'quote'=>['text'=>$t('trust_quote_text'),'name'=>$t('trust_quote_name'),'company'=>$t('trust_quote_company')],
+        'contact'=>['photo'=>$photo,'name'=>$t('trust_contact_name'),'role'=>$t('trust_contact_role'),'text'=>$t('trust_contact_text')],
+    ];
+    $c['has_quote']=$c['quote']['text']!=='';
+    $c['has_contact']=$c['contact']['name']!=='';
+    $c['empty']=!$c['logos']&&!$c['has_quote']&&!$c['has_contact'];
+    return $c;
+}
+
+function render_trust_settings(): void {
+    $c=yw_trust_content();$v=fn(string $k)=>e(current_site_setting($k,''));
+    echo '<form method="post" enctype="multipart/form-data" class="settings-form trust-settings">'.csrf_field().'<input type="hidden" name="action" value="save_trust_settings"><input type="hidden" name="return_tab" value="content">';
+    echo '<details class="settings-group"'.($c['empty']?'':' open').'><summary>Startseite – Vertrauen (Referenzen, Kundenstimme, Ansprechpartner)</summary><div class="settings-group-inner"><p class="muted">Erscheint auf der Startseite nur, wenn mindestens ein Teil gepflegt ist. Nur Logos und Zitate mit Einverständnis der Kunden verwenden.</p>';
+    echo '<label>Überschrift<input name="trust_title" maxlength="160" value="'.$v('trust_title').'" placeholder="Unternehmen, die uns vertrauen"></label>';
+    echo '<div class="editor-block"><h3>Kundenlogos / Referenzen <small class="muted">(max. 12)</small></h3>';
+    if($c['logos']){
+        echo '<div class="trust-logo-admin">';
+        foreach($c['logos'] as $i=>$logo)echo '<div class="trust-logo-admin-item"><img src="/'.e($logo['path']).'" alt=""><label>Firmenname <small>für Bildbeschreibung</small><input name="trust_logo_name['.$i.']" maxlength="120" value="'.e($logo['name']).'"></label><label class="check"><input type="checkbox" name="trust_logo_remove['.$i.']" value="1"><span>Entfernen</span></label></div>';
+        echo '</div>';
+    }
+    echo '<label>Logos hinzufügen <small>PNG, JPG oder WebP, gern mit transparentem Hintergrund</small><input type="file" name="trust_logo_new[]" multiple accept="image/png,image/jpeg,image/webp"></label></div>';
+    echo '<div class="editor-block"><h3>Kundenstimme</h3><label>Zitat<textarea name="trust_quote_text" rows="3" maxlength="600">'.$v('trust_quote_text').'</textarea></label><div class="grid2"><label>Name<input name="trust_quote_name" maxlength="120" value="'.$v('trust_quote_name').'"></label><label>Firma / Funktion<input name="trust_quote_company" maxlength="160" value="'.$v('trust_quote_company').'"></label></div></div>';
+    echo '<div class="editor-block"><h3>Ihr Ansprechpartner</h3><label>Foto<input type="file" name="trust_contact_photo" accept="image/png,image/jpeg,image/webp"></label>';
+    if($c['contact']['photo']!=='')echo '<div class="editor-image-preview"><img src="/'.e($c['contact']['photo']).'" alt=""><label class="check"><input type="checkbox" name="remove_trust_contact_photo" value="1"><span>Foto löschen</span></label></div>';
+    echo '<div class="grid2"><label>Name<input name="trust_contact_name" maxlength="120" value="'.$v('trust_contact_name').'"></label><label>Rolle<input name="trust_contact_role" maxlength="120" value="'.$v('trust_contact_role').'" placeholder="z. B. Inhaber und Ihr Ansprechpartner"></label></div><label>Kurzer Satz<input name="trust_contact_text" maxlength="300" value="'.$v('trust_contact_text').'" placeholder="z. B. Ich berate Sie persönlich – vom ersten Muster bis zur Lieferung."></label></div>';
+    echo '<button class="btn primary" type="submit">Vertrauensbereich speichern</button></div></details></form>';
+}
+
+/** Hochgeladene Mehrfachdateien in Einzel-Arrays zerlegen. */
+function yw_files_list(array $files): array {
+    $out=[];
+    foreach((array)($files['name']??[]) as $i=>$name)$out[]=['name'=>$name,'type'=>$files['type'][$i]??'','tmp_name'=>$files['tmp_name'][$i]??'','error'=>$files['error'][$i]??UPLOAD_ERR_NO_FILE,'size'=>$files['size'][$i]??0];
+    return $out;
+}
+
+function yw_save_trust_settings(): void {
+    $text=function(string $k,int $max): string{
+        $v=trim(str_replace("\r",'',(string)($_POST[$k]??'')));
+        if(mb_strlen($v)>$max)throw new RuntimeException('Der Inhalt im Feld „'.str_replace(['trust_','_'],['',' '],$k).'“ ist zu lang.');
+        return $v;
+    };
+    $fields=['trust_title'=>$text('trust_title',160),'trust_quote_text'=>$text('trust_quote_text',600),'trust_quote_name'=>$text('trust_quote_name',120),'trust_quote_company'=>$text('trust_quote_company',160),'trust_contact_name'=>$text('trust_contact_name',120),'trust_contact_role'=>$text('trust_contact_role',120),'trust_contact_text'=>$text('trust_contact_text',300)];
+    $logos=[];$removed=[];$new=[];
+    try{
+        foreach(yw_trust_logos() as $i=>$logo){
+            if(!empty($_POST['trust_logo_remove'][$i])){$removed[]=$logo['path'];continue;}
+            $logos[]=['path'=>$logo['path'],'name'=>mb_substr(trim((string)($_POST['trust_logo_name'][$i]??$logo['name'])),0,120)];
+        }
+        foreach(yw_files_list((array)($_FILES['trust_logo_new']??[])) as $file){
+            if((int)$file['error']===UPLOAD_ERR_NO_FILE)continue;
+            if(count($logos)>=12)throw new RuntimeException('Es sind höchstens 12 Kundenlogos möglich.');
+            // Die Datei kommt einzeln durch dieselbe Prüfung wie alle Website-Bilder.
+            $path=upload_site_image($file,'','referenz');$new[]=$path;
+            $logos[]=['path'=>$path,'name'=>''];
+        }
+        $oldPhoto=current_site_setting('trust_contact_photo','');
+        $base=!empty($_POST['remove_trust_contact_photo'])?'':$oldPhoto;
+        $photo=upload_site_image($_FILES['trust_contact_photo']??null,$base,'ansprechpartner');
+        if($photo!==$base&&$photo!=='')$new[]=$photo;
+        $fields['trust_contact_photo']=$photo;
+        $fields['trust_logos_json']=json_encode($logos,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        db()->beginTransaction();
+        foreach($fields as $k=>$val)set_site_setting($k,(string)$val);
+        db()->commit();
+    }catch(Throwable $e){
+        if(db()->inTransaction())db()->rollBack();
+        foreach($new as $path)delete_site_image($path);
+        throw $e;
+    }
+    foreach($removed as $path)delete_site_image($path);
+    if($oldPhoto!==''&&$oldPhoto!==$fields['trust_contact_photo'])delete_site_image($oldPhoto);
+    audit_log('site.trust_updated','site',null,['logos'=>count($logos)]);
 }

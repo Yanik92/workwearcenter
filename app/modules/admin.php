@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/product_import.php';
 require_once __DIR__.'/admin_password_reset.php';
 require_once __DIR__.'/admin_account.php';
+require_once __DIR__.'/probeshop.php';
 
 function yw_admin_product_ids(mixed $raw): array {
     if(!is_array($raw))throw new RuntimeException('Produktauswahl ist ungültig.');
@@ -123,7 +124,7 @@ function admin_page(): void {
     echo admin_backend_style();
 
     echo '<header class="admin-topbar"><div class="wrap admin-topbar-inner">'.site_brand_html(false)
-        .'<div class="admin-topbar-title"><strong>WorkwearCenter Verwaltung</strong><small>Zentrale Administration</small></div>'
+        .'<div class="admin-topbar-title"><span class="admin-topbar-badge">Verwaltung</span></div>'
         .'<form method="get" class="admin-search" role="search"><input type="hidden" name="tab" value="suche"><input type="search" name="q" value="'.e($tab==='suche'?(string)($_GET['q']??''):'').'" placeholder="Suchen: Firma, Auftrag, Person, Artikel" aria-label="Suche"></form>'
         .'<a class="btn small" href="/admin?tab=account">Mein Konto</a><form method="post" action="/admin/logout">'.csrf_field().'<button class="btn small" type="submit">Abmelden</button></form>'
         .'</div></header>';
@@ -165,6 +166,7 @@ function handle_admin_action(): never {
     $action=(string)($_POST['action'] ?? '');
     yw_orders_admin_action($action); // 10.11: Umtausch, Firmeneinstellungen (app/modules/order_schedule.php)
     if(str_starts_with($action,'handover_'))yw_admin_handover_action($action);
+    if(str_starts_with($action,'probeshop_'))yw_probeshop_admin_action($action);
     if(str_starts_with($action,'account_') || in_array($action,['admin_invite','admin_toggle'],true))yw_admin_account_action($action);
     try {
         if ($action==='inquiry_status') {
@@ -366,6 +368,11 @@ function handle_admin_action(): never {
             redirect('/admin?tab=content');
         }
 
+        if ($action==='save_trust_settings') {
+            yw_save_trust_settings();
+            flash('success','Vertrauensbereich der Startseite wurde gespeichert.');
+            redirect('/admin?tab=content');
+        }
         if ($action==='content_apply_defaults') {
             $n=yw_content_apply_defaults();
             audit_log('site.content_defaults_applied','site',null,['fields'=>$n]);
@@ -822,6 +829,8 @@ function handle_admin_action(): never {
             $id=(int)($_POST['inquiry_id']??0);
             $stmt=db()->prepare('DELETE FROM inquiries WHERE id=?');$stmt->execute([$id]);
             if(!$stmt->rowCount())throw new RuntimeException('Anfrage wurde nicht gefunden.');
+            $q=db()->prepare('SELECT id FROM yw_probeshops WHERE inquiry_id=?');$q->execute([$id]);
+            foreach($q->fetchAll(PDO::FETCH_COLUMN) as $probeshopId)yw_probeshop_delete((int)$probeshopId);
             audit_log('inquiry.deleted','inquiry',$id);
             flash('success','Anfrage wurde endgültig gelöscht.');
             redirect('/admin?tab=inquiries');
@@ -848,7 +857,7 @@ function admin_backend_style(): string {
     .admin-topbar{background:#10263a;border-bottom:4px solid var(--accent);position:sticky;top:0;z-index:80;box-shadow:0 5px 18px rgba(16,24,40,.12)}
     .admin-topbar-inner{min-height:88px;display:flex;align-items:center;gap:20px}
     .admin-topbar-title{display:flex;flex-direction:column;line-height:1.2;margin-right:auto;color:#fff}.admin-topbar-title strong{font-size:1.3rem;color:#fff}
-    .admin-topbar-title small{color:rgba(255,255,255,.66);margin-top:4px}.admin-topbar .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.admin-topbar .btn:hover{background:#fff;color:#10263a}
+    .admin-topbar-title small{color:rgba(255,255,255,.66);margin-top:4px}.admin-topbar-badge{display:inline-block;padding:5px 10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.86)}@media(max-width:700px){.admin-topbar-badge{display:none}}.admin-topbar .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.admin-topbar .btn:hover{background:#fff;color:#10263a}
     .admin-shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:calc(100vh - 92px);background:linear-gradient(90deg,#fff 239px,#e6e8ec 239px,#e6e8ec 240px,#f7f7f8 240px)}
     .admin-sidebar{background:#fff;color:#172033;padding:24px 16px;position:sticky;top:92px;max-height:calc(100vh - 92px);overflow:auto;box-sizing:border-box;border-right:1px solid #e6e8ec}
     .admin-menu-title{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:#8a93a2;padding:0 12px 10px}
@@ -880,7 +889,16 @@ function admin_backend_style(): string {
     .inquiry-card{background:#fff;border:1px solid #e6e9ef;border-radius:15px;padding:20px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px}
     .inquiry-card.new{border-left:5px solid var(--accent)}
     .inquiry-meta{display:flex;gap:12px;flex-wrap:wrap;color:#667085;font-size:.9rem;margin:8px 0 12px}
+    .trust-logo-admin{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:10px 0 16px}.trust-logo-admin-item{border:1px solid #e6e9ef;border-radius:12px;padding:12px;display:grid;gap:8px}.trust-logo-admin-item img{height:54px;width:100%;object-fit:contain;background:#f6f7f9;border-radius:8px}
     .inquiry-message{background:#f7f8fa;border-radius:10px;padding:14px;white-space:pre-wrap}
+    .probeshop-box{margin-top:16px;padding:14px;border:1px solid #e6e9ef;border-radius:12px;background:#fbfcfd;display:grid;gap:9px;max-width:330px}
+    .probeshop-box .actions{display:flex;gap:7px;flex-wrap:wrap}.probeshop-box form{margin:0}.probeshop-box p{margin:0}
+    .probeshop-box-logo{max-width:150px;max-height:60px;object-fit:contain;background:repeating-conic-gradient(#eef1f4 0 25%,#fff 0 50%) 0 0/14px 14px;padding:6px;border-radius:8px;border:1px solid #e6e9ef}.probeshop-box-logo.on-dark{background:#1f3347}
+    .probeshop-panel{margin-bottom:22px}
+    .probeshop-box summary{cursor:pointer;font-weight:750}
+    .probeshop-create{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:14px;align-items:end}.probeshop-create input[type=color]{height:42px;padding:3px}
+    .probeshop-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:20px}.probeshop-item{border:1px solid #e6e9ef;border-radius:14px;padding:16px}.probeshop-item h3{margin:0}.probeshop-item .probeshop-box{margin-top:10px;max-width:none}
+    @media(max-width:1100px){.probeshop-create{grid-template-columns:1fr 1fr}}@media(max-width:640px){.probeshop-create{grid-template-columns:1fr}}
     .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
     .settings-card{background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:22px}
     .company-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
@@ -1026,7 +1044,9 @@ function admin_context_header(string $tab): string {
     $sub='';
     $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','handover'=>'Übergabe','api'=>'API-Zugänge','account'=>'Mein Konto & Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
     foreach($groups as $g=>$items)if(isset($items[$tab])){$sub='<nav class="admin-subtabs">';foreach($items as $k=>$l)$sub.='<a class="'.($k===$tab?'active':'').'" href="/admin?tab='.$k.'">'.e($l).'</a>';$sub.='</nav>';}
-    return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">WORKWEARCENTER VERWALTUNG</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
+    // Kicker nennt den Bereich (Logo und „Verwaltung“ stehen schon im Kopf).
+    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
+    return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">'.e(mb_strtoupper($area)).'</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
 }
 
 function admin_sidebar(string $active): string {
@@ -1119,10 +1139,12 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
 }
 
 function render_admin_inquiries(array $inquiries): void {
+    yw_probeshop_admin_panel();
     if(!$inquiries){
         echo '<div class="empty">Noch keine Anfragen vorhanden.</div>';
         return;
     }
+    $probeshops=yw_probeshops_by_inquiry();
 
     echo '<div class="inquiry-list">';
     foreach($inquiries as $i){
@@ -1135,7 +1157,7 @@ function render_admin_inquiries(array $inquiries): void {
         if(!empty($i['employees'])) echo '<span>'.(int)$i['employees'].' Mitarbeitende</span>';
         echo '</div>';
         echo '<div class="inquiry-message">'.e($i['message']).'</div></div>';
-        echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form></div>';
+        echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen (inklusive Probeshop und Logo)? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form>'.yw_probeshop_admin_box($probeshops[(int)$i['id']]??null,$i).'</div>';
         echo '</article>';
     }
     echo '</div>';
@@ -1358,6 +1380,7 @@ function yw_audit_labels(): array {
         'inquiry.status_updated'=>'Anfragestatus geändert',
         'site.design_updated'=>'Website-Design geändert',
         'site.content_updated'=>'Website-Inhalte geändert',
+        'site.trust_updated'=>'Referenzen/Kundenstimme geändert',
         'site.content_defaults_applied'=>'Neue Standardtexte übernommen',
         'site.content_backup_restored'=>'Gesicherte Texte wiederhergestellt',
         'product_category.created'=>'Produktkategorie angelegt',
@@ -1399,6 +1422,10 @@ function yw_audit_labels(): array {
         'admin.activated'=>'Administrator aktiviert',
         'company.status_toggled'=>'Firmen-Shop aktiviert/deaktiviert',
         'inquiry.deleted'=>'Anfrage gelöscht',
+        'probeshop.created'=>'Probeshop erzeugt',
+        'probeshop.regenerated'=>'Probeshop-Link neu erzeugt',
+        'probeshop.deleted'=>'Probeshop gelöscht',
+        'probeshop.expired_deleted'=>'Abgelaufene Probeshops gelöscht',
         'admin.password_reset_requested'=>'Admin-Passwort-Link angefordert',
         'admin.password_reset_completed'=>'Admin-Passwort geändert',
         'yw_company'=>'Firmenbudget und Registrierung geändert',
@@ -1416,9 +1443,14 @@ function render_admin_audit(array $logs): void {
     $labels=yw_audit_labels();
     echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge.</p></div></div>';
     if(!$logs){echo '<div class="empty">Noch keine protokollierten Vorgänge.</div></section>';return;}
-    echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Akteur</th><th>Objekt</th></tr></thead><tbody>';
+    $people=yw_actor_people($logs);
+    echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Wer</th><th>Objekt</th></tr></thead><tbody>';
     foreach($logs as $log){
-        echo '<tr><td>'.e(date('d.m.Y H:i',strtotime((string)$log['created_at']))).'</td><td><strong>'.e($labels[$log['action']]??$log['action']).'</strong></td><td>'.e($log['legal_name']??'–').'</td><td>'.e($log['actor_type']).($log['actor_id']?' #'.(int)$log['actor_id']:'').'</td><td>'.e($log['entity_type']??'–').($log['entity_id']?' #'.(int)$log['entity_id']:'').'</td></tr>';
+        $meta=json_decode((string)($log['metadata_json']??''),true)?:[];$extra=yw_history_details($meta);
+        $entityId=$log['entity_id']!==null?(int)$log['entity_id']:null;
+        $entity=e(yw_entity_label($log['entity_type']??null,$entityId));
+        if(($log['entity_type']??'')==='order'&&$entityId)$entity='<a href="'.e(yw_order_url($entityId)).'">'.$entity.'</a>';
+        echo '<tr><td>'.e(date('d.m.Y H:i',strtotime((string)$log['created_at']))).'</td><td><strong>'.e($labels[$log['action']]??$log['action']).'</strong>'.($extra!==''?'<br><span class="muted">'.e($extra).'</span>':'').'</td><td>'.e($log['legal_name']??'–').'</td><td>'.e(yw_actor_label((string)$log['actor_type'],$log['actor_id']!==null?(int)$log['actor_id']:null,$meta,$people)).'</td><td>'.$entity.'</td></tr>';
     }
     echo '</tbody></table></div></section>';
 }

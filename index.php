@@ -42,7 +42,7 @@ if ($path === '/sitemap.xml') {
 }
 if ($path === '/robots.txt') {
     header('Content-Type: text/plain; charset=UTF-8');
-    echo "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /update.php\nDisallow: /install.php\nDisallow: /api/\nDisallow: /*/login\nDisallow: /*/registrieren\nDisallow: /*/passwort-\nDisallow: /*/anmeldelink\nDisallow: /*/mail-freigabe\nDisallow: /*/mitarbeiter\nDisallow: /*/bestellungen\nDisallow: /*/freigaben\nDisallow: /*/produkte\nDisallow: /*/profil\nDisallow: /*/auswertung.csv\n\nSitemap: https://".yw_public_host()."/sitemap.xml\n";
+    echo "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /update.php\nDisallow: /install.php\nDisallow: /api/\nDisallow: /probeshop/\nDisallow: /uploads/probeshop/\nDisallow: /*/login\nDisallow: /*/registrieren\nDisallow: /*/passwort-\nDisallow: /*/anmeldelink\nDisallow: /*/mail-freigabe\nDisallow: /*/mitarbeiter\nDisallow: /*/bestellungen\nDisallow: /*/freigaben\nDisallow: /*/produkte\nDisallow: /*/profil\nDisallow: /*/auswertung.csv\n\nSitemap: https://".yw_public_host()."/sitemap.xml\n";
     exit;
 }
 
@@ -51,7 +51,7 @@ if ($path === '/robots.txt') {
 register_shutdown_function(static function(): void {
     if(function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
     // Erinnerungen höchstens einmal täglich, falls kein Cronjob eingerichtet ist.
-    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200);} } catch(Throwable $e) {}
+    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup();} } catch(Throwable $e) {}
     try { yw_process_mail_queue(2); }
     catch(Throwable $e) { error_log('WorkwearCenter background mail queue: '.$e->getMessage()); }
     // Übergabe an die Auftragsverwaltung als Rückfallebene zum Cronjob.
@@ -77,6 +77,7 @@ if ($path === '/impressum') { imprint_page(); exit; }
 if ($path === '/datenschutz') { privacy_page(); exit; }
 if ($path === '/mustershop') { mustershop_page(); exit; }
 if ($path === '/zugang') { customer_access_page(); exit; }
+if (preg_match('#^/probeshop/([^/]{1,100})$#', $path, $match)) { yw_probeshop_route($match[1]); exit; }
 
 /* Admin */
 if ($path === '/admin/passwort-vergessen') { admin_password_forgot_page(); exit; }
@@ -85,6 +86,7 @@ if ($path === '/admin/login') { admin_login_page(); exit; }
 if (preg_match('#^/admin/vorschau/(\d+)$#', $path, $m)) { yw_admin_preview_start((int)$m[1]); }
 if ($path === '/admin/vorschau-beenden') { yw_admin_preview_stop(); }
 if ($path === '/admin/sicherung') { yw_backup_download(); }
+if (preg_match('#^/admin/aushang/(\d+)$#', $path, $m)) { yw_admin_poster_page((int)$m[1]); exit; }
 if ($path === '/admin/2fa') { admin_2fa_page(); exit; }
 if ($path === '/admin/logout') {
     if (is_post()) {

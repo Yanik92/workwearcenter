@@ -10,7 +10,7 @@ declare(strict_types=1);
 function yw_order_url(int $orderId): string { return '/admin?tab=orders&auftrag='.$orderId; }
 
 function yw_admin_order_page(int $orderId): void {
-    $q=db()->prepare("SELECT o.*,c.legal_name,c.shop_name,c.slug,c.id company_id,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name,COALESCE(ea.email,'') employee_email,ea.department,ea.cost_center,ea.location,d.name decided_by_name
+    $q=db()->prepare("SELECT o.*,c.legal_name,c.shop_name,c.slug,c.id company_id,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name,COALESCE(ea.email,'') employee_email,ea.anonymized_at employee_anonymized_at,ea.department,ea.cost_center,ea.location,d.name decided_by_name
         FROM orders o JOIN companies c ON c.id=o.company_id
         LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id
         LEFT JOIN invites i ON i.id=o.invite_id
@@ -26,7 +26,7 @@ function yw_admin_order_page(int $orderId): void {
     $delivery=json_decode((string)($o['delivery_snapshot_json']??''),true)?:[];
 
     echo '<div class="customer-head"><a class="btn small" href="/admin?tab=orders">← Alle Aufträge</a>';
-    echo '<div class="customer-ident"><div><h2>'.e(yw_order_number($orderId)).' <span class="badge '.e((string)$o['status']).'">'.e($statusLabels[$o['status']]??$o['status']).'</span></h2><p>'.e($o['legal_name']).' · '.e($o['employee_name']).' · '.e(date('d.m.Y H:i',strtotime((string)$o['created_at']))).' Uhr</p></div></div>';
+    echo '<div class="customer-ident"><div><h2>'.e(yw_order_number($orderId)).' <span class="badge '.e((string)$o['status']).'">'.e($statusLabels[$o['status']]??$o['status']).'</span></h2><p>'.e($o['legal_name']).' · '.e(yw_account_anonymized((string)$o['employee_email'],$o['employee_anonymized_at']??null)?'Konto gelöscht (DSGVO)':$o['employee_name']).' · '.e(date('d.m.Y H:i',strtotime((string)$o['created_at']))).' Uhr</p></div></div>';
     echo '<div class="customer-head-actions"><a class="btn small" href="'.e(yw_customer_url((int)$o['company_id'],'auftraege')).'">Kundenakte</a></div></div>';
 
     echo '<div class="order-grid">';
@@ -77,7 +77,8 @@ function yw_admin_order_page(int $orderId): void {
     echo '</section>';
 
     // Besteller & Lieferung
-    echo '<section class="card"><h2>Besteller</h2><p><strong>'.e($o['employee_name']).'</strong>'.($o['employee_email']!==''?'<br><a href="mailto:'.e($o['employee_email']).'">'.e($o['employee_email']).'</a>':'').'</p>';
+    if(yw_account_anonymized((string)$o['employee_email'],$o['employee_anonymized_at']??null))echo '<section class="card"><h2>Besteller</h2><p><strong>Konto gelöscht (DSGVO)</strong><br><span class="muted">Persönliche Daten wurden entfernt; der Auftrag bleibt für die Buchhaltung erhalten.</span></p>';
+    else echo '<section class="card"><h2>Besteller</h2><p><strong>'.e($o['employee_name']).'</strong>'.($o['employee_email']!==''?'<br><a href="mailto:'.e($o['employee_email']).'">'.e($o['employee_email']).'</a>':'').'</p>';
     $org=array_filter([$o['department']??'',$o['cost_center']??'',$o['location']??'']);
     if($org)echo '<p class="muted">'.e(implode(' · ',$org)).'</p>';
     if(!empty($o['decided_by_name']))echo '<p class="muted">Freigegeben von '.e((string)$o['decided_by_name']).(!empty($o['decided_at'])?' am '.e(date('d.m.Y',strtotime((string)$o['decided_at']))):'').'</p>';
@@ -94,7 +95,15 @@ function yw_admin_order_page(int $orderId): void {
     $a=db()->prepare("SELECT * FROM audit_log WHERE entity_type='order' AND entity_id=? ORDER BY id DESC LIMIT 50");$a->execute([$orderId]);$logs=$a->fetchAll();
     echo '<section class="card"><h2>Verlauf</h2>';
     if(!$logs)echo '<p class="muted">Noch keine Einträge.</p>';
-    else{echo '<ol class="order-history">';foreach($logs as $log){$meta=json_decode((string)($log['metadata_json']??''),true)?:[];$extra=isset($meta['status'])?' → '.(yw_production_statuses()[$meta['status']]??$meta['status']):'';echo '<li><span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$log['created_at']))).'</span> <strong>'.e($labels[$log['action']]??$log['action']).'</strong>'.e($extra).' <span class="muted">('.e((string)$log['actor_type']).')</span></li>';}echo '</ol>';}
+    else{
+        $people=yw_actor_people($logs);
+        echo '<ol class="order-history">';
+        foreach($logs as $log){
+            $meta=json_decode((string)($log['metadata_json']??''),true)?:[];$extra=yw_history_details($meta);
+            echo '<li><span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$log['created_at']))).'</span> <strong>'.e($labels[$log['action']]??$log['action']).'</strong>'.($extra!==''?' '.e($extra):'').' <span class="muted">· '.e(yw_actor_label((string)$log['actor_type'],$log['actor_id']!==null?(int)$log['actor_id']:null,$meta,$people)).'</span></li>';
+        }
+        echo '</ol>';
+    }
     echo '</section>';
 }
 
@@ -227,4 +236,63 @@ function yw_send_reminders(int $days=3): int {
         }
     }catch(Throwable $e){error_log('WorkwearCenter reminders: '.$e->getMessage());}
     return $sent;
+}
+
+/* ---------- 10.11: Verlauf lesbar machen ---------- */
+
+/** Konto per DSGVO gelöscht? (anonymized_at gesetzt oder Platzhalter-Adresse) */
+function yw_account_anonymized(?string $email,?string $anonymizedAt=null): bool {
+    return ($anonymizedAt!==null&&$anonymizedAt!=='')||str_ends_with(strtolower(trim((string)$email)),'@anonymisiert.invalid');
+}
+
+/** Bestellstatus, Produktionsstand und Entscheidungen als Klartext. */
+function yw_history_status_label(string $value): string {
+    $map=['pending'=>'Freigabe offen','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Storniert']+yw_production_statuses();
+    return $map[$value]??$value;
+}
+
+/** Wer hat es getan: Verwaltung, Mitarbeiter/in, Schnittstelle … */
+function yw_actor_label(string $type,?int $id=null,array $meta=[],array $people=[]): string {
+    $via=(string)($meta['via']??'');
+    if(str_starts_with($type,'api:'))return 'Schnittstelle '.substr($type,4);
+    if($type==='guest'&&str_starts_with($via,'api:'))return 'Schnittstelle '.substr($via,4);
+    return match($type){
+        'admin'=>'Verwaltung'.($id&&isset($people['admin'][$id])?' ('.$people['admin'][$id].')':''),
+        'employee'=>$id&&isset($people['employee'][$id])?'Mitarbeiter/in · '.$people['employee'][$id]:'Mitarbeiter/in',
+        'auftragszentrale'=>'Auftragszentrale',
+        'guest','system','cron'=>'System',
+        default=>$type,
+    };
+}
+
+/** Namen der Akteure eines Verlaufs auf einmal laden; gelöschte Konten ohne Namen. */
+function yw_actor_people(array $logs): array {
+    $ids=['admin'=>[],'employee'=>[]];
+    foreach($logs as $l)if(isset($ids[$l['actor_type']??''])&&!empty($l['actor_id']))$ids[$l['actor_type']][(int)$l['actor_id']]=true;
+    $people=['admin'=>[],'employee'=>[]];
+    try{
+        if($ids['admin']){$in=implode(',',array_map('intval',array_keys($ids['admin'])));foreach(db()->query("SELECT id,name,email FROM admins WHERE id IN ($in)") as $r)$people['admin'][(int)$r['id']]=(string)($r['name']?:$r['email']);}
+        if($ids['employee']){$in=implode(',',array_map('intval',array_keys($ids['employee'])));foreach(db()->query("SELECT id,name,email,anonymized_at FROM employee_accounts WHERE id IN ($in)") as $r)$people['employee'][(int)$r['id']]=yw_account_anonymized((string)$r['email'],$r['anonymized_at'])?'Konto gelöscht (DSGVO)':(string)$r['name'];}
+    }catch(Throwable $e){}
+    return $people;
+}
+
+/** Objekt eines Protokolleintrags als Klartext. */
+function yw_entity_label(?string $type,?int $id): string {
+    if(!$type)return '–';
+    if($type==='order'&&$id)return 'Auftrag '.yw_order_number($id);
+    $labels=['employee'=>'Mitarbeiterkonto','company'=>'Firma','inquiry'=>'Anfrage','product'=>'Produkt','product_category'=>'Kategorie','handover'=>'Übergabe','api_key'=>'API-Schlüssel','site'=>'Website','system'=>'System','admin'=>'Administrator','probeshop'=>'Probeshop','decoration_motif'=>'Veredelungsmotiv','invite'=>'Einladung','company_product'=>'Firmenprodukt'];
+    return ($labels[$type]??$type).($id?' #'.$id:'');
+}
+
+/** Zusatzangaben (Status, Entscheidung, Grund …) übersetzt; Rückgabe als Text. */
+function yw_history_details(array $meta): string {
+    $parts=[];
+    if(isset($meta['previous_status']))$parts[]='vorher: '.yw_history_status_label((string)$meta['previous_status']);
+    if(isset($meta['status'])&&is_string($meta['status']))$parts[]='→ '.yw_history_status_label($meta['status']);
+    if(isset($meta['decision'])&&is_string($meta['decision']))$parts[]='→ '.yw_history_status_label($meta['decision']).(!empty($meta['self_decision'])?' (eigene Bestellung)':'');
+    if(!empty($meta['tracking'])&&is_string($meta['tracking']))$parts[]='Sendung '.$meta['tracking'];
+    if(!empty($meta['reference'])&&is_string($meta['reference']))$parts[]='Referenz '.$meta['reference'];
+    if(!empty($meta['reason'])&&is_string($meta['reason']))$parts[]='Grund: '.mb_strimwidth($meta['reason'],0,140,'…');
+    return implode(' · ',$parts);
 }

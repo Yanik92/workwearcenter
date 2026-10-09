@@ -296,6 +296,17 @@
         toast(btn.dataset.demoNav + ': Diese Ansicht ist im echten Firmen-Shop vollständig verfügbar.', 2600);
       });
     });
+    /* 10.11 Probeshop: Textilfarbe hell/dunkel umschalten (nur Darstellung) */
+    var demoRoot = document.querySelector('.demo-probe');
+    document.querySelectorAll('[data-probe-tone]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!demoRoot) return;
+        var tone = btn.dataset.probeTone === 'light' ? 'light' : 'dark';
+        demoRoot.classList.remove('tone-light', 'tone-dark');
+        demoRoot.classList.add('tone-' + tone);
+        document.querySelectorAll('[data-probe-tone]').forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+      });
+    });
   }
 
 
