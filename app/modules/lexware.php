@@ -687,7 +687,7 @@ function yw_lexware_admin_company(array $company,array $settings): void {
         $batchOrders=array_values(array_filter($orders,fn($o)=>in_array((int)$o['id'],$ids,true)));
         $built=yw_lexware_build_lines($batchOrders,$items,['grouping'=>$grouping==='cost_center'?'cost_center':'none','employee_names'=>$settings['employee_names']==='1','unit'=>$settings['unit']]);
         $t=yw_invoice_totals($built['calc']);
-        echo '<div class="card" style="margin-top:12px"><h4>'.e($label!==''?$label:'Sammelrechnung '.yw_payroll_month_label($month)).' · '.count($ids).' Aufträge · '.count($built['lineItems']).' Positionen</h4>';
+        echo '<div class="card" style="margin-top:12px"><h4>'.e($label!==''?$label:'Sammelrechnung '.yw_payroll_month_label($month)).' · '.count($ids).' Auftr'.(count($ids)===1?'ag':'äge').' · '.count($built['lineItems']).' Positionen</h4>';
         echo '<div class="table-wrap"><table class="table"><thead><tr><th>Position</th><th>Menge</th><th>Netto je Einheit</th><th>USt.</th><th>Netto</th></tr></thead><tbody>';
         foreach($built['lineItems'] as $li){
             if($li['type']==='text'){echo '<tr><td colspan="5"><strong>'.e($li['name']).'</strong> <span class="muted">'.e($li['description']).'</span></td></tr>';continue;}
