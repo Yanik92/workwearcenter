@@ -142,6 +142,10 @@ function verify_csrf(): void {
         http_response_code(419); exit('Sicherheitsprüfung fehlgeschlagen. Bitte Seite neu laden.');
     }
 }
+/** GET-Links mit Wirkung (Vorschau, Sicherung): Aufruf von fremden Seiten aus abweisen (Browser senden Sec-Fetch-Site). */
+function yw_block_cross_site_get(): void {
+    if (strtolower((string)($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '')) === 'cross-site') { http_response_code(403); exit('Dieser Link funktioniert nur aus der Verwaltung heraus. Bitte die Seite direkt öffnen.'); }
+}
 function flash(string $type, string $message): void { $_SESSION['flash'] = [$type, $message]; }
 function take_flash(): ?array { $flash = $_SESSION['flash'] ?? null; unset($_SESSION['flash']); return $flash; }
 

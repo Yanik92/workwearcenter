@@ -151,6 +151,7 @@ function yw_admin_preview_start(int $companyId): never {
 }
 
 function yw_admin_preview_stop(): never {
+    yw_block_cross_site_get();
     // Zurück zur Kundenakte der angesehenen Firma statt zur Kundenliste.
     $companyId=(int)($_SESSION['admin_preview_company']??0);
     unset($_SESSION['admin_preview_company']);
@@ -191,7 +192,7 @@ function yw_backup_sql(): string {
 }
 
 function yw_backup_download(): never {
-    require_admin();
+    require_admin(); yw_block_cross_site_get();
     @set_time_limit(300);
     $sql=yw_backup_sql();
     $name='workwearcenter-sicherung-'.date('Y-m-d-Hi');
