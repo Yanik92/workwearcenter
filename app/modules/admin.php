@@ -700,6 +700,7 @@ function handle_admin_action(): never {
         }
 
         if ($action==='save_print_zones') { yw_save_print_zones_action(); }
+        if ($action==='auto_print_zones') { yw_auto_print_zones_action(); }
         if (str_starts_with($action,'api_key_')) { yw_admin_api_keys_action($action); }
         if (str_starts_with($action,'katalog_')) { yw_admin_katalog_action($action); }
         if ($action==='save_company_note') {
@@ -1198,7 +1199,7 @@ function render_admin_products(array $products): void {
 
     echo '<details class="card admin-toolbox"><summary>Produktimport und Export</summary><div class="admin-toolbox-body"><div class="title-row"><p class="muted">Neue Produkte per CSV anlegen oder anhand von Produkt-ID beziehungsweise SKU aktualisieren. Der Import läuft vollständig oder gar nicht.</p><div class="actions"><a class="btn" href="/admin/produkte.csv">Produktstamm exportieren</a><a class="btn" href="/admin/produkte-vorlage.csv">Leere Vorlage</a></div></div><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="import_products_csv"><label>Produkt-CSV<input type="file" name="products_csv" accept=".csv,text/csv" required></label><p class="muted">Am sichersten: Produktstamm exportieren, in Excel bearbeiten und wieder importieren. Produkt-ID bestehender Zeilen nicht verändern; neue Zeilen erhalten eine eindeutige SKU. Bilder und kundenspezifische Veredelungen bleiben unverändert.</p><button class="btn primary" type="submit">CSV prüfen und importieren</button></form></div></details>';
 
-    echo '<section class="card"><div class="title-row"><div><h2>Stammprodukt-Katalog</h2><p class="muted">Lege jedes Grundprodukt nur einmal an. Firmenlogos, individuelle Veredelung und abweichende Preise werden anschließend im jeweiligen Firmenshop hinterlegt.</p></div><button class="btn primary" type="button" data-open-details="new-product">Produkt hinzufügen</button></div>';
+    echo '<section class="card"><div class="title-row"><div><h2>Stammprodukt-Katalog</h2><p class="muted">Lege jedes Grundprodukt nur einmal an. Firmenlogos, individuelle Veredelung und abweichende Preise werden anschließend im jeweiligen Firmenshop hinterlegt.</p></div><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="auto_print_zones"><input type="hidden" name="return_tab" value="products"><input type="hidden" name="all" value="1"><button class="btn" type="submit" title="Erkennt Brust, Rücken, Nacken und Ärmel aus den Produktfotos. Von Hand angepasste Zonen bleiben.">Druckzonen automatisch erkennen</button></form><button class="btn primary" type="button" data-open-details="new-product">Produkt hinzufügen</button></div></div>';
 
     if(!$products){
         echo '<div class="empty">Noch keine Produkte angelegt.</div>';
@@ -1238,8 +1239,7 @@ function render_admin_products(array $products): void {
             echo '<div class="grid2"><label>Veredelungsart<select name="decoration_type"><option value="none" '.($decoration==='none'?'selected':'').'>Keine Veredelung</option><option value="print" '.($decoration==='print'?'selected':'').'>Bedruckt</option><option value="embroidery" '.($decoration==='embroidery'?'selected':'').'>Gestickt</option><option value="mixed" '.($decoration==='mixed'?'selected':'').'>Druck & Stick</option></select></label><label>Produktbild (vorne)<input type="file" name="image" accept="image/png,image/jpeg,image/webp"></label></div>';
             $viewBack=yw_local_image_path((string)($p['image_back_path']??''),['products']);$viewSleeve=yw_local_image_path((string)($p['image_sleeve_path']??''),['products']);
             echo '<div class="grid2 product-views"><label>Rückansicht '.($viewBack!==''?'<small>vorhanden</small>':'<small>optional</small>').'<input type="file" name="image_back" accept="image/png,image/jpeg,image/webp">'.($viewBack!==''?'<span class="check"><input type="checkbox" name="delete_image_back" value="1"> Rückansicht entfernen</span>':'').'</label><label>Ärmelansicht '.($viewSleeve!==''?'<small>vorhanden</small>':'<small>optional</small>').'<input type="file" name="image_sleeve" accept="image/png,image/jpeg,image/webp">'.($viewSleeve!==''?'<span class="check"><input type="checkbox" name="delete_image_sleeve" value="1"> Ärmelansicht entfernen</span>':'').'</label></div>';
-            $zoneCount=count(yw_product_zones($p),COUNT_RECURSIVE)-count(yw_product_zones($p));
-            echo '<p class="product-zones-link"><a class="btn small" href="/admin?tab=products&amp;zones='.(int)$p['id'].'">Druckzonen festlegen</a> <span class="muted">'.($zoneCount>0?$zoneCount.' Zonen eingerichtet':'Noch keine eigenen Zonen – es gelten Standardzonen').'</span></p>';
+            echo '<p class="product-zones-link"><a class="btn small" href="/admin?tab=products&amp;zones='.(int)$p['id'].'">Druckzonen ansehen</a> <span class="muted">'.e(yw_zone_status_text($p)).'</span></p>';
             echo '<label>Veredelungsbeschreibung<textarea name="decoration_details" maxlength="10000" rows="4">'.e((string)($p['decoration_details']??'')).'</textarea></label>';
             echo '<button class="btn small" type="submit">Änderungen speichern</button></form></div></details>';
             echo '</div>';

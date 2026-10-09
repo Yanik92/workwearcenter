@@ -26,6 +26,9 @@ try{
     $reminded=yw_send_reminders(3);
     $budgetMails=yw_send_budget_year_mails(500);
     yw_orders_cleanup();
+    require_once __DIR__.'/app/modules/shop.php';
+    $zones=yw_zone_auto_backfill(100); // Druckzonen neuer oder geänderter Produktfotos erkennen
+    fwrite(STDOUT,"Druckzonen automatisch erkannt: ".$zones."\n");
     fwrite(STDOUT,"Mails zum neuen Budgetjahr: ".$budgetMails."\n");
     $probeshops=yw_probeshop_cleanup(); // abgelaufene Probeshops samt Logo löschen (DSGVO)
     fwrite(STDOUT,"Abgelaufene Probeshops gelöscht: ".$probeshops."\n");
