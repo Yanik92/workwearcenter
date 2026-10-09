@@ -334,5 +334,10 @@ $bootSrc=(string)file_get_contents(dirname(__DIR__).'/app/bootstrap.php');
 test_ok(str_contains($bootSrc,"time()-(int)\$_SESSION['started_at']>43200"),'Sitzungen enden spätestens 12 Stunden nach der Anmeldung');
 $pwSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/password_reset.php');
 test_ok(str_contains($pwSrc,'$newAccount?10080:60') && str_contains($pwSrc,'max(1,min(10080,$minutes))'),'Einrichtungslinks neuer Konten 7 Tage, Passwort-vergessen-Links 60 Minuten gültig');
+// Härtung Dateien/Server: SVG mit eingebettetem XSLT, Fremd-Namensräume und externe CSS-Adressen
+$xslSvg=yw_sanitize_svg('<?xml-stylesheet type="text/xsl" href=""?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:h="http://www.w3.org/1999/xhtml" xsl:version="1.0" width="10" height="10"><xsl:element name="script">alert(1)</xsl:element><h:form action="https://example.org"/><rect width="10" height="10"/></svg>');
+test_ok(!str_contains($xslSvg,'xml-stylesheet')&&!str_contains($xslSvg,'xsl:element')&&!str_contains($xslSvg,'h:form')&&str_contains($xslSvg,'<rect'),'SVG-Logo: XSLT-Verarbeitungsanweisung und Fremd-Elemente (XSL, XHTML) werden entfernt');
+$cssSvg=yw_sanitize_svg('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><style>rect{fill:u\72l(https://example.org/x)}</style><rect fill="url(#g)" filter="url(https://example.org/f#a)"/></svg>');
+test_ok(!str_contains($cssSvg,'example.org')&&str_contains($cssSvg,'fill="url(#g)"'),'SVG-Logo: externe Adressen auch über CSS-Escapes und url() in Attributen werden entfernt, interne Verläufe bleiben');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

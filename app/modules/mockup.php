@@ -291,12 +291,18 @@ function yw_sanitize_svg(string $raw): string {
     $doc=new DOMDocument();
     $ok=$doc->loadXML($raw,LIBXML_NONET);
     libxml_clear_errors();libxml_use_internal_errors($prev);
-    if(!$ok||!$doc->documentElement||strtolower($doc->documentElement->localName)!=='svg')throw new RuntimeException('Die Datei ist kein gültiges SVG.');
+    $svgNs='http://www.w3.org/2000/svg';
+    if(!$ok||!$doc->documentElement||strtolower($doc->documentElement->localName)!=='svg'||!in_array($doc->documentElement->namespaceURI,[null,'',$svgNs],true))throw new RuntimeException('Die Datei ist kein gültiges SVG.');
     $banned=['script','foreignobject','iframe','object','embed','audio','video','animate','set','animatemotion','animatetransform','handler','listener'];
     $xpath=new DOMXPath($doc);
+    // Verarbeitungsanweisungen (z. B. xml-stylesheet mit type="text/xsl") entfernen: Ein XSLT im SVG selbst
+    // erzeugt sonst beim direkten Aufruf der Datei neue <script>-Elemente, an allen Prüfungen unten vorbei.
+    foreach(iterator_to_array($xpath->query('//processing-instruction()')) as $pi)$pi->parentNode?->removeChild($pi);
     $remove=[];
     foreach($xpath->query('//*') as $el){
         if(!$el instanceof DOMElement)continue;
+        // Nur SVG-Elemente behalten (XSLT-, XHTML- und Editor-Elemente wie inkscape:* fliegen raus)
+        if(!in_array($el->namespaceURI,[null,'',$svgNs],true)){$remove[]=$el;continue;}
         if(in_array(strtolower($el->localName),$banned,true)){$remove[]=$el;continue;}
         $dropAttrs=[];
         foreach(iterator_to_array($el->attributes) as $attr){
@@ -309,14 +315,15 @@ function yw_sanitize_svg(string $raw): string {
                 // nur Verweise innerhalb der Datei (#id) oder eingebettete Rasterbilder
                 if(!(str_starts_with($value,'#')||preg_match('#^data:image/(png|jpeg|webp);base64,#i',$value)))$dropAttrs[]=$attr;
             }
-            elseif($name==='style' && preg_match('/url\s*\(|expression|javascript:|@import/i',$value))$dropAttrs[]=$attr;
+            elseif($name==='style' && preg_match('/url\s*\(|image-set|expression|javascript:|@import|\\\\/i',$value))$dropAttrs[]=$attr;
+            elseif(preg_match('/url\s*\(\s*[\'"]?\s*(?!#)/i',$value))$dropAttrs[]=$attr; // fill="url(#verlauf)" ja, externe Adressen nein
         }
         foreach($dropAttrs as $a)$el->removeAttributeNode($a);
     }
     foreach($remove as $el)if($el->parentNode)$el->parentNode->removeChild($el);
     foreach($xpath->query('//*[local-name()="style"]') as $style){
         $css=(string)$style->textContent;
-        if(preg_match('/@import|url\s*\(|expression|javascript:/i',$css)&&$style->parentNode)$style->parentNode->removeChild($style);
+        if(preg_match('/@import|url\s*\(|image-set|expression|javascript:|\\\\/i',$css)&&$style->parentNode)$style->parentNode->removeChild($style);
     }
     $root=$doc->documentElement;
     // Breite/Höhe sicherstellen, sonst kann der Browser das Bild nicht vermessen
