@@ -400,5 +400,65 @@ function run_schema_updates(PDO $pdo): array {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     schema_mark_version($pdo,'10.8.0',$changes);
 
+    // ---- Version 10.11: Umtausch & Retouren, Anmeldelink, Freigabe per E-Mail, Jahreswechsel-Mail, Sammelbestellung ----
+    foreach([
+        'exchange_window_days'=>'SMALLINT UNSIGNED NOT NULL DEFAULT 30',   // 0 = Umtausch/Rückgabe im Shop aus
+        'budget_year_mail'=>'TINYINT(1) NOT NULL DEFAULT 1',
+        'budget_year_mail_period'=>'DATE NULL',                           // Merker: Budgetjahr, für das die Mail verschickt ist
+        'batch_mode'=>"VARCHAR(16) NOT NULL DEFAULT 'off'",                // off | monthly | biweekly
+        'batch_day'=>'TINYINT UNSIGNED NOT NULL DEFAULT 1',
+        'batch_anchor'=>'DATE NULL',
+    ] as $column=>$definition) schema_add_column($pdo,'companies',$column,$definition,$changes);
+    schema_add_column($pdo,'employee_accounts','budget_mail_period','DATE NULL',$changes);
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_exchange_requests (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        company_id INT UNSIGNED NOT NULL,
+        order_id INT UNSIGNED NOT NULL,
+        order_item_id INT UNSIGNED NOT NULL,
+        employee_account_id INT UNSIGNED NULL,
+        type VARCHAR(12) NOT NULL,
+        quantity INT UNSIGNED NOT NULL DEFAULT 1,
+        old_size VARCHAR(40) NOT NULL,
+        new_size VARCHAR(40) NULL,
+        reason VARCHAR(500) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'requested',
+        unit_company_cents INT NOT NULL DEFAULT 0,
+        budget_delta_cents INT NOT NULL DEFAULT 0,
+        decision_note VARCHAR(1000) NULL,
+        decided_by_account_id INT UNSIGNED NULL,
+        decided_at DATETIME NULL,
+        received_at DATETIME NULL,
+        completed_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_yw_exchange_company (company_id,status),
+        KEY idx_yw_exchange_order (order_id),
+        KEY idx_yw_exchange_status (status,created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_login_links (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        account_id INT UNSIGNED NOT NULL,
+        company_id INT UNSIGNED NOT NULL,
+        token_hash CHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_yw_login_link_token (token_hash),
+        KEY idx_yw_login_link_account (account_id,expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_decision_tokens (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        order_id INT UNSIGNED NOT NULL,
+        account_id INT UNSIGNED NOT NULL,
+        company_id INT UNSIGNED NOT NULL,
+        nonce_hash CHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_yw_decision_nonce (nonce_hash),
+        KEY idx_yw_decision_order (order_id,account_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    schema_mark_version($pdo,'10.11.0',$changes);
+
     return $changes;
 }
