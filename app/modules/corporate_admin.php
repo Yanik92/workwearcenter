@@ -297,12 +297,16 @@ function yw_system(): void {
     try{$adminsWithout2fa=(int)db()->query('SELECT COUNT(*) FROM admins WHERE active=1 AND totp_enabled=0')->fetchColumn();}catch(Throwable $e){}
     $imprintMissing=[];
     foreach(['imprint_vat_id'=>'USt-IdNr.','imprint_email'=>'E-Mail'] as $key=>$label)if(trim(current_site_setting($key,''))==='')$imprintMissing[]=$label;
+    $integrity=yw_file_integrity();
+    $outdated=$integrity?array_merge($integrity['stale'],$integrity['missing']):[];
+    $integrityHint=$integrity===null?'Dateiliste app/data/dateien.json fehlt – Paket vollständig hochladen':'Nicht aktuell oder fehlend: '.implode(', ',array_slice($outdated,0,10)).(count($outdated)>10?' … (+'.(count($outdated)-10).')':'').' – per FTP erneut hochladen, vorhandene Dateien immer überschreiben';
     $checks=[
         ['Interne Dateien gesperrt',$exposureOk===true,$exposureHint.' (Erneut prüfen: Systemstatus mit ?pruefen=1 aufrufen)'],
         ['Cronjob läuft',$cronOk,$cronLast===''?'cron.php ist noch nie gelaufen – beim Hoster alle 5 Minuten einrichten':'Letzter Lauf '.date('d.m.Y H:i',(int)strtotime($cronLast)).' – Cronjob beim Hoster prüfen'],
         ['Datensicherung aktuell',$age!==null&&$age<=7,'Sicherung herunterladen (älter als 7 Tage oder noch nie)'],
         ['Zwei-Faktor für alle Admins',$adminsWithout2fa===0,$adminsWithout2fa===null?'Datenbankschema aktualisieren':$adminsWithout2fa.' aktive Administrator(en) ohne Zwei-Faktor-Anmeldung'],
         ['Impressum vollständig',$imprintMissing===[],'Unter Website → Inhalte ergänzen: '.implode(', ',$imprintMissing)],
+        ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint],
         ['Datenbankschema '.app_version(),yw_schema_ready(),'Update-Assistent ausführen'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren'],
         ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren'],

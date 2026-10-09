@@ -347,3 +347,14 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - Die Übersetzungen sind sorgfältig erstellt, aber nicht von Muttersprachlern gegengelesen. Bitte vor dem Einsatz bei einer Firma von einer Person prüfen lassen, die die Sprache spricht (Texte stehen gesammelt in `app/lang/<sprache>.php`).
 - Website, Verwaltung und Exporte bleiben deutsch (siehe oben).
 
+
+## Nachtrag 10.12.1 – Lieferantenkatalog wieder richtig dargestellt
+
+**Ursache:** Auf dem Server war `assets/v9.css` nicht aktuell (beim FTP-Upload übersprungen oder alte Fassung). Darin stehen die Gestaltungsregeln des Lieferantenkatalogs; ohne sie stehen Suche, Kennzahlen, Trefferkarten und Farbauswahl ungestaltet untereinander.
+
+- Neue Prüfung im Systemstatus: **„Programmdateien vollständig hochgeladen“**. Vergleicht jede Programmdatei mit der Prüfsummenliste `app/data/dateien.json` aus dem Paket und nennt Dateien, die fehlen oder veraltet sind.
+- Sind Design-Dateien (`assets/`) veraltet, zeigt die Verwaltung oben auf jeder Seite einen roten Hinweis mit den betroffenen Dateien.
+- CSS- und JS-Dateien werden mit ihrer eigenen Prüfsumme statt der Versionsnummer geladen: Jede geänderte Datei holt sich der Browser sofort neu, auch ohne Strg+F5.
+- Für Releases: `php tools/dateiliste-erzeugen.php` erzeugt die Prüfsummenliste.
+
+**Beim Hochladen per FileZilla:** Bei der Frage „Zieldatei existiert bereits“ **„Überschreiben“** wählen und „Immer diese Aktion verwenden“ anhaken – nicht „Überschreiben, falls Quelle neuer“. Sonst bleiben ältere Dateien auf dem Server liegen.

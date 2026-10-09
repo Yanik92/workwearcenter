@@ -1,4 +1,4 @@
-WORKWEARCENTER (Yanik Textildruck) – VERSION 10.10.0
+WORKWEARCENTER (Yanik Textildruck) – VERSION 10.12.1
 ================================================
 
 Dieses Paket ist beides:
@@ -19,6 +19,9 @@ A) UPDATE EINER BESTEHENDEN INSTALLATION
 2. Inhalt des Ordners in das Stammverzeichnis hochladen, Programmdateien ersetzen.
    Versteckte Dateien mitnehmen: .htaccess, .user.ini, uploads/.htaccess
    config.php und den Ordner uploads NICHT überschreiben oder löschen.
+   FileZilla: bei „Zieldatei existiert bereits“ immer „Überschreiben“ wählen
+   (nicht „falls Quelle neuer“). Admin → Systemstatus → „Programmdateien
+   vollständig hochgeladen“ zeigt danach, ob jede Datei angekommen ist.
 3. Als Administrator anmelden → https://workwearcenter.de/update.php
    Sicherung bestätigen, Update einmal ausführen (legt die neuen Tabellen an).
    (Kommt das Update von einer Version vor 10.3: danach Admin → Inhalte →

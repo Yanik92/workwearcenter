@@ -401,7 +401,7 @@ function company_portal_style(array $company): string {
     [$primary,$accent]=yw_shop_colors($company);
     $vars='--cp-primary:'.$primary.';--cp-accent:'.$accent.';--cp-on-primary:'.yw_shop_on_color($primary).';--cp-on-accent:'.yw_shop_on_color($accent)
         .';--cp-primary-ink:'.yw_shop_ink($primary).';--cp-accent-ink:'.yw_shop_ink($accent).';--shop-primary:'.$primary.';--shop-accent:'.$accent;
-    return '<link rel="stylesheet" href="/assets/shop.css?v='.e(app_version()).'"><style>:root{'.e($vars).'}</style>';
+    return '<link rel="stylesheet" href="'.e(asset_url('assets/shop.css')).'"><style>:root{'.e($vars).'}</style>';
 }
 
 /** Kleine Strich-Icons wie im Mustershop. */
@@ -946,7 +946,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
 
     echo '</main>';
     company_portal_footer($company);
-    echo '<script src="/assets/shop.js?v='.e(app_version()).'" defer></script>';
+    echo '<script src="'.e(asset_url('assets/shop.js')).'" defer></script>';
     render_foot();
 }
 

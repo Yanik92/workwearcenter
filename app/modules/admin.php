@@ -134,6 +134,7 @@ function admin_page(): void {
     echo '<main class="admin-content">';
 
     echo admin_context_header($tab);
+    echo yw_asset_integrity_notice();
     render_flash();
 
     if($tab==='corporate') yw_admin_corporate();

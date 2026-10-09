@@ -446,6 +446,56 @@ function app_version(): string {
     return $version = ($value !== '' ? $value : 'unbekannt');
 }
 
+/**
+ * Adresse einer Datei aus assets/ mit Prüfsumme als Cache-Schlüssel.
+ * Ändert sich die Datei auf dem Server, lädt jeder Browser sie neu – unabhängig von der Versionsnummer.
+ */
+function asset_url(string $path): string {
+    static $cache=[];
+    if(isset($cache[$path]))return $cache[$path];
+    $file=dirname(__DIR__).'/'.$path;
+    $stamp=is_file($file)?substr(md5(filemtime($file).'-'.filesize($file)),0,10):app_version();
+    return $cache[$path]='/'.$path.'?v='.rawurlencode($stamp);
+}
+
+/** Prüfsumme wie in app/data/dateien.json: Zeilenenden vereinheitlicht (FTP im Textmodus ändert sie). */
+function yw_file_checksum(string $file): ?string {
+    $data=@file_get_contents($file);
+    return $data===false?null:sha1(str_replace("\r\n","\n",$data));
+}
+
+/**
+ * Vergleicht die Programmdateien auf dem Server mit der Liste aus dem Release (app/data/dateien.json).
+ * Findet Dateien, die beim FTP-Upload übersprungen wurden oder unvollständig angekommen sind.
+ * Rückgabe: null ohne Liste, sonst ['version'=>…, 'stale'=>[Pfade], 'missing'=>[Pfade]].
+ */
+function yw_file_integrity(?string $prefix=null): ?array {
+    static $cache=[];
+    $key=(string)$prefix;
+    if(array_key_exists($key,$cache))return $cache[$key];
+    $root=dirname(__DIR__);
+    $list=@json_decode((string)@file_get_contents($root.'/app/data/dateien.json'),true);
+    if(!is_array($list)||!is_array($list['files']??null))return $cache[$key]=null;
+    $stale=[];$missing=[];
+    foreach($list['files'] as $path=>$sum){
+        $path=(string)$path;
+        if($prefix!==null&&!str_starts_with($path,$prefix))continue;
+        if(str_contains($path,'..'))continue;
+        $actual=yw_file_checksum($root.'/'.$path);
+        if($actual===null)$missing[]=$path;
+        elseif(!hash_equals((string)$sum,$actual))$stale[]=$path;
+    }
+    return $cache[$key]=['version'=>(string)($list['version']??''),'stale'=>$stale,'missing'=>$missing];
+}
+
+/** Hinweis für Administratoren, wenn Design-Dateien (assets/) nicht zur installierten Version passen. */
+function yw_asset_integrity_notice(): string {
+    $r=yw_file_integrity('assets/');
+    if(!$r||(!$r['stale']&&!$r['missing']))return '';
+    $files=array_merge($r['stale'],$r['missing']);
+    return '<div class="flash error"><strong>Design-Dateien auf dem Server sind nicht aktuell.</strong> Deshalb sehen manche Seiten verschoben aus. Bitte diese Dateien aus dem Paket '.e($r['version']).' per FTP erneut hochladen und vorhandene Dateien dabei <em>immer überschreiben</em> (FileZilla fragt sonst ggf. „nur wenn neuer“): '.e(implode(', ',array_slice($files,0,8))).(count($files)>8?' …':'').'. Danach im Browser Strg+F5 drücken.</div>';
+}
+
 function yw_site_logo_path(): string {
     $fallback='assets/media/workwearcenter-logo.png';
     if(!function_exists('current_site_setting')) return $fallback;
@@ -499,7 +549,7 @@ function render_head(string $title, ?array $brand = null): void {
         $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
     }
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
-    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/v9.css?v='.e(app_version()).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="/assets/site.css?v='.e(app_version()).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
+    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
 }
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '">' . e($f[1]) . '</div>'; }
-function render_foot(): void { echo '<script src="/assets/app.js?v='.e(app_version()).'" defer></script></body></html>'; }
+function render_foot(): void { echo '<script src="'.e(asset_url('assets/app.js')).'" defer></script></body></html>'; }
