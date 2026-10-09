@@ -1,12 +1,12 @@
 {
-    "version": "10.12.2",
+    "version": "10.12.3",
     "files": {
         ".htaccess": "a4ede141cfabe5af16ee0a39e5e322b052dbf482",
         ".user.ini": "190d84bc1e7b9f5c2cb387323451528f229d81b4",
-        "VERSION": "db1059f8891032e5a487d0cd3bd0dd7859d75812",
+        "VERSION": "26041a1a800c6d9923913e12dca6c50c20b696a4",
         "app/bootstrap.php": "5a698e6bf832062fee43ccb55c7e9dcd41ddce1d",
         "app/data/katalog-daiber.json": "a62eafc988e715a637d81ee934fb46221b2ef5f5",
-        "app/functions.php": "595c86fa01bb27c99b98db67a520013c9189a634",
+        "app/functions.php": "b2e9499b34b7156033eb931cdfafedb69bb55787",
         "app/i18n.php": "e19564313e3af9738af2e7aea713115497e97bd7",
         "app/lang/de.php": "aeddc3e1d49e9c13d5fa0358b07245dec65129d0",
         "app/lang/en.php": "b08c5a68f9eba51a15daa7bdb62b485ac8991991",

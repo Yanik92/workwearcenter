@@ -365,3 +365,7 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - Dateinamen mit Leerzeichen, Klammern oder Umlauten wurden beim Hochladen stillschweigend verworfen. Sie werden jetzt übernommen und sicher umbenannt.
 - **Große Auswahl:** Viele Bilder auf einmal überschritten die Upload-Grenze des Servers, und es kam nur „Sicherheitsprüfung fehlgeschlagen“. Jetzt überträgt die Seite die Bilder automatisch in Paketen mit Fortschrittsanzeige. Ist ein Formular trotzdem zu groß, erscheint ein klarer Hinweis mit der Größe.
 - Nach dem Upload meldet die Seite, welche Produkte noch ohne Bild sind (mit dem erwarteten Dateinamen) und welche Dateien zu keinem Katalogartikel passen. Die Liste „Fehlende Dateien“ nannte bisher falsche Namen (z. B. `jn840-navy_navy.jpg`).
+
+## Nachtrag 10.12.3 – Kundenakte bleibt im Reiter
+- Nach dem Speichern in der Kundenakte (z. B. „Kollektion speichern“ unter „Kollektion & Design“) landete man auf der Übersicht der Firma, bei einem Fehler sogar in der Kundenliste. Jetzt bleibt die Seite im selben Reiter, auch wenn eine Meldung erscheint.
+- Umsetzung: Jedes Formular der Kundenakte merkt sich den Reiter (`return_to`). Übernommen wird nur ein Ziel innerhalb der Verwaltung und für dieselbe Firma.

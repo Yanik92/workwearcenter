@@ -8,7 +8,25 @@ function cfg(string $key): mixed { global $config; return $config[$key] ?? null;
 function e(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function path_only(): string { return '/' . ltrim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/'), '/'); }
 function is_post(): bool { return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'; }
-function redirect(string $url): never { header('Location: ' . $url, true, 303); exit; }
+function redirect(string $url): never { header('Location: ' . yw_admin_return_target($url), true, 303); exit; }
+/**
+ * Kundenakte: Nach dem Speichern zurück in denselben Reiter (z. B. „Kollektion & Design“) statt auf die
+ * Übersicht oder – bei einem Fehler – auf die Kundenliste. Die Formulare der Kundenakte tragen dafür
+ * return_to (siehe csrf_field()); übernommen wird nur ein Ziel derselben Firma innerhalb von /admin.
+ */
+function yw_admin_return_target(string $url): string {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || path_only() !== '/admin') return $url;
+    $back = (string)($_POST['return_to'] ?? '');
+    if (!preg_match('#^/admin\?tab=companies&company=(\d+)(?:&bereich=[a-z]+)?$#D', $back, $m)) return $url;
+    if (!str_starts_with($url, '/admin?tab=companies')) return $url;
+    $anchor = (string)(parse_url($url, PHP_URL_FRAGMENT) ?? '');
+    parse_str((string)(parse_url($url, PHP_URL_QUERY) ?? ''), $q);
+    $sameCompany = isset($q['company']) && (int)$q['company'] === (int)$m[1];
+    $isError = (($_SESSION['flash'][0] ?? '') === 'error') && !isset($q['company']);
+    if (!$sameCompany && !$isError) return $url;
+    if ($sameCompany && isset($q['bereich'])) return $url; // Ziel nennt den Reiter schon ausdrücklich
+    return $back . ($anchor !== '' ? '#' . $anchor : '');
+}
 function random_token(): string { return bin2hex(random_bytes(32)); }
 function yw_dummy_password_hash(): string {
     // Valid bcrypt cost-12 hash used only to equalise unknown-account logins.
@@ -76,7 +94,16 @@ function csrf(): string {
     if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(24));
     return $_SESSION['csrf'];
 }
-function csrf_field(): string { return '<input type="hidden" name="csrf" value="' . e(csrf()) . '">'; }
+function csrf_field(): string {
+    $field = '<input type="hidden" name="csrf" value="' . e(csrf()) . '">';
+    // In der Kundenakte merkt sich jedes Formular den aktuellen Reiter (siehe yw_admin_return_target()).
+    if (path_only() === '/admin' && ($_GET['tab'] ?? '') === 'companies' && (int)($_GET['company'] ?? 0) > 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+        $bereich = (string)($_GET['bereich'] ?? '');
+        $back = '/admin?tab=companies&company=' . (int)$_GET['company'] . (preg_match('/^[a-z]{1,30}$/D', $bereich) && $bereich !== 'uebersicht' ? '&bereich=' . $bereich : '');
+        $field .= '<input type="hidden" name="return_to" value="' . e($back) . '">';
+    }
+    return $field;
+}
 function verify_csrf(): void {
     if (empty($_SESSION['csrf']) || !is_string($_POST['csrf'] ?? null) || !hash_equals((string)$_SESSION['csrf'], $_POST['csrf'])) {
         // Ist der Upload größer als post_max_size, verwirft PHP das ganze Formular – dann ehrlich sagen, woran es liegt.
