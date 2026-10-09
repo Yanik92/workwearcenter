@@ -135,4 +135,28 @@ test_ok(!str_contains(strtolower($prefixed),'javascript')&&str_contains($prefixe
 test_ok(yw_katalog_product_sku('jn840','Navy Blue')==='JN840-NAVYBLUE','Katalog: SKU je Farbe');
 test_ok(yw_katalog_base_sku('JN840-NAVYBLUE','navy blue')==='JN840' && yw_katalog_base_sku('JN840','navy')==='JN840','Katalog: Grund-SKU wird erkannt (alt und neu)');
 
+// Firmenshop-Oberfläche (Paket design): Farbgruppen, Beschreibung, Kontraste
+$g=yw_shop_group_products([
+    ['id'=>1,'name'=>'Workwear Sweatshirt','sku'=>'JN840-NAVY','color'=>'Navy','brand'=>'J&N'],
+    ['id'=>2,'name'=>'T-Shirt','sku'=>'YW-1','color'=>'Navy','brand'=>'Yanik'],
+    ['id'=>3,'name'=>'Workwear Sweatshirt','sku'=>'JN840-BLACK','color'=>'Black','brand'=>'J&N'],
+    ['id'=>4,'name'=>'T-Shirt','sku'=>'YW-2','color'=>'Rot','brand'=>'Yanik','custom_name'=>''],
+    ['id'=>5,'name'=>'T-Shirt','sku'=>'YW-3','color'=>'navy','brand'=>'Yanik'],
+    ['id'=>6,'name'=>'T-Shirt','sku'=>'YW-4','color'=>'Weiß','brand'=>'Anders'],
+    ['id'=>7,'name'=>'Cap','sku'=>'','color'=>'','brand'=>''],
+    ['id'=>8,'name'=>'Cap','sku'=>'','color'=>'','brand'=>''],
+]);
+$ids=array_map(fn($x)=>array_map(fn($p)=>$p['id'],$x),$g);
+test_ok($ids===[[1,3],[2,4],[5],[6],[7],[8]],'Farbgruppen: Grund-SKU bzw. Name+Marke, gleiche Farbe/andere Marke/ohne Farbe bleiben getrennt');
+$parts=yw_shop_description_parts("Klassisches Sweatshirt\n\nStrapazierfähig\nInnenseite angeraut\n60°C waschbar, trocknergeeignet\n\nMaterial: Oberstoff (290 g/m²): 70% Baumwolle");
+test_ok($parts['intro']==='Klassisches Sweatshirt' && $parts['bullets']===['Strapazierfähig','Innenseite angeraut'] && $parts['care']===['60°C waschbar, trocknergeeignet'] && $parts['material']===['Oberstoff (290 g/m²): 70% Baumwolle'],'Beschreibung: Stichpunkte, Pflege und Material getrennt');
+test_ok(yw_shop_description_parts('Ein Satz, 60 °C waschbar.')['intro']==='Ein Satz, 60 °C waschbar.','einzeiliger Text bleibt Absatz');
+test_ok(yw_shop_on_color('#e0a526')==='#111827' && yw_shop_on_color('#0f3d3e')==='#ffffff','Schriftfarbe auf Firmenfarbe nach Kontrast');
+test_ok(yw_shop_contrast(yw_shop_ink('#ffd400'),'#ffffff')>=4.5 && yw_shop_ink('#123456')==='#123456','Akzentfarbe als Text erreicht 4,5:1');
+test_ok(yw_shop_initials('Krämer Haustechnik GmbH & Co. KG')==='KH' && yw_shop_initials('nordbau')==='N','Initialen-Platzhalter');
+$pb=['net'=>1000,'vat'=>19.0,'gross'=>1190,'employee'=>238,'employer'=>952,'employee_percent'=>20.0];
+test_ok(str_contains(yw_shop_price_html([$pb]),'Dein Anteil') && str_contains(yw_shop_price_html([$pb]),'2,38'),'Karte mit Eigenanteil zeigt nur den Anteil');
+$pb['employee_percent']=0.0;$pb['employee']=0;
+test_ok(str_contains(yw_shop_price_html([$pb,['gross'=>990]+$pb]),'ab 9,90') && str_contains(yw_shop_price_html([$pb]),'übernimmt deine Firma'),'Karte bei 100 % Firma: Hinweis und „ab“-Preis');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

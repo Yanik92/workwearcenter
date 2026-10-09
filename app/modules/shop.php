@@ -1127,7 +1127,7 @@ function company_portal_products(array $company,array $account): void {
         .'<button class="shop-submit" type="submit" disabled>'.($approval?'Zur Freigabe senden':'Bestellung absenden').'</button>'
         .'<p class="sp-rules">'.($approval?'Deine verantwortliche Person gibt die Bestellung frei. Bis dahin ist dein Budget reserviert.':'Die Bestellung wird direkt übernommen.').'</p></div>';
     echo '</section>';
-    echo '<div class="shop-mobile-cart" data-mobile-cart aria-hidden="true"><div><strong><span data-selection-count>0</span> Artikel</strong><small>Dein Anteil: <span data-summary-employee>0,00 €</span></small></div><button type="button" data-scroll-checkout tabindex="-1">Zur Auswahl</button></div>';
+    echo '<div class="shop-mobile-cart" data-mobile-cart aria-hidden="true"><div><strong><span data-selection-count>0</span> Artikel</strong><small>'.(company_employee_share_percent($company)>0||(string)($company['shipping_payer']??'company')==='employee'?'Dein Anteil: <span data-summary-employee>0,00 €</span>':'Übernimmt deine Firma · <span data-summary-total>0,00 €</span>').'</small></div><button type="button" data-scroll-checkout tabindex="-1">Zur Auswahl</button></div>';
     echo '<div class="sp-toast" data-shop-toast role="status" aria-live="polite"></div>';
     echo '</form>';
 }

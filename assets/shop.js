@@ -285,6 +285,10 @@
       update();
       var size = document.getElementById(input.dataset.sizeTarget || '');
       var msg = input.value + '× ' + (input.dataset.lineName || 'Artikel') + (size ? ' (Größe ' + size.value + ')' : '') + ' ist in deiner Auswahl.';
+      // Karte zeigt danach die zuletzt gewählte Farbe
+      var card = document.querySelector('.sp-card[data-group="' + dialog.id + '"] .sp-card-visual .mockup-view');
+      var src = dialog.querySelector('[data-variant-visual="' + id + '"] .mockup-view');
+      if (card && src) { var copy = src.cloneNode(true); copy.classList.add('active'); card.parentNode.replaceChild(copy, card); }
       closeDetail(dialog);
       toast(msg);
     });
