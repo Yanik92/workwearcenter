@@ -225,6 +225,13 @@ return [
     'pager.page' => 'Pagina {page} din {pages}',
     'pager.orders_aria' => 'Paginile istoricului de comenzi',
     'pager.company_aria' => 'Paginile comenzilor firmei',
+    'pager.prev' => 'Înapoi',
+    'pager.next' => 'Înainte',
+    'pager.people_aria' => 'Paginile listei de persoane',
+    'people.search' => 'Caută o persoană',
+    'people.search_placeholder' => 'Nume, e-mail, departament, centru de cost, locație sau număr de personal',
+    'people.search_button' => 'Caută',
+    'people.search_result' => 'Persoane găsite: {count}',
 
     'approvals.intro' => 'Verifică, aprobă sau respinge comenzile firmei tale.',
     'approvals.pending_alert' => ['{count} aprobare așteaptă decizia ta.', '{count} aprobări așteaptă decizia ta.', '{count} de aprobări așteaptă decizia ta.'],

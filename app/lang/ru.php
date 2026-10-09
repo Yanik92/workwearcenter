@@ -225,6 +225,13 @@ return [
     'pager.page' => 'Страница {page} из {pages}',
     'pager.orders_aria' => 'Страницы истории заказов',
     'pager.company_aria' => 'Страницы заказов компании',
+    'pager.prev' => 'Назад',
+    'pager.next' => 'Далее',
+    'pager.people_aria' => 'Страницы списка сотрудников',
+    'people.search' => 'Найти сотрудника',
+    'people.search_placeholder' => 'Имя, e-mail, отдел, центр затрат, площадка или табельный номер',
+    'people.search_button' => 'Найти',
+    'people.search_result' => 'Найдено сотрудников: {count}',
 
     'approvals.intro' => 'Проверяй, согласовывай или отклоняй заказы своей компании.',
     'approvals.pending_alert' => ['{count} согласование ждёт твоего решения.', '{count} согласования ждут твоего решения.', '{count} согласований ждут твоего решения.'],

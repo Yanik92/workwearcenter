@@ -49,7 +49,7 @@ function yw_old_input_script(): string {
 function yw_admin_return_target(string $url): string {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || path_only() !== '/admin') return $url;
     $back = (string)($_POST['return_to'] ?? '');
-    if (!preg_match('#^/admin\?tab=companies&company=(\d+)(?:&bereich=[a-z]+)?$#D', $back, $m)) return $url;
+    if (!preg_match('#^/admin\?tab=companies&company=(\d+)(?:&bereich=[a-z]+)?(?:&seite=\d{1,5})?$#D', $back, $m)) return $url;
     if (!str_starts_with($url, '/admin?tab=companies')) return $url;
     $anchor = (string)(parse_url($url, PHP_URL_FRAGMENT) ?? '');
     parse_str((string)(parse_url($url, PHP_URL_QUERY) ?? ''), $q);
@@ -135,7 +135,7 @@ function csrf_field(): string {
     // In der Kundenakte merkt sich jedes Formular den aktuellen Reiter (siehe yw_admin_return_target()).
     if (path_only() === '/admin' && ($_GET['tab'] ?? '') === 'companies' && (int)($_GET['company'] ?? 0) > 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
         $bereich = (string)($_GET['bereich'] ?? '');
-        $back = '/admin?tab=companies&company=' . (int)$_GET['company'] . (preg_match('/^[a-z]{1,30}$/D', $bereich) && $bereich !== 'uebersicht' ? '&bereich=' . $bereich : '');
+        $back = '/admin?tab=companies&company=' . (int)$_GET['company'] . (preg_match('/^[a-z]{1,30}$/D', $bereich) && $bereich !== 'uebersicht' ? '&bereich=' . $bereich : '') . ((int)($_GET['seite'] ?? 0) > 1 && $bereich !== '' ? '&seite=' . min(99999, (int)$_GET['seite']) : '');
         $field .= '<input type="hidden" name="return_to" value="' . e($back) . '">';
     }
     return $field;

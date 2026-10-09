@@ -233,11 +233,49 @@ function yw_customer_report_card(array $company): void {
     echo '</tbody></table></div><p class="muted">'.e(t('report.note')).'</p></section>';
 }
 
+/**
+ * Großkunden: Personenliste seitenweise (?seite=) mit Suche (?suche=) statt aller Konten auf einer Seite.
+ * Anonymisierte Konten erscheinen nicht. $orderBy ist fester Code, nie Nutzereingabe.
+ */
+function yw_people_list(int $companyId,string $orderBy,int $perPage=50): array {
+    $search=trim(mb_substr(is_string($_GET['suche']??null)?$_GET['suche']:'',0,80));
+    $where='company_id=? AND anonymized_at IS NULL';$params=[$companyId];
+    if($search!==''){$like='%'.addcslashes($search,'%_\\').'%';$where.=' AND (name LIKE ? OR email LIKE ? OR department LIKE ? OR cost_center LIKE ? OR location LIKE ? OR employee_number LIKE ?)';array_push($params,$like,$like,$like,$like,$like,$like);}
+    $q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE $where");$q->execute($params);$total=(int)$q->fetchColumn();
+    $pages=max(1,(int)ceil($total/$perPage));$page=min(max(1,(int)($_GET['seite']??1)),$pages);
+    $q=db()->prepare("SELECT * FROM employee_accounts WHERE $where ORDER BY $orderBy LIMIT $perPage OFFSET ".(($page-1)*$perPage));$q->execute($params);
+    return ['rows'=>$q->fetchAll(),'total'=>$total,'page'=>$page,'pages'=>$pages,'search'=>$search];
+}
+
+/** Suchfeld und Blättern zur Personenliste; $path ohne Query, $keep = weitere GET-Parameter, $texts = [Label, Platzhalter, Button, Zurück, Weiter, Seite x von y, Treffer, aria]. */
+function yw_people_list_nav(array $list,string $path,array $keep,array $texts,bool $withSearch=true): string {
+    $url=fn(int $page): string => $path.'?'.http_build_query($keep+($list['search']!==''?['suche'=>$list['search']]:[])+($page>1?['seite'=>$page]:[]));
+    $html='';
+    if($withSearch){
+        $html.='<form method="get" action="'.e($path).'" class="inline-form people-search" role="search" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">';
+        foreach($keep as $k=>$v)$html.='<input type="hidden" name="'.e($k).'" value="'.e($v).'">';
+        $html.='<label>'.e($texts[0]).' <input type="search" name="suche" maxlength="80" value="'.e($list['search']).'" placeholder="'.e($texts[1]).'"></label> <button class="btn small" type="submit">'.e($texts[2]).'</button>'.($list['search']!==''?' <span class="muted">'.e($texts[6]).'</span>':'').'</form>';
+    }
+    if($list['pages']>1){
+        $html.='<nav class="cp-action-row" aria-label="'.e($texts[7]).'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0">';
+        if($list['page']>1)$html.='<a class="btn small" href="'.e($url($list['page']-1)).'">← '.e($texts[3]).'</a>';
+        $html.='<span>'.e($texts[5]).'</span>';
+        if($list['page']<$list['pages'])$html.='<a class="btn small" href="'.e($url($list['page']+1)).'">'.e($texts[4]).' →</a>';
+        $html.='</nav>';
+    }
+    return $html;
+}
+
+function yw_people_list_texts_shop(array $list): array {
+    return [t('people.search'),t('people.search_placeholder'),t('people.search_button'),t('pager.prev'),t('pager.next'),t('pager.page',['page'=>$list['page'],'pages'=>$list['pages']]),t('people.search_result',['count'=>$list['total']]),t('pager.people_aria')];
+}
+
 function yw_customer_people_page(array $company,array $account): void {
     $profiles=yw_equipment_profile_options((int)$company['id']);
-    $q=db()->prepare('SELECT * FROM employee_accounts WHERE company_id=? ORDER BY active DESC,registration_status,name');$q->execute([$company['id']]);$people=$q->fetchAll();
+    $list=yw_people_list((int)$company['id'],"registration_status='pending' DESC,active DESC,registration_status,name,id");$people=$list['rows'];
     // Aktiv = freigegeben und nicht anonymisiert (offene Registrierungen haben active=1).
-    $active=count(array_filter($people,fn($p)=>(int)$p['active']===1 && ($p['registration_status']??'approved')==='approved' && empty($p['anonymized_at'])));$pending=count(array_filter($people,fn($p)=>$p['registration_status']==='pending'));
+    $q=db()->prepare("SELECT COALESCE(SUM(active=1 AND registration_status='approved' AND anonymized_at IS NULL),0) active,COALESCE(SUM(registration_status='pending'),0) pending FROM employee_accounts WHERE company_id=?");$q->execute([$company['id']]);$counts=$q->fetch();
+    $active=(int)$counts['active'];$pending=(int)$counts['pending'];
     $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$q->execute([$company['id']]);$openOrders=(int)$q->fetchColumn();
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$periodStart,$periodEnd]=yw_report_period($company,$previous);
@@ -253,6 +291,8 @@ function yw_customer_people_page(array $company,array $account): void {
     echo '<section class="cp-card"><h2>'.e(t('people.add_title')).'</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_add"><div class="grid2"><label>'.e(t('common.name')).'<input name="name" maxlength="160" required></label><label>'.e(t('common.email')).'<input type="email" name="email" maxlength="190" required></label>'.$fields().yw_equipment_profile_select($profiles,null).'</div><button class="btn primary">'.e(t('people.add_button')).'</button></form></section>';
     echo '<section class="cp-card"><h2>'.e(t('people.csv_title')).'</h2><p>'.e(t('people.csv_text')).'</p><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_import"><label>'.e(t('people.csv_file')).'<input type="file" name="employees_csv" accept=".csv,text/csv" required></label><button class="btn">'.e(t('people.csv_import')).'</button></form><p><a href="/'.e($company['slug']).'/mitarbeiter.csv">'.e(t('people.csv_export')).'</a></p></section>';
     $statusLabels=['pending'=>t('people.status_pending'),'approved'=>t('status.approved'),'rejected'=>t('status.rejected')];
+    $nav=fn(bool $withSearch): string => yw_people_list_nav($list,'/'.$company['slug'].'/mitarbeiter',$previous?['jahr'=>'vorjahr']:[],yw_people_list_texts_shop($list),$withSearch);
+    echo '<section class="cp-card" id="personen">'.$nav(true).'</section>';
     foreach($people as $person){
         if(!empty($person['anonymized_at']))continue; // anonymisierte Konten nicht mehr anzeigen
         $status=(string)($person['registration_status']??'approved');
@@ -265,4 +305,5 @@ function yw_customer_people_page(array $company,array $account): void {
             .'<label>'.e(t('people.role')).'<select name="role"><option value="employee">'.e(t('people.role_employee')).'</option><option value="manager" '.($person['role']==='manager'?'selected':'').'>'.e(t('people.role_manager')).'</option></select></label><label>'.e(t('people.status')).'<select name="registration_status"><option value="pending" '.($status==='pending'?'selected':'').'>'.e(t('people.status_waiting')).'</option><option value="approved" '.($status==='approved'?'selected':'').'>'.e(t('status.approved')).'</option><option value="rejected" '.($status==='rejected'?'selected':'').'>'.e(t('status.rejected')).'</option></select></label></div><label class="check"><input type="checkbox" name="active" value="1" '.((int)$person['active']?'checked':'').'><span>'.e(t('people.active')).'</span></label><button class="btn">'.e(t('people.save')).'</button> <button class="btn" name="action" value="customer_employee_link">'.e(t('people.send_link')).'</button></form>'
             .((int)$person['id']!==(int)$account['id']?'<form method="post" class="space-top" data-confirm="'.e(t('people.anonymize_confirm',['name'=>$person['name']])).'">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_anonymize"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><button class="btn small danger">'.e(t('people.anonymize')).'</button> <small class="muted">'.e(t('people.anonymize_hint')).'</small></form>':'').'</details>';
     }
+    if($list['pages']>1)echo $nav(false);
 }

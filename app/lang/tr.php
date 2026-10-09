@@ -225,6 +225,13 @@ return [
     'pager.page' => 'Sayfa {page} / {pages}',
     'pager.orders_aria' => 'Sipariş geçmişi sayfaları',
     'pager.company_aria' => 'Firma siparişleri sayfaları',
+    'pager.prev' => 'Geri',
+    'pager.next' => 'İleri',
+    'pager.people_aria' => 'Kişi listesi sayfaları',
+    'people.search' => 'Kişi ara',
+    'people.search_placeholder' => 'Ad, e-posta, departman, masraf yeri, lokasyon veya personel numarası',
+    'people.search_button' => 'Ara',
+    'people.search_result' => 'Bulunan kişiler: {count}',
 
     'approvals.intro' => 'Firmanın siparişlerini incele, onayla veya reddet.',
     'approvals.pending_alert' => ['{count} onay kararını bekliyor.', '{count} onay kararını bekliyor.'],

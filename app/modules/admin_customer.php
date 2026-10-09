@@ -60,16 +60,16 @@ function yw_customer_section_design(array $c): void {
 }
 
 function yw_customer_section_people(array $c): void {
-        $stmtAccounts=db()->prepare('SELECT * FROM employee_accounts WHERE company_id=? ORDER BY role DESC,name ASC');
-        $stmtAccounts->execute([(int)$c['id']]);
-        $companyAccounts=array_values(array_filter($stmtAccounts->fetchAll(),fn($a)=>empty($a['anonymized_at'])));
+        // Großkunden: 50 je Seite mit Suche statt aller Konten (1.500 Formulare = 3 MB HTML).
+        $list=yw_people_list((int)$c['id'],"registration_status='pending' DESC,role DESC,name ASC,id");
+        $companyAccounts=$list['rows'];
         $equipmentProfiles=yw_equipment_profile_options((int)$c['id']);
-
-        $hasManager=(bool)array_filter($companyAccounts,fn($a)=>$a['role']==='manager'&&(int)$a['active']===1&&$a['registration_status']==='approved');
-        echo '<section class="card"><h2>Mitarbeiter & Rollen <span class="muted">('.count($companyAccounts).')</span></h2><div class="card-body">';
+        $nav=fn(bool $withSearch): string => yw_people_list_nav($list,'/admin',['tab'=>'companies','company'=>(int)$c['id'],'bereich'=>'mitarbeiter'],['Person suchen','Name, E-Mail, Abteilung, Kostenstelle, Standort oder Personalnummer','Suchen','Zurück','Weiter','Seite '.$list['page'].' von '.$list['pages'],$list['total'].' Treffer','Seiten der Personenliste'],$withSearch);
+        echo '<section class="card"><h2>Mitarbeiter & Rollen <span class="muted">('.$list['total'].')</span></h2><div class="card-body">';
         echo '<form method="post" class="admin-add-person">'.csrf_field().'<input type="hidden" name="action" value="admin_add_manager"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><strong>Person direkt anlegen</strong><p class="muted">Die Person erhält per E-Mail einen Link, mit dem sie ihr Passwort selbst festlegt. Du siehst oder vergibst kein Passwort.</p><div class="grid3"><label>Name<input name="name" maxlength="160" required></label><label>E-Mail<input type="email" name="email" maxlength="190" required></label><label>Rolle<select name="role"><option value="manager">Verantwortlicher</option><option value="employee">Mitarbeiter</option></select></label></div><button class="btn small primary" type="submit">Anlegen und Einladung senden</button></form>';
+        if($list['total']>0||$list['search']!=='')echo $nav(true);
         if(!$companyAccounts){
-            echo '<div class="empty">Noch keine registrierten Mitarbeiter.</div>';
+            echo '<div class="empty">'.($list['search']!==''?'Keine Person gefunden.':'Noch keine registrierten Mitarbeiter.').'</div>';
         }else{
             foreach($companyAccounts as $account){
                 if(!empty($account['anonymized_at']))continue;
@@ -96,6 +96,7 @@ function yw_customer_section_people(array $c): void {
                     echo '<div class="employee-quick-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$account['id'].'"><input type="hidden" name="return_company" value="'.(int)$c['id'].'"><input type="hidden" name="decision" value="rejected"><button class="btn small" type="submit">Registrierung ablehnen</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$account['id'].'"><input type="hidden" name="return_company" value="'.(int)$c['id'].'"><input type="hidden" name="decision" value="approved"><button class="btn small primary" type="submit">Mitarbeiter jetzt freigeben</button></form></div>';
                 }
             }
+            if($list['pages']>1)echo $nav(false);
         }
         echo '<p class="muted" style="margin-top:14px">Hinweis: Ein Verantwortlicher registriert sich zunächst ganz normal im Shop. Danach weist du ihm hier die Rolle „Verantwortlicher“ zu.</p>';
         echo '</div></section>';

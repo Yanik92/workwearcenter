@@ -242,6 +242,13 @@ return [
     'pager.page' => 'Seite {page} von {pages}',
     'pager.orders_aria' => 'Seiten der Bestellhistorie',
     'pager.company_aria' => 'Seiten der Firmenbestellungen',
+    'pager.prev' => 'Zurück',
+    'pager.next' => 'Weiter',
+    'pager.people_aria' => 'Seiten der Personenliste',
+    'people.search' => 'Person suchen',
+    'people.search_placeholder' => 'Name, E-Mail, Abteilung, Kostenstelle, Standort oder Personalnummer',
+    'people.search_button' => 'Suchen',
+    'people.search_result' => 'Gefundene Personen: {count}',
 
     // Freigaben
     'approvals.intro' => 'Bestellungen deines Unternehmens prüfen, freigeben oder ablehnen.',

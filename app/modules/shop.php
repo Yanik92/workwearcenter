@@ -8,7 +8,8 @@ function render_company_product_customization_form(array $company,array $product
     $methodOptions=decoration_method_options();
     // Inaktive, bereits verknüpfte Motive bleiben auswählbar, damit eine
     // andere Produktänderung die historische Zuordnung nicht still entfernt.
-    $motifs=yw_company_decoration_motifs((int)$company['id'],true);
+    static $motifCache=[]; // Kollektion mit 300 Produkten: Motive einmal je Firma statt je Produkt laden
+    $motifs=$motifCache[(int)$company['id']]??=yw_company_decoration_motifs((int)$company['id'],true);
 
     $front=company_product_front_image($product);
     $customFront=yw_local_image_path((string)($product['preview_front_path']??''),['company-products']);

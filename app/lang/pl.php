@@ -225,6 +225,13 @@ return [
     'pager.page' => 'Strona {page} z {pages}',
     'pager.orders_aria' => 'Strony historii zamówień',
     'pager.company_aria' => 'Strony zamówień firmy',
+    'pager.prev' => 'Wstecz',
+    'pager.next' => 'Dalej',
+    'pager.people_aria' => 'Strony listy osób',
+    'people.search' => 'Szukaj osoby',
+    'people.search_placeholder' => 'Imię i nazwisko, e-mail, dział, centrum kosztów, lokalizacja lub numer pracownika',
+    'people.search_button' => 'Szukaj',
+    'people.search_result' => 'Znalezione osoby: {count}',
 
     'approvals.intro' => 'Sprawdzaj, zatwierdzaj lub odrzucaj zamówienia swojej firmy.',
     'approvals.pending_alert' => ['{count} zatwierdzenie czeka na twoją decyzję.', '{count} zatwierdzenia czekają na twoją decyzję.', '{count} zatwierdzeń czeka na twoją decyzję.'],

@@ -225,6 +225,13 @@ return [
     'pager.page' => 'Page {page} of {pages}',
     'pager.orders_aria' => 'Pages of your order history',
     'pager.company_aria' => 'Pages of company orders',
+    'pager.prev' => 'Back',
+    'pager.next' => 'Next',
+    'pager.people_aria' => 'Pages of the people list',
+    'people.search' => 'Find a person',
+    'people.search_placeholder' => 'Name, email, department, cost centre, location or employee number',
+    'people.search_button' => 'Search',
+    'people.search_result' => 'People found: {count}',
 
     'approvals.intro' => 'Review, approve or reject your company\'s orders.',
     'approvals.pending_alert' => ['{count} pending approval is waiting for your decision.', '{count} pending approvals are waiting for your decision.'],
