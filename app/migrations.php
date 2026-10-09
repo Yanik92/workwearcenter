@@ -513,6 +513,14 @@ function run_schema_updates(PDO $pdo): array {
         KEY idx_yw_lexware_doc (document_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     schema_mark_version($pdo,'10.11.0',$changes);
+    // ---- Version 10.12: Mehrsprachiger Firmenshop ----
+    // NULL = noch keine Wahl (Sprache aus Cookie/Browser, Mails auf Deutsch).
+    schema_add_column($pdo,'employee_accounts','language','VARCHAR(5) NULL',$changes);
+    // NULL = alle Sprachen anbieten; sonst kommagetrennte Liste, Deutsch ist immer dabei.
+    schema_add_column($pdo,'companies','shop_languages','VARCHAR(40) NULL',$changes);
+    // Sprache des Mailrahmens (Gruß, Schaltflächen); Inhalt wird beim Einreihen übersetzt.
+    schema_add_column($pdo,'yw_mail_queue','language','VARCHAR(5) NULL',$changes);
+    schema_mark_version($pdo,'10.12.0',$changes);
 
     return $changes;
 }

@@ -31,9 +31,9 @@ function yw_locked_company(int $id): array {
 function yw_schema_ready(): bool {
     static $ready=false;
     if($ready)return true; // pro Anfrage nur einmal prüfen
-    $current='Versionsmarke 10.11.0';
+    $current='Versionsmarke 10.12.0';
     try {
-        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.11.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.11.0 fehlt – bitte update.php ausführen';return false;}
+        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.12.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.12.0 fehlt – bitte update.php ausführen';return false;}
         foreach([
             'SELECT tracking_number,tracking_carrier,tracking_url FROM orders LIMIT 0',
             'SELECT image_back_path,image_sleeve_path,print_zones_json FROM products LIMIT 0',
@@ -72,6 +72,10 @@ function yw_schema_ready(): bool {
             'SELECT lexware_contact_id,lexware_customer_number FROM companies LIMIT 0',
             'SELECT id,dedupe_key,status,lexware_id FROM yw_lexware_documents LIMIT 0',
             'SELECT order_id,document_id FROM yw_lexware_document_orders LIMIT 0',
+            // 10.12: Mehrsprachiger Firmenshop
+            'SELECT language FROM employee_accounts LIMIT 0',
+            'SELECT shop_languages FROM companies LIMIT 0',
+            'SELECT language FROM yw_mail_queue LIMIT 0',
         ] as $current) db()->query($current);
         return $ready=true;
     }
