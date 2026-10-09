@@ -43,16 +43,15 @@ function yw_password_forgot_page(string $slug): void {
                 }
             }
         }
-        simple_message('E-Mail wird geprüft','Falls ein aktiver Zugang existiert, wurde ein Link zum Zurücksetzen versendet.'); return;
+        yw_shop_auth_message($company,$slug,'E-Mail wird geprüft','Falls ein aktiver Zugang existiert, wurde ein Link zum Zurücksetzen versendet.',yw_password_page_intro()); return;
     }
-    render_head('Passwort vergessen – '.$company['shop_name'],$company);
-    echo company_shop_style($company).'<style>body{background:#f4f6f9}.login-shell{background:#10263a}.login-card{overflow:hidden}.reset-shop-logo{min-height:82px;display:flex;align-items:center;justify-content:center;padding:20px;background:#f8fafc;border-bottom:1px solid #e7ebf0}.reset-shop-logo img{display:block;max-width:260px;max-height:72px;object-fit:contain}.reset-shop-logo strong{color:#112a40;font-size:1.4rem}.login-body>p:last-child{margin:22px 0 0;padding-top:18px;border-top:1px solid #e7ebf0}</style>';
-    echo '<main class="login-shell"><section class="login-card"><div class="login-accent"></div><div class="reset-shop-logo">';
-    $companyLogo=yw_company_logo_path($company);
-    if($companyLogo!=='') echo '<img src="/'.e($companyLogo).'" alt="'.e($company['legal_name']).'">'; else echo '<strong>'.e($company['legal_name']).'</strong>';
-    echo '</div><div class="login-body"><h1>Passwort vergessen</h1><p>Gib die E-Mail-Adresse deines persönlichen Firmenkontos ein.</p><form method="post" class="form-stack">'.csrf_field().'<div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><label>E-Mail<input type="email" name="email" autocomplete="email" required></label><button class="btn primary">Link anfordern</button></form><p><a href="/'.e($slug).'/login">Zurück zum Login</a></p></div></section></main>';
-    company_shop_footer($company);
-    render_foot();
+    $card='<h2>Passwort vergessen</h2><p>Gib die E-Mail-Adresse deines persönlichen Firmenkontos ein.</p><form method="post" class="form-stack">'.csrf_field().'<div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><label>E-Mail<input type="email" name="email" autocomplete="email" required></label><button class="cp-btn-primary" type="submit">Link anfordern</button></form><div class="cp-login-help"><a href="/'.e($slug).'/login">Zurück zum Login</a></div>';
+    yw_shop_auth_page($company,'Passwort vergessen – '.$company['shop_name'],yw_password_page_intro(),$card);
+}
+
+/** Linke Spalte der Passwort-Seiten im Firmenshop. */
+function yw_password_page_intro(): array {
+    return ['Mitarbeiter-Shop','Neues Passwort in zwei Minuten.','Wir schicken dir einen Link per E-Mail. Damit legst du innerhalb von 60 Minuten ein neues Passwort fest.'];
 }
 
 function yw_password_reset_page(string $slug,string $token): void {
@@ -75,14 +74,11 @@ function yw_password_reset_page(string $slug,string $token): void {
             db()->prepare('UPDATE yw_password_resets SET used_at=NOW() WHERE account_id=? AND used_at IS NULL')->execute([$accountId]);
             db()->commit();
             audit_log('employee.password_reset_completed','employee',$accountId,['company_id'=>(int)$row['company_id']]);
-            simple_message('Passwort gespeichert','Du kannst dich jetzt mit deinem neuen Passwort anmelden.'); return;
+            yw_shop_auth_message($row,$slug,'Passwort gespeichert','Du kannst dich jetzt mit deinem neuen Passwort anmelden.',yw_password_page_intro()); return;
         }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();$error=$e instanceof DomainException?$e->getMessage():'Passwort konnte nicht gespeichert werden.';}
     }
-    render_head('Neues Passwort',$row);
-    echo company_shop_style($row).'<style>body{background:#f4f6f9}.login-shell{background:#10263a}.login-card{overflow:hidden}.reset-shop-logo{min-height:82px;display:flex;align-items:center;justify-content:center;padding:20px;background:#f8fafc;border-bottom:1px solid #e7ebf0}.reset-shop-logo img{display:block;max-width:260px;max-height:72px;object-fit:contain}.reset-shop-logo strong{color:#112a40;font-size:1.4rem}</style>';
-    echo '<main class="login-shell"><section class="login-card"><div class="login-accent"></div><div class="reset-shop-logo">';
-    $companyLogo=yw_company_logo_path($row);
-    if($companyLogo!=='') echo '<img src="/'.e($companyLogo).'" alt="'.e($row['legal_name']).'">'; else echo '<strong>'.e($row['legal_name']).'</strong>';
-    echo '</div><div class="login-body"><h1>Neues Passwort</h1>'; if($error)echo '<div class="flash error">'.e($error).'</div>';
-    echo '<form method="post" class="form-stack">'.csrf_field().'<label>Passwort<input type="password" name="password" minlength="12" maxlength="72" autocomplete="new-password" required></label><label>Wiederholen<input type="password" name="password_repeat" minlength="12" maxlength="72" autocomplete="new-password" required></label><button class="btn primary">Passwort speichern</button></form></div></section></main>'; company_shop_footer($row); render_foot();
+    $card='<h2>Neues Passwort</h2><p>Mindestens 12 Zeichen. Danach meldest du dich wie gewohnt an.</p>';
+    if($error)$card.='<div class="flash error" role="alert">'.e($error).'</div>';
+    $card.='<form method="post" class="form-stack">'.csrf_field().'<label>Passwort<input type="password" name="password" minlength="12" maxlength="72" autocomplete="new-password" required></label><label>Wiederholen<input type="password" name="password_repeat" minlength="12" maxlength="72" autocomplete="new-password" required></label><button class="cp-btn-primary" type="submit">Passwort speichern</button></form>';
+    yw_shop_auth_page($row,'Neues Passwort – '.$row['shop_name'],yw_password_page_intro(),$card);
 }

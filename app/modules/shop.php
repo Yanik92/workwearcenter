@@ -830,24 +830,37 @@ function employee_account_login_page(string $slug): void {
         }
     }
 
-    render_head('Login – '.$company['shop_name'],$company);
+    $card='<h2>Anmelden</h2><p>Mit deinem persönlichen Firmenkonto.</p>';
+    if($error) $card.='<div class="flash error" role="alert">'.e($error).'</div>';
+    $card.='<form method="post" class="form-stack">'.csrf_field()
+        .'<label>E-Mail<input type="email" name="email" autocomplete="email" required></label>'
+        .'<label>Passwort<input type="password" name="password" autocomplete="current-password" required></label>'
+        .'<button class="cp-btn-primary" type="submit">Im Shop anmelden</button></form>';
+    $card.=yw_magic_login_form($company); // 10.11: Anmeldelink per E-Mail (app/modules/magic_login.php)
+    $card.='<div class="cp-login-help"><a href="/'.e($company['slug']).'/passwort-vergessen">Passwort vergessen?</a><span>Noch kein Zugang? <a href="/'.e($company['slug']).'/registrieren">Registrieren</a></span></div>';
+    yw_shop_auth_page($company,'Login – '.$company['shop_name'],['Mitarbeiter-Shop','Deine Firmenkleidung an einem Ort.','Freigegebene Artikel mit deinem Firmenlogo, persönliche Bestellübersicht und dein Budget immer im Blick.'],$card);
+}
+
+/**
+ * 10.11: Gemeinsamer Rahmen für Anmelden, Registrieren und Passwort-Seiten des Firmenshops
+ * (links Firmenfarbe mit Logo bzw. Initialen, rechts die Karte). $intro = [Kicker, Überschrift, Text].
+ */
+function yw_shop_auth_page(array $company,string $title,array $intro,string $cardHtml): void {
+    render_head($title,$company);
     echo company_portal_style($company);
     $hasLogo=yw_company_logo_path($company)!=='';
     echo '<main class="cp-login"><section class="cp-login-brand">';
     // Mit Logo steht der Firmenname nur im Logo; ohne Logo Initialen in Firmenfarbe + Name.
     echo '<div class="cp-login-identity'.($hasLogo?' has-logo':'').'">'.yw_shop_brand_mark($company,'cp-login').($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'</div>';
-    echo '<div class="cp-login-copy"><span class="cp-login-kicker">Mitarbeiter-Shop</span><h1>Deine Firmenkleidung an einem Ort.</h1><p>Freigegebene Artikel mit deinem Firmenlogo, persönliche Bestellübersicht und dein Budget immer im Blick.</p></div>';
+    echo '<div class="cp-login-copy"><span class="cp-login-kicker">'.e($intro[0]??'Mitarbeiter-Shop').'</span><h1>'.e($intro[1]??'').'</h1><p>'.e($intro[2]??'').'</p></div>';
     echo '<p class="cp-login-powered">Bereitgestellt über das WorkwearCenter von Yanik Textildruck</p></section>';
-    echo '<section class="cp-login-form"><div class="cp-login-card"><h2>Anmelden</h2><p>Mit deinem persönlichen Firmenkonto.</p>';
-    if($error) echo '<div class="flash error" role="alert">'.e($error).'</div>';
-    echo '<form method="post" class="form-stack">'.csrf_field()
-        .'<label>E-Mail<input type="email" name="email" autocomplete="email" required></label>'
-        .'<label>Passwort<input type="password" name="password" autocomplete="current-password" required></label>'
-        .'<button class="cp-btn-primary" type="submit">Im Shop anmelden</button></form>';
-    echo yw_magic_login_form($company); // 10.11: Anmeldelink per E-Mail (app/modules/magic_login.php)
-    echo '<div class="cp-login-help"><a href="/'.e($company['slug']).'/passwort-vergessen">Passwort vergessen?</a><span>Noch kein Zugang? <a href="/'.e($company['slug']).'/registrieren">Registrieren</a></span></div>';
-    echo '</div><p class="cp-login-legal"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></p></section></main>';
+    echo '<section class="cp-login-form"><div class="cp-login-card">'.$cardHtml.'</div><p class="cp-login-legal"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></p></section></main>';
     render_foot();
+}
+
+/** Rückmeldung nach Registrierung bzw. Passwort-Aktion im selben Rahmen. */
+function yw_shop_auth_message(array $company,string $slug,string $title,string $text,array $intro): void {
+    yw_shop_auth_page($company,$title.' – '.(string)($company['shop_name']??''),$intro,'<h2>'.e($title).'</h2><p>'.e($text).'</p><div class="cp-login-help"><a href="/'.e($slug).'/login">Zum Login</a></div>');
 }
 
 function company_portal_page(string $slug,string $section='overview'): void {

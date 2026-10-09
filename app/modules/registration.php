@@ -8,12 +8,13 @@ function employee_register_page_by_slug(string $slug): void {
     $error='';
     try { [$pinRequired,$approvalRequired]=yw_registration_policy($company['registration_mode']); }
     catch(DomainException $e) { simple_message('Nicht verfügbar',$e->getMessage()); return; }
+    $intro=['Persönlicher Zugang',(string)$company['shop_name'],'Registriere dich einmalig. Danach findest du hier ausschließlich die für dein Unternehmen freigegebene Firmenbekleidung.'];
     if(is_post()){
         verify_csrf();
         try {
             // Unauffällige Bot-Falle: echte Nutzer sehen dieses Feld nicht.
             if(trim(is_string($_POST['website']??null)?$_POST['website']:'')!==''){
-                simple_message('Registrierung geprüft','Wenn die Angaben gültig sind, kann der Zugang nach der vorgesehenen Firmenfreigabe verwendet werden.');
+                yw_shop_auth_message($company,$slug,'Registrierung geprüft','Wenn die Angaben gültig sind, kann der Zugang nach der vorgesehenen Firmenfreigabe verwendet werden.',$intro);
                 return;
             }
             $globalKey='register-global-'.$company['id'];
@@ -39,7 +40,7 @@ function employee_register_page_by_slug(string $slug): void {
             $q->execute([$company['id'],$email]);
             if($q->fetchColumn()){
                 db()->commit();
-                simple_message('Registrierung geprüft','Wenn die Angaben gültig sind, kann der Zugang nach der vorgesehenen Firmenfreigabe verwendet werden.');
+                yw_shop_auth_message($company,$slug,'Registrierung geprüft','Wenn die Angaben gültig sind, kann der Zugang nach der vorgesehenen Firmenfreigabe verwendet werden.',$intro);
                 return;
             }
             $status=$approvalRequired?'pending':'approved';
@@ -51,7 +52,7 @@ function employee_register_page_by_slug(string $slug): void {
             clear_login_failures($emailKey);
             audit_log('employee.registered','employee',$id,['company_id'=>(int)$company['id'],'status'=>$status]);
             notify_company_managers((int)$company['id'],'Neue Registrierung',"Ein neuer Zugang wurde angelegt.\n".workwearcenter_url($slug.'/mitarbeiter'));
-            simple_message('Registrierung geprüft',$approvalRequired?'Wenn die Angaben gültig sind, wird dein Firmenverantwortlicher den Zugang prüfen.':'Wenn die Angaben gültig sind, kannst du den Firmenzugang anschließend verwenden.');
+            yw_shop_auth_message($company,$slug,'Registrierung geprüft',$approvalRequired?'Wenn die Angaben gültig sind, wird dein Firmenverantwortlicher den Zugang prüfen.':'Wenn die Angaben gültig sind, kannst du den Firmenzugang anschließend verwenden.',$intro);
             return;
         } catch(Throwable $e) {
             if(db()->inTransaction()) db()->rollBack();
@@ -59,22 +60,12 @@ function employee_register_page_by_slug(string $slug): void {
             $error=$e instanceof DomainException?$e->getMessage():'Registrierung konnte nicht gespeichert werden.';
         }
     }
-    render_head('Registrierung – '.$company['shop_name']);
-    echo company_shop_style($company);
-    echo '<style>
-      body{background:#f4f6f9}.portal-register{min-height:100vh;display:grid;grid-template-columns:minmax(300px,.82fr) 1.18fr}.portal-register-intro{position:relative;overflow:hidden;background:#102b42;color:#fff;padding:clamp(34px,5vw,66px);display:flex;flex-direction:column;justify-content:space-between;border-left:8px solid var(--shop-accent)}.portal-register-logo{width:min(100%,300px);min-height:72px;background:#fff;border-radius:4px;padding:12px 16px;display:flex;align-items:center}.portal-register-logo img{display:block;max-width:100%;max-height:62px;object-fit:contain}.portal-register-logo strong{color:#112a40;font-size:1.4rem;line-height:1.1}.portal-register-intro h1{color:#fff;font-size:clamp(2.35rem,4.5vw,4.5rem);line-height:1;margin:16px 0}.portal-register-intro p{color:rgba(255,255,255,.78);line-height:1.65;max-width:570px}.portal-register-form{display:grid;place-items:center;padding:40px 24px}.portal-register-card{width:min(100%,620px);background:#fff;border:1px solid #dce2e7;border-radius:6px;padding:clamp(26px,4vw,42px);box-shadow:0 16px 40px rgba(15,23,42,.08)}.portal-register-card h2{font-size:2rem;margin:0 0 8px}.portal-register-card>p{color:#667085;margin:0 0 25px}.portal-register-back{margin:22px 0 0;padding-top:20px;border-top:1px solid #e7ebf0}@media(max-width:850px){.portal-register{grid-template-columns:1fr}.portal-register-intro{min-height:auto;gap:38px;padding:28px}.portal-register-form{padding:24px 18px 38px}}
-    </style>';
-    echo '<main class="portal-register"><section class="portal-register-intro"><div class="portal-register-logo">';
-    $companyLogo=yw_company_logo_path($company);
-    if($companyLogo!=='') echo '<img src="/'.e($companyLogo).'" alt="'.e($company['legal_name']).'">';
-    else echo '<strong>'.e($company['legal_name']).'</strong>';
-    echo '</div><div><div class="company-shop-kicker">PERSÖNLICHER ZUGANG</div><h1>'.e($company['shop_name']).'</h1><p>Registriere dich einmalig. Danach findest du hier ausschließlich die für dein Unternehmen freigegebene Firmenbekleidung.</p></div></section><section class="portal-register-form"><div class="portal-register-card"><h2>Zugang anlegen</h2><p>'.($approvalRequired?'Deine Registrierung wird anschließend von einem Firmenverantwortlichen geprüft.':'Dein persönlicher Zugang kann anschließend direkt verwendet werden.').'</p>';
-    if($error) echo '<div class="flash error">'.e($error).'</div>';
-    echo '<form method="post" class="form-stack">'.csrf_field().'<div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><label>Name<input name="name" maxlength="160" required autocomplete="name"></label><label>E-Mail<input type="email" name="email" maxlength="190" required autocomplete="email"></label><label>Passwort<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>';
-    if($pinRequired) echo '<label>Firmen-PIN<input type="password" name="pin" required autocomplete="off"></label>';
-    echo '<button class="btn primary">Zugang beantragen</button></form><p class="portal-register-back"><a href="/'.e($slug).'/login">Zurück zum Login</a></p></div></section></main>';
-    company_shop_footer($company);
-    render_foot();
+    $card='<h2>Zugang anlegen</h2><p>'.($approvalRequired?'Deine Registrierung wird anschließend von einem Firmenverantwortlichen geprüft.':'Dein persönlicher Zugang kann anschließend direkt verwendet werden.').'</p>';
+    if($error) $card.='<div class="flash error" role="alert">'.e($error).'</div>';
+    $card.='<form method="post" class="form-stack">'.csrf_field().'<div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><label>Name<input name="name" maxlength="160" required autocomplete="name"></label><label>E-Mail<input type="email" name="email" maxlength="190" required autocomplete="email"></label><label>Passwort <small>mindestens 12 Zeichen</small><input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>';
+    if($pinRequired) $card.='<label>Firmen-PIN <small>steht auf dem Aushang oder kommt von deiner Firma</small><input type="password" name="pin" required autocomplete="off"></label>';
+    $card.='<button class="cp-btn-primary" type="submit">Zugang beantragen</button></form><div class="cp-login-help"><span>Schon registriert? <a href="/'.e($slug).'/login">Zum Login</a></span></div>';
+    yw_shop_auth_page($company,'Registrierung – '.$company['shop_name'],$intro,$card);
 }
 
 function yw_registration_decision(array $company,array $actor): never {
