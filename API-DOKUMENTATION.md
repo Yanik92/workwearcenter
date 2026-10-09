@@ -89,7 +89,7 @@ Jede Fehlerantwort hat die Form `{"error": "<code>", "message": "<Erklärung auf
 
 ### 4.1 Verbindung prüfen
 
-`GET /api/v1/ping` – funktioniert **mit und ohne** Schlüssel. Mit Schlüssel zeigt die Antwort Name, System und Rechte.
+`GET /api/v1/ping` – funktioniert **mit und ohne** Schlüssel. Mit Schlüssel zeigt die Antwort Name, System und Rechte; die Programmversion steht nur mit gültigem Schlüssel in `version` (ohne Schlüssel `null`).
 
 ```json
 {

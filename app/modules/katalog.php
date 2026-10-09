@@ -420,15 +420,18 @@ function yw_katalog_import_zip(string $tmp): int {
     if(!class_exists('ZipArchive'))throw new RuntimeException('ZIP-Dateien werden auf diesem Server nicht unterstützt – bitte Bilder einzeln hochladen oder per FTP ablegen.');
     $zip=new ZipArchive();if($zip->open($tmp)!==true)throw new RuntimeException('ZIP-Datei konnte nicht geöffnet werden.');
     $dir=yw_katalog_images_dir();if(!is_dir($dir)&&!mkdir($dir,0755,true)&&!is_dir($dir))throw new RuntimeException('Bilderordner konnte nicht erstellt werden.');
-    $count=0;
+    $count=0;$total=0;$max=40*1024*1024;
     for($i=0;$i<$zip->numFiles&&$i<5000;$i++){
         $name=(string)$zip->getNameIndex($i);$base=basename(str_replace('\\','/',$name));
         if(str_starts_with($base,'._')||str_contains($name,'__MACOSX/'))continue; // macOS-Begleitdateien
         $safe=yw_katalog_safe_filename($base);if($safe===null)continue;
-        $stat=$zip->statIndex($i);if(!$stat||($stat['size']??0)>40*1024*1024)continue;
+        $stat=$zip->statIndex($i);if(!$stat||($stat['size']??0)>$max)continue;
         $stream=$zip->getStream($name);if(!$stream)continue;
         $target=$dir.'/'.$safe;
-        file_put_contents($target,$stream);fclose($stream);
+        // Entpackt wird höchstens die zulässige Größe – auch wenn der ZIP-Eintrag eine kleinere Größe vortäuscht (ZIP-Bombe).
+        $out=@fopen($target,'wb');$written=$out?stream_copy_to_stream($stream,$out,$max+1):false;fclose($stream);if($out)fclose($out);
+        if($written===false||$written>$max){@unlink($target);continue;}
+        if(($total+=$written)>1024*1024*1024){@unlink($target);break;} // insgesamt höchstens 1 GB je ZIP
         try{yw_validate_uploaded_raster($target,'Bild '.$base);}catch(Throwable $e){@unlink($target);continue;}
         $count++;
     }

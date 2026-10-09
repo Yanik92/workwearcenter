@@ -351,4 +351,17 @@ test_ok($denied('.htaccess','.htaccess')&&$denied('.htaccess','.gitignore')&&$de
 test_ok($denied('uploads/.htaccess','x.pht')&&$denied('uploads/.htaccess','x.php7')&&$denied('uploads/.htaccess','x.html')&&$denied('uploads/.htaccess','x.shtml')&&$denied('uploads/.htaccess','x.json')&&!$denied('uploads/.htaccess','logo.png')&&!$denied('uploads/.htaccess','logo.svg'),'uploads/.htaccess sperrt Skript-, HTML- und Datenendungen, Bilder bleiben abrufbar');
 test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/uploads/.htaccess'),"default-src 'none'; style-src 'unsafe-inline'; sandbox"),'SVG aus uploads/ wird mit CSP inkl. sandbox ausgeliefert');
 
+// Härtung Dateien: ZIP-Eintrag mit vorgetäuschter kleiner Größe wird nicht unbegrenzt entpackt
+if(class_exists('ZipArchive')){
+    $zipFile=tempnam(sys_get_temp_dir(),'wwc-zip');$zip=new ZipArchive();$zip->open($zipFile,ZipArchive::OVERWRITE);
+    $zip->addFromString('wwc_regressionstest_bombe.png',base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==').str_repeat("\0",41*1024*1024));$zip->addFromString('../../wwc_regressionstest.php','<?php');$zip->close();
+    $raw=(string)file_get_contents($zipFile);$needle='wwc_regressionstest_bombe.png';
+    foreach([["PK\x03\x04",22,30,26],["PK\x01\x02",24,46,28]] as [$sig,$sizeAt,$nameAt,$lenAt])for($p=0;($p=strpos($raw,$sig,$p))!==false;$p+=4)if(substr($raw,$p+$nameAt,unpack('v',substr($raw,$p+$lenAt,2))[1])===$needle)$raw=substr_replace($raw,pack('V',1000),$p+$sizeAt,4);
+    file_put_contents($zipFile,$raw);
+    $imported=yw_katalog_import_zip($zipFile);@unlink($zipFile);
+    test_ok($imported===0&&!is_file(yw_katalog_images_dir().'/'.$needle)&&!is_file(dirname(yw_katalog_images_dir(),3).'/wwc_regressionstest.php'),'Katalog-ZIP: Eintrag mit vorgetäuschter Größe (ZIP-Bombe) und Pfad nach oben werden verworfen');
+}
+test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/api.php'),"'version'=>\$key?app_version():null"),'API-Ping verrät die Programmversion nur mit gültigem Schlüssel');
+test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/corporate_admin.php'),"'/.htaccess'=>'RewriteRule'"),'Systemstatus prüft auch versteckte Dateien, uploads/-Sperre und SVG-Header');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
