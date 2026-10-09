@@ -236,7 +236,8 @@ function yw_customer_report_card(array $company): void {
 function yw_customer_people_page(array $company,array $account): void {
     $profiles=yw_equipment_profile_options((int)$company['id']);
     $q=db()->prepare('SELECT * FROM employee_accounts WHERE company_id=? ORDER BY active DESC,registration_status,name');$q->execute([$company['id']]);$people=$q->fetchAll();
-    $active=count(array_filter($people,fn($p)=>(int)$p['active']===1));$pending=count(array_filter($people,fn($p)=>$p['registration_status']==='pending'));
+    // Aktiv = freigegeben und nicht anonymisiert (offene Registrierungen haben active=1).
+    $active=count(array_filter($people,fn($p)=>(int)$p['active']===1 && ($p['registration_status']??'approved')==='approved' && empty($p['anonymized_at'])));$pending=count(array_filter($people,fn($p)=>$p['registration_status']==='pending'));
     $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$q->execute([$company['id']]);$openOrders=(int)$q->fetchColumn();
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$periodStart,$periodEnd]=yw_report_period($company,$previous);
