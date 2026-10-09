@@ -5,6 +5,8 @@ require_once __DIR__.'/i18n.php'; // 10.12: Übersetzungen, Zahlen- und Datumsfo
 
 function db(): PDO { global $pdo; return $pdo; }
 function cfg(string $key): mixed { global $config; return $config[$key] ?? null; }
+/** Upload speichern; bei vollem Speicher bleibt sonst eine abgeschnittene Datei liegen. */
+function yw_move_upload(string $tmp,string $target): bool { $existed=file_exists($target); if(move_uploaded_file($tmp,$target))return true; if(!$existed)@unlink($target); return false; }
 /** Exporte: Zeilen ungepuffert einzeln vom Server holen statt das ganze Ergebnis in den PHP-Speicher; im Callback keine weiteren Abfragen. */
 function yw_each_row(string $sql,array $params,callable $fn): void {
     $pdo=db();$buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);$q=null;
@@ -492,7 +494,7 @@ function upload_logo(?array $file, ?string $oldPath = null): ?string {
     $relative = 'uploads/logos/' . $name;
     $dir=dirname(__DIR__).'/uploads/logos';
     if(!is_dir($dir) && !mkdir($dir,0755,true) && !is_dir($dir)) throw new RuntimeException('Logo-Ordner konnte nicht erstellt werden.');
-    if (!move_uploaded_file($tmp, dirname(__DIR__) . '/' . $relative)) throw new RuntimeException('Logo konnte nicht gespeichert werden.');
+    if (!yw_move_upload($tmp, dirname(__DIR__) . '/' . $relative)) throw new RuntimeException('Logo konnte nicht gespeichert werden.');
     return $relative;
 }
 

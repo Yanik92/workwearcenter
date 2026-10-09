@@ -121,7 +121,7 @@ function upload_site_image(?array $file,string $old='',string $prefix='site'): s
 
     $safePrefix=preg_replace('/[^a-z0-9_-]/i','-', $prefix) ?: 'site';
     $name=$safePrefix.'-'.bin2hex(random_bytes(8)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)) throw new RuntimeException('Bild konnte nicht nach uploads/branding gespeichert werden.');
+    if(!yw_move_upload($tmp,$dir.'/'.$name)) throw new RuntimeException('Bild konnte nicht nach uploads/branding gespeichert werden.');
 
     return 'uploads/branding/'.$name;
 }
@@ -150,7 +150,7 @@ function upload_site_logo(array $file,string $old=''): string {
     if(!is_writable($dir)) throw new RuntimeException('Der Ordner uploads/branding ist nicht beschreibbar. Bitte Schreibrechte prüfen.');
 
     $name='main-logo-'.bin2hex(random_bytes(6)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)) throw new RuntimeException('Logo konnte nicht nach uploads/branding gespeichert werden.');
+    if(!yw_move_upload($tmp,$dir.'/'.$name)) throw new RuntimeException('Logo konnte nicht nach uploads/branding gespeichert werden.');
 
     return 'uploads/branding/'.$name;
 }

@@ -53,7 +53,7 @@ function yw_probeshop_store_logo(?array $file): string {
     $ext=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp'][$mime]??null;
     if(!$ext)throw new RuntimeException('Bitte das Logo als PNG, JPG, WebP oder SVG hochladen.');
     yw_validate_uploaded_raster($tmp,'Das Logo');
-    if(!move_uploaded_file($tmp,$dir.'/'.$name.'.'.$ext))throw new RuntimeException('Das Logo konnte nicht gespeichert werden.');
+    if(!yw_move_upload($tmp,$dir.'/'.$name.'.'.$ext))throw new RuntimeException('Das Logo konnte nicht gespeichert werden.');
     @chmod($dir.'/'.$name.'.'.$ext,0644);
     return 'uploads/probeshop/'.$name.'.'.$ext;
 }

@@ -264,6 +264,7 @@ function yw_katalog_store_image(string $source): string {
             $ok=$ext==='png'?imagepng($out,$dir.'/'.$name,7):imagejpeg($out,$dir.'/'.$name,86);
             imagedestroy($out);imagedestroy($img);
             if($ok)return 'uploads/products/'.$name;
+            @unlink($dir.'/'.$name); // Speicher voll: keine abgeschnittene Datei liegen lassen
         }
     }
     // Rückfall: unverändert übernehmen, wenn die Datei klein genug ist
@@ -271,7 +272,7 @@ function yw_katalog_store_image(string $source): string {
     $ext=['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'][(string)($info['mime']??'')]??null;
     if(!$ext)throw new RuntimeException('Bildformat nicht erlaubt: '.basename($source));
     $name='product-'.bin2hex(random_bytes(8)).'.'.$ext;
-    if(!copy($source,$dir.'/'.$name))throw new RuntimeException('Bild konnte nicht kopiert werden.');
+    if(!copy($source,$dir.'/'.$name)){@unlink($dir.'/'.$name);throw new RuntimeException('Bild konnte nicht kopiert werden.');}
     return 'uploads/products/'.$name;
 }
 
@@ -526,7 +527,7 @@ function yw_admin_katalog_action(string $action): void {
                 $safe=yw_katalog_safe_filename($name);
                 if($safe===null){$problems[]=$name.': kein JPG, PNG oder WebP';continue;}
                 try{yw_validate_uploaded_raster($tmp,'Bild '.$name);}catch(RuntimeException $e){$problems[]=$e->getMessage();continue;}
-                if(move_uploaded_file($tmp,$dir.'/'.$safe))$count++;
+                if(yw_move_upload($tmp,$dir.'/'.$safe))$count++;
             }
             if($count===0)throw new RuntimeException('Keine Bilddatei übernommen'.($problems?': '.implode(' · ',array_slice($problems,0,5)):' (erlaubt: JPG, PNG, WebP oder ZIP).'));
         }catch(RuntimeException $e){

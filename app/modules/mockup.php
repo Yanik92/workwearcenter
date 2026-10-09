@@ -361,7 +361,7 @@ function yw_store_motif_file(?array $file,string $old=''): string {
     }elseif($mime==='image/png'){
         yw_validate_uploaded_raster($tmp,'Logo');
         $name='motif-'.bin2hex(random_bytes(8)).'.png';
-        if(!move_uploaded_file($tmp,$dir.'/'.$name))throw new RuntimeException('Logo konnte nicht gespeichert werden.');
+        if(!yw_move_upload($tmp,$dir.'/'.$name))throw new RuntimeException('Logo konnte nicht gespeichert werden.');
     }else throw new RuntimeException('Erlaubt sind SVG oder PNG mit transparentem Hintergrund.');
     if($old!=='')yw_delete_motif_file($old);
     return 'uploads/motifs/'.$name;

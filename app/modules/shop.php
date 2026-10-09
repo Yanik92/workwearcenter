@@ -138,7 +138,7 @@ function upload_company_product_preview(?array $file,string $old=''): string {
     }
 
     $name='shop-product-'.bin2hex(random_bytes(10)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)){
+    if(!yw_move_upload($tmp,$dir.'/'.$name)){
         throw new RuntimeException('Vorschaubild konnte nicht gespeichert werden.');
     }
 
