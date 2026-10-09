@@ -280,7 +280,7 @@ function shipping_enabled(array $company): bool {
     return (int)($company['shipping_enabled']??0)===1;
 }
 
-function shipping_breakdown(array $company,int $itemsGrossCents): array {
+function shipping_breakdown(array $company,int $itemsGrossCents,array $itemsNetByRate=[]): array {
     if(!shipping_enabled($company)){
         return ['net'=>0,'vat'=>0.0,'gross'=>0,'employee'=>0,'company'=>0,'free'=>true];
     }
@@ -293,7 +293,7 @@ function shipping_breakdown(array $company,int $itemsGrossCents): array {
     $net=max(0,(int)($company['shipping_net_cents']??0));
     $vat=(float)($company['shipping_vat_rate']??19.0);
     if($vat<0||$vat>100) $vat=19.0;
-    $gross=gross_from_net($net,$vat);
+    $gross=$itemsNetByRate?$net+yw_shipping_tax_cents($itemsNetByRate,$net,$vat):gross_from_net($net,$vat); // 10.11: Steuer je Steuersatz
 
     $payer=(string)($company['shipping_payer']??'company');
     $employee=$payer==='employee' ? $gross : 0;
@@ -726,7 +726,7 @@ function company_product_detail(array $variants,array $company,array $motifs,int
         $html.='</select></label>';
         $qtyId='qty-'.$pid;
         $html.='<div class="sp-field"><label for="'.$qtyId.'">Menge</label><div class="shop-stepper"><button type="button" data-qty-step="-1" data-qty-target="'.$qtyId.'" aria-label="Menge verringern"'.($maxQty===0?' disabled':'').'>−</button>';
-        $html.='<input class="shop-qty" id="'.$qtyId.'" type="number" inputmode="numeric" min="0" max="'.$maxQty.'" value="'.$preQty.'" name="qty['.$pid.']" data-gross="'.(int)$price['gross'].'" data-net="'.(int)$price['net'].'" data-employee="'.(int)$price['employee'].'" data-company="'.(int)$price['employer'].'" data-group="'.e($dialogId).'" data-line-name="'.e($vName.($color!==''?' · '.$color:'')).'" data-size-target="size-'.$pid.'"'.($maxQty===0?' disabled':'').'>';
+        $html.='<input class="shop-qty" id="'.$qtyId.'" type="number" inputmode="numeric" min="0" max="'.$maxQty.'" value="'.$preQty.'" name="qty['.$pid.']" data-gross="'.(int)$price['gross'].'" data-net="'.(int)$price['net'].'" data-vat="'.e((string)$price['vat']).'" data-share="'.e((string)$price['employee_percent']).'" data-employee="'.(int)$price['employee'].'" data-company="'.(int)$price['employer'].'" data-group="'.e($dialogId).'" data-line-name="'.e($vName.($color!==''?' · '.$color:'')).'" data-size-target="size-'.$pid.'"'.($maxQty===0?' disabled':'').'>';
         $html.='<button type="button" data-qty-step="1" data-qty-target="'.$qtyId.'" aria-label="Menge erhöhen"'.($maxQty===0?' disabled':'').'>+</button></div></div></div>';
         if($maxQty===0)$html.='<p class="shop-limit-reached">Stücklimit für dieses Budgetjahr erreicht.</p>';
         elseif(array_key_exists('profile_remaining_qty',$v))$html.='<p class="sp-hint">Noch '.(int)$v['profile_remaining_qty'].' Stück in diesem Budgetjahr möglich.</p>';
@@ -1152,8 +1152,7 @@ function company_portal_my_orders(array $company,array $account): void {
         echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>Bestellung #'.(int)$o['id'].'</strong><div class="cp-order-meta">'.e(date('d.m.Y · H:i',strtotime($o['created_at']))).' Uhr · '.e(company_portal_fulfillment_status((string)($o['fulfillment_status']??'new'))).'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
         echo '<div class="cp-order-items">';
         foreach($items as $item){
-            $unitGross=(int)($item['unit_gross_cents']??0); if($unitGross<=0)$unitGross=(int)$item['unit_price_cents'];
-            echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money($unitGross*(int)$item['quantity']).'</strong></div>';
+            echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money(yw_order_item_amounts($item)['gross']).'</strong></div>';
         }
         if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>Versand</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
         echo '</div>';
@@ -1210,8 +1209,7 @@ function company_portal_approvals(array $company,array $account): void {
         echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>Bestellung #'.(int)$o['id'].' · '.e($o['employee_name']).'</strong><div class="cp-order-meta">'.e(date('d.m.Y · H:i',strtotime($o['created_at']))).' Uhr · '.e(company_portal_fulfillment_status((string)($o['fulfillment_status']??'new'))).'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
         echo '<div class="cp-order-items">';
         foreach($items as $item){
-            $unitGross=(int)($item['unit_gross_cents']??0); if($unitGross<=0)$unitGross=(int)$item['unit_price_cents'];
-            echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money($unitGross*(int)$item['quantity']).'</strong></div>';
+            echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money(yw_order_item_amounts($item)['gross']).'</strong></div>';
         }
         if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>Versand</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
         echo '</div>';

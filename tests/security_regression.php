@@ -212,5 +212,61 @@ $pb=['net'=>1000,'vat'=>19.0,'gross'=>1190,'employee'=>238,'employer'=>952,'empl
 test_ok(str_contains(yw_shop_price_html([$pb]),'Dein Anteil') && str_contains(yw_shop_price_html([$pb]),'2,38'),'Karte mit Eigenanteil zeigt nur den Anteil');
 $pb['employee_percent']=0.0;$pb['employee']=0;
 test_ok(str_contains(yw_shop_price_html([$pb,['gross'=>990]+$pb]),'ab 9,90') && str_contains(yw_shop_price_html([$pb]),'übernimmt deine Firma'),'Karte bei 100 % Firma: Hinweis und „ab“-Preis');
+// 10.11: Rundung je Position, Steuer je Steuersatz (wie Lexware Office bei Nettorechnungen)
+$c=yw_calc_items([['net_unit'=>840,'qty'=>3,'vat'=>19]]);
+test_ok($c['net']===2520 && $c['tax']===479 && $c['gross']===2999,'3 × 8,40 € netto zu 19 % ergibt 29,99 € brutto (bisher 3 × 10,00 € = 30,00 €)');
+$c=yw_calc_items([['net_unit'=>1003,'qty'=>1,'vat'=>19],['net_unit'=>1003,'qty'=>1,'vat'=>19]]);
+test_ok($c['tax']===381 && $c['lines'][0]['gross']===1194 && $c['lines'][1]['gross']===1193 && $c['gross']===2387,'zwei Positionen je 10,03 €: 3,81 € Steuer auf die Summe, Rest-Cent an die erste Position');
+$c=yw_calc_items([['net_unit'=>1340,'qty'=>1,'vat'=>19],['net_unit'=>832,'qty'=>1,'vat'=>7],['net_unit'=>500,'qty'=>1,'vat'=>0]]);
+test_ok($c['tax_by_rate']===[0=>0,700=>58,1900=>255] && $c['net']===2672 && $c['gross']===2985,'Beispiel der Lexware-Doku: 26,72 € netto, 0,58 € + 2,55 € Steuer, 29,85 € brutto');
+$c=yw_calc_items([['net_unit'=>840,'qty'=>3,'vat'=>19]],30.0);
+test_ok($c['employee']===900 && $c['company']===2099,'Eigenanteil 30 % je Position: 899,7 → 9,00 €, Firma 20,99 €');
+$c=yw_calc_items([['net_unit'=>1001,'qty'=>1,'vat'=>19],['net_unit'=>1001,'qty'=>1,'vat'=>19]],50.0);
+test_ok($c['employee']+$c['company']===$c['gross'] && $c['lines'][0]['employee']+$c['lines'][0]['company']===$c['lines'][0]['gross'],'Eigenanteil plus Firmenanteil ergibt immer exakt den Bruttobetrag');
+$items=yw_calc_items([['net_unit'=>1060,'qty'=>1,'vat'=>19]]);
+$shippingTax=yw_shipping_tax_cents($items['net_by_rate'],460,19.0);
+test_ok($items['gross']===1261 && $shippingTax===88 && $items['gross']+460+$shippingTax===yw_invoice_totals([['net_unit'=>1060,'qty'=>1,'vat'=>19],['net_unit'=>460,'qty'=>1,'vat'=>19]])['gross'],'Versand 4,60 € netto: 0,88 € Steuer, Bestellsumme 18,09 € = Lexware-Summe');
+test_ok(yw_shipping_tax_cents(yw_calc_items([['net_unit'=>1000,'qty'=>1,'vat'=>7]])['net_by_rate'],495,19.0)===94,'Versand mit anderem Steuersatz als die Ware wird eigenständig gerundet');
+test_ok(yw_order_item_amounts(['quantity'=>3,'unit_price_cents'=>840,'unit_net_cents'=>840,'unit_gross_cents'=>1000,'employee_share_cents'=>300,'company_share_cents'=>700,'line_gross_cents'=>null])===['net'=>2520,'gross'=>3000,'employee'=>900,'company'=>2100],'Altbestellung (vor 10.11) behält Stückrundung 3 × 10,00 €');
+test_ok(yw_order_item_amounts(['quantity'=>3,'unit_gross_cents'=>1000,'line_net_cents'=>2520,'line_gross_cents'=>2999,'line_employee_cents'=>900,'line_company_cents'=>2099])['gross']===2999,'neue Bestellung liest Positionswerte');
+test_ok(yw_percent_of(1999,12.5)===250 && yw_percent_of(0,30)===0 && yw_tax_for_net(1495,1900)===284,'Prozentwerte werden kaufmännisch und ohne Gleitkommafehler gerundet');
+
+// 10.11: Lexware-Anbindung (reine Logik)
+test_ok(yw_lexware_base_ok('https://api.lexware.io') && yw_lexware_base_ok('http://127.0.0.1:8105') && !yw_lexware_base_ok('http://api.lexware.io') && !yw_lexware_base_ok('https://user:pw@api.lexware.io') && !yw_lexware_base_ok('ftp://x'),'Lexware-Basis-URL nur HTTPS (HTTP nur lokal)');
+test_ok(!str_contains(yw_lexware_error_message(403,['message'=>"'geheim123' not a valid key=value pair"]),'geheim123'),'Lexware-Fehler 403 gibt den API-Schlüssel nie aus');
+$msg=yw_lexware_error_message(406,['status'=>406,'details'=>[['violation'=>'NOTNULL','field'=>'lineItems[0].unitPrice.taxRatePercentage','message'=>'darf nicht leer sein']]]);
+test_ok(str_contains($msg,'nicht angenommen') && str_contains($msg,'lineItems[0].unitPrice.taxRatePercentage: darf nicht leer sein'),'Lexware-Validierungsfehler wird verständlich mit Feld angezeigt');
+test_ok(str_contains(yw_lexware_error_message(406,['IssueList'=>[['i18nKey'=>'missing_entity','source'=>'company.name','type'=>'validation_failure']]]),'company.name (missing_entity)'),'Lexware-Altformat IssueList wird gelesen');
+test_ok(str_contains(yw_lexware_error_message(429,null),'429') && str_contains(yw_lexware_error_message(504,null),'möglicherweise trotzdem'),'Rate-Limit und Zeitüberschreitung werden erklärt');
+$contact=yw_lexware_contact_payload(['name'=>'Muster Bau GmbH','street'=>'Hauptstr. 5','zip'=>'33154','city'=>'Salzkotten','country'=>'de','vat_id'=>'DE 123456789','email'=>'rechnung@muster.de','contact_last'=>'Meier'],'muster');
+test_ok(json_encode($contact['roles'])==='{"customer":{}}' && $contact['version']===0 && $contact['addresses']['billing'][0]['countryCode']==='DE' && $contact['company']['vatRegistrationId']==='DE123456789' && $contact['company']['contactPersons'][0]['lastName']==='Meier','Lexware-Kontakt: Kundenrolle als leeres Objekt, Adresse, USt-IdNr.');
+test_throws(fn()=>yw_lexware_contact_payload(['name'=>'X','country'=>'Deutschland']),'Lexware-Kontakt: Ländercode wird geprüft');
+test_ok(yw_lexware_search_param('Müller & Söhne')==='M%C3%BCller%20%26amp%3B%20S%C3%B6hne','Lexware-Kontaktsuche: & wird HTML- und URL-kodiert');
+test_ok(yw_lexware_address_guess(['delivery_address'=>"Muster Bau GmbH\nWerkstr. 7\n33154 Salzkotten"])==['street'=>'Werkstr. 7','zip'=>'33154','city'=>'Salzkotten','supplement'=>''],'Rechnungsadresse wird aus der Lieferadresse vorgeschlagen');
+test_ok(yw_lexware_date(new DateTimeImmutable('2026-10-09 15:30',new DateTimeZone('Europe/Berlin')))==='2026-10-09T00:00:00.000+02:00','Lexware-Datumsformat mit Millisekunden und Offset');
+$orders=[['id'=>12,'employee_name'=>'Mia','cost_center'=>'4711','shipping_net_cents'=>495,'shipping_rate'=>19.0],['id'=>13,'employee_name'=>'Tom','cost_center'=>'','shipping_net_cents'=>495,'shipping_rate'=>19.0]];
+$itemsBy=[12=>[['product_name'=>'T-Shirt','size'=>'M','quantity'=>3,'unit_net_cents'=>840,'vat_rate'=>'19.00']],13=>[['product_name'=>'T-Shirt','size'=>'M','quantity'=>1,'unit_net_cents'=>840,'vat_rate'=>'19.00'],['product_name'=>'Jacke','size'=>'XL','quantity'=>1,'unit_net_cents'=>4990,'vat_rate'=>'19.00']]];
+$built=yw_lexware_build_lines($orders,$itemsBy,['grouping'=>'none','employee_names'=>true,'unit'=>'Stück']);
+$first=$built['lineItems'][0];
+test_ok(count($built['lineItems'])===3 && $first['quantity']===4 && $first['unitPrice']['netAmount']===8.4 && $first['unitPrice']['taxRatePercentage']===19 && $first['description']==='Größe M · Aufträge WWC-000012 (Mia), WWC-000013 (Tom)','Sammelrechnung fasst gleiche Artikel zusammen (Menge, Netto-Einzelpreis, Steuersatz, Auftragsnummern)');
+$ship=$built['lineItems'][2];
+test_ok($ship['name']==='Versand' && $ship['quantity']===2 && $ship['unitPrice']['netAmount']===4.95,'Versand ist eine eigene Position');
+test_ok(yw_invoice_totals($built['calc'])===['net'=>9340,'tax'=>1775,'gross'=>11115,'by_rate'=>[1900=>['net'=>9340,'tax'=>1775]]],'erwartete Lexware-Summe: 93,40 € netto + 17,75 € Steuer = 111,15 €');
+$grouped=yw_lexware_build_lines($orders,$itemsBy,['grouping'=>'cost_center','employee_names'=>false]);
+test_ok($grouped['lineItems'][0]['type']==='text' && $grouped['lineItems'][0]['name']==='Kostenstelle: 4711' && !str_contains(json_encode($grouped['lineItems'],JSON_UNESCAPED_UNICODE),'Mia'),'Gruppierung nach Kostenstelle mit Zwischenüberschrift, Namen abschaltbar');
+$payload=yw_lexware_invoice_payload('be9475f4-ef80-442b-8ab9-3ab8b1a2aeb9',$built['lineItems'],['voucher_date'=>new DateTimeImmutable('2026-10-09'),'shipping'=>['shippingType'=>'delivery','shippingDate'=>'2026-10-09T00:00:00.000+02:00'],'introduction'=>'Bestellung','settings'=>['title'=>'Rechnung über Arbeitskleidung lang','introduction'=>'Hallo','remark'=>'','unit'=>'Stück','employee_names'=>'1','grouping'=>'none']]);
+test_ok($payload['taxConditions']['taxType']==='net' && $payload['address']['contactId']==='be9475f4-ef80-442b-8ab9-3ab8b1a2aeb9' && mb_strlen($payload['title'])===25 && !isset($payload['remark']) && !isset($payload['voucherStatus']),'Rechnungsentwurf: Nettopreise, Kontakt-ID, Titel ≤ 25 Zeichen, kein Finalisieren');
+test_ok(yw_lexware_month_batches([['id'=>1,'cost_center'=>'B'],['id'=>2,'cost_center'=>''],['id'=>3,'cost_center'=>'B']],'split')===['Kostenstelle: B'=>[1,3],'Ohne Kostenstelle'=>[2]],'je Kostenstelle eine eigene Rechnung');
+
+// 10.11: Lohnabzug-Export
+$rows=yw_payroll_aggregate([
+    ['id'=>5,'employee_account_id'=>7,'invite_id'=>1,'employee_total_cents'=>900,'name'=>'Zoe Berg','employee_number'=>'P-7','cost_center'=>'','delivery_snapshot_json'=>'{"cost_center":"KST9"}'],
+    ['id'=>9,'employee_account_id'=>7,'invite_id'=>1,'employee_total_cents'=>1250,'name'=>'Zoe Berg','employee_number'=>'P-7','cost_center'=>'','delivery_snapshot_json'=>'{}'],
+    ['id'=>6,'employee_account_id'=>3,'invite_id'=>2,'employee_total_cents'=>499,'name'=>'=HYPERLINK("x")','employee_number'=>'+49','cost_center'=>'KST1','delivery_snapshot_json'=>null],
+]);
+test_ok(count($rows)===2 && $rows[1]['employee_cents']===2150 && $rows[1]['orders']===['WWC-000005','WWC-000009'] && $rows[1]['cost_center']==='KST9','Lohnabzug: Summe je Person mit Auftragsnummern und Kostenstelle');
+$csv=yw_payroll_csv_rows('2026-10',$rows);
+test_ok($csv[0][2]==="'=HYPERLINK(\"x\")" && $csv[0][1]==="'+49" && $csv[1][4]==='21,50','Lohnabzug: Formel-Schutz und Betrag mit Komma');
+test_ok(yw_payroll_month('2026-13')!=='2026-13' && yw_payroll_month('2026-02')==='2026-02' && yw_payroll_range('2026-12')===['2026-12-01 00:00:00','2027-01-01 00:00:00'],'Lohnabzug: Monat wird geprüft, Jahreswechsel stimmt');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

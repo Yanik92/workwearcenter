@@ -155,6 +155,40 @@
   var emptyEl = form.querySelector('[data-cart-empty]');
   var grossFromNet = function (net, vat) { return Math.round(net * (1 + (vat / 100))); };
 
+  /* 10.11: gleiche Rechnung wie app/modules/pricing.php (yw_calc_items) – Netto × Menge je Position,
+     Umsatzsteuer je Steuersatz auf die Nettosumme (wie Lexware Office), Verteilung der Steuer auf die
+     Positionen nach größten Resten, Eigenanteil je Position. Ganze Cent, keine Gleitkommarundung.
+     Reihenfolge der Positionen = Reihenfolge im Formular (so sendet der Browser sie auch). */
+  var bpOf = function (rate) { var v = parseFloat(rate); return isNaN(v) ? 0 : Math.max(0, Math.min(10000, Math.round(v * 100))); };
+  var taxFor = function (net, bp) { return Math.floor((Math.max(0, net) * bp + 5000) / 10000); };
+  var lineValues = {};
+  var calcLines = function () {
+    var lines = [], groups = {}, netByRate = {};
+    qtyInputs.forEach(function (input) {
+      var qty = Math.max(0, int(input.value));
+      if (qty <= 0) return;
+      lines.push({ input: input, qty: qty, net: int(input.dataset.net) * qty, bp: bpOf(input.dataset.vat === undefined ? '19' : input.dataset.vat), share: bpOf(input.dataset.share || '0'), tax: 0, rem: 0 });
+    });
+    lines.forEach(function (line, i) { (groups[line.bp] = groups[line.bp] || []).push(i); });
+    Object.keys(groups).forEach(function (key) {
+      var bp = parseInt(key, 10), idx = groups[key], sum = 0, floors = 0;
+      idx.forEach(function (i) { var exact = lines[i].net * bp; lines[i].tax = Math.floor(exact / 10000); lines[i].rem = exact % 10000; floors += lines[i].tax; sum += lines[i].net; });
+      var extra = taxFor(sum, bp) - floors;
+      idx.slice().sort(function (a, b) { return (lines[b].rem - lines[a].rem) || (a - b); }).forEach(function (i) { if (extra > 0) { lines[i].tax++; extra--; } });
+      netByRate[bp] = sum;
+    });
+    var totals = { net: 0, gross: 0, employee: 0, company: 0, netByRate: netByRate, count: lines.length };
+    lineValues = {};
+    lines.forEach(function (line) {
+      line.gross = line.net + line.tax;
+      line.employee = Math.floor((line.gross * line.share + 5000) / 10000);
+      line.company = line.gross - line.employee;
+      totals.net += line.net; totals.gross += line.gross; totals.employee += line.employee; totals.company += line.company;
+      lineValues[line.input.id] = line;
+    });
+    return totals;
+  };
+
   var renderLines = function () {
     if (!linesEl) return;
     linesEl.textContent = '';
@@ -171,7 +205,8 @@
       small.textContent = 'Größe ' + (sizeSel ? sizeSel.value : '–') + ' · je ' + euro(int(input.dataset.gross)) + ' brutto (' + euro(int(input.dataset.net)) + ' netto)';
       text.appendChild(strong); text.appendChild(small);
       var price = document.createElement('b');
-      price.textContent = shareActive ? 'Dein Anteil ' + euro(int(input.dataset.employee) * qty) : euro(int(input.dataset.gross) * qty);
+      var lv = lineValues[input.id] || { gross: int(input.dataset.gross) * qty, employee: int(input.dataset.employee) * qty };
+      price.textContent = shareActive ? 'Dein Anteil ' + euro(lv.employee) : euro(lv.gross);
       var actions = document.createElement('div');
       actions.className = 'sp-cart-line-actions';
       var edit = document.createElement('button');
@@ -198,25 +233,27 @@
   };
 
   var update = function () {
-    var count = 0, net = 0, gross = 0, employee = 0, company = 0, groups = {};
+    var count = 0, groups = {};
     qtyInputs.forEach(function (input) {
       var max = int(input.max || '10');
       var qty = Math.max(0, int(input.value));
       if (qty > max) { qty = max; input.value = String(max); }
       count += qty;
-      net += int(input.dataset.net) * qty;
-      gross += int(input.dataset.gross) * qty;
-      employee += int(input.dataset.employee) * qty;
-      company += int(input.dataset.company) * qty;
       if (input.dataset.group) groups[input.dataset.group] = (groups[input.dataset.group] || 0) + qty;
     });
+    var t = calcLines();
+    var net = t.net, gross = t.gross, employee = t.employee, company = t.company;
 
+    // Versand wie shipping_breakdown(): eigene Position, Steuer = Steuer des Satzes mit minus ohne Versand.
     var shippingGross = 0, shippingNet = 0;
     if (panel && panel.dataset.shippingEnabled === '1' && count > 0) {
       var freeFrom = int(panel.dataset.freeShipping);
       if (!(freeFrom > 0 && gross >= freeFrom)) {
-        shippingNet = int(panel.dataset.shippingNet);
-        shippingGross = grossFromNet(shippingNet, parseFloat(panel.dataset.shippingVat || '19') || 19);
+        shippingNet = Math.max(0, int(panel.dataset.shippingNet));
+        var shippingVat = parseFloat(panel.dataset.shippingVat === undefined ? '19' : panel.dataset.shippingVat);
+        if (isNaN(shippingVat) || shippingVat < 0 || shippingVat > 100) shippingVat = 19;
+        var shippingBp = bpOf(shippingVat), itemsNet = t.netByRate[shippingBp] || 0;
+        shippingGross = t.count ? shippingNet + taxFor(itemsNet + shippingNet, shippingBp) - taxFor(itemsNet, shippingBp) : grossFromNet(shippingNet, shippingVat);
         if (panel.dataset.shippingPayer === 'employee') employee += shippingGross; else company += shippingGross;
       }
     }

@@ -41,8 +41,8 @@ function yw_admin_order_page(int $orderId): void {
             $m=$motifs[(int)($d['motif_id']??0)]??null;
             $decs[]='<div>'.e(decoration_position_label((string)($d['position']??''))).' · '.e(decoration_method_label((string)($d['method']??''))).($m?' · <strong>'.e($m['name']).'</strong>':'').(trim((string)($d['text']??''))!==''?'<br><span class="muted">'.e((string)$d['text']).'</span>':'').'</div>';
         }
-        $qty=(int)$it['quantity'];$gross=(int)($it['unit_gross_cents']??0)>0?(int)$it['unit_gross_cents']:(int)$it['unit_price_cents'];
-        echo '<tr><td><strong>'.e($it['product_name']).'</strong></td><td>'.e($it['size']).'</td><td>'.$qty.'</td><td>'.($decs?implode('',$decs):'<span class="muted">keine</span>').'</td><td>'.money($qty*$gross).'</td></tr>';
+        $qty=(int)$it['quantity'];$lineGross=yw_order_item_amounts($it)['gross'];
+        echo '<tr><td><strong>'.e($it['product_name']).'</strong></td><td>'.e($it['size']).'</td><td>'.$qty.'</td><td>'.($decs?implode('',$decs):'<span class="muted">keine</span>').'</td><td>'.money($lineGross).'</td></tr>';
     }
     if((int)($o['shipping_gross_cents']??0)>0)echo '<tr><td colspan="4">Versand</td><td>'.money((int)$o['shipping_gross_cents']).'</td></tr>';
     echo '<tr><td colspan="4"><strong>Gesamt brutto</strong></td><td><strong>'.money($total).'</strong></td></tr>';
@@ -75,6 +75,8 @@ function yw_admin_order_page(int $orderId): void {
     if($handover){[$l,$cls]=yw_handover_status_label((string)$handover['status']);echo '<p><span class="badge '.e($cls).'">'.e($l).'</span>'.(!empty($handover['delivered_at'])?' <span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$handover['delivered_at']))).'</span>':'').'</p>';if(!empty($handover['last_error']))echo '<p class="muted">'.e((string)$handover['last_error']).'</p>';echo '<a class="btn small" href="/admin?tab=handover">Zur Übergabe</a>';}
     else echo '<p class="muted">'.($o['status']==='approved'?'Noch nicht an die Auftragszentrale übergeben.':'Übergabe erfolgt nach Freigabe.').'</p>';
     echo '</section>';
+
+    echo yw_lexware_order_card($o);
 
     // Besteller & Lieferung
     if(yw_account_anonymized((string)$o['employee_email'],$o['employee_anonymized_at']??null))echo '<section class="card"><h2>Besteller</h2><p><strong>Konto gelöscht (DSGVO)</strong><br><span class="muted">Persönliche Daten wurden entfernt; der Auftrag bleibt für die Buchhaltung erhalten.</span></p>';

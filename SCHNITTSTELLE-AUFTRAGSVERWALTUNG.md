@@ -212,6 +212,7 @@ Feldhinweise:
 - `order.number`: sprechende Nummer `WWC-000123`. `order.id` ist die technische ID.
 - `order.approval_type`: `manager` (durch Verantwortlichen) oder `automatic`.
 - `delivery.mode`: `delivery` (an Firmenadresse, `address_lines`) oder `pickup` (Abholung bei Yanik Textildruck).
+- Beträge (ab 10.11): `line_*`, `employee_share_cents` und `company_share_cents` gelten je Position und sind maßgeblich. Gerechnet wird wie in Lexware Office: Netto-Einzelpreis × Menge, Umsatzsteuer je Steuersatz auf die Nettosumme der Bestellung (auf Positionen verteilt). `unit_gross_cents` ist nur der gerundete Stückpreis zur Anzeige; `line_gross_cents` kann daher um einen Cent von `unit_gross_cents × quantity` abweichen. Bestellungen vor 10.11 bleiben unverändert.
 - `items[].decorations`: Veredelungspositionen mit maschinenlesbarem Code (`position`, `method`) und deutscher Bezeichnung (`position_label`, `method_label`), optional mit verknüpftem Motiv.
 - `items[].employee_share_cents` / `company_share_cents`: Anteile für die **ganze Zeile**. `unit_*` gilt pro Stück.
 - `order.totals.shipping.employee_cents` / `company_cents`: Wer den Versand trägt.

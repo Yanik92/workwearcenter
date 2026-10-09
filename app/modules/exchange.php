@@ -209,9 +209,12 @@ function yw_exchange_create(array $company,array $account,int $itemId,string $ty
         $order=['status'=>$item['order_status'],'fulfillment_status'=>$item['fulfillment_status'],'production_updated_at'=>$item['production_updated_at'],'decided_at'=>$item['decided_at'],'created_at'=>$item['order_created_at']];
         if(!yw_exchange_window_open($company,$order))throw new DomainException('Für diese Bestellung ist kein Umtausch und keine Rückgabe (mehr) möglich.');
         $q=db()->prepare("SELECT COALESCE(SUM(quantity),0) FROM yw_exchange_requests WHERE order_item_id=? AND status<>'rejected'");$q->execute([$itemId]);
-        if($qty>(int)$item['quantity']-(int)$q->fetchColumn())throw new DomainException('Für diese Menge besteht bereits ein Antrag.');
-        $unit=(int)($item['company_share_cents']??0);
-        $delta=-$unit*$qty;
+        $prior=(int)$q->fetchColumn();
+        if($qty>(int)$item['quantity']-$prior)throw new DomainException('Für diese Menge besteht bereits ein Antrag.');
+        // 10.11: Gutschrift aus dem Positionswert (Rundung je Position); Altbestellungen: Stückwert.
+        $lineCompany=yw_order_item_amounts($item)['company'];$itemQty=max(1,(int)$item['quantity']);
+        $unit=intdiv($lineCompany,$itemQty);
+        $delta=-(intdiv($lineCompany*($prior+$qty),$itemQty)-intdiv($lineCompany*$prior,$itemQty));
         $newSizeValue=null;
         if($type==='exchange'){
             $q=db()->prepare('SELECT p.*,cp.price_override_cents FROM products p LEFT JOIN company_products cp ON cp.product_id=p.id AND cp.company_id=? WHERE p.id=? LIMIT 1');

@@ -204,7 +204,7 @@ function yw_mail_decision_page(string $slug,string $token): void {
     echo '</div><section class="yw-md-card"><h1>Bestellung #'.$orderId.' entscheiden</h1><p>'.e($order['employee_name']).' · '.e(date('d.m.Y H:i',strtotime((string)$order['created_at']))).' Uhr · du entscheidest als <strong>'.e($account['name']).'</strong></p>';
     if($error!=='')echo '<div class="flash error">'.e($error).'</div>';
     echo '<ul class="yw-md-items">';
-    foreach(order_items($orderId) as $item){$unit=(int)($item['unit_gross_cents']??0);if($unit<=0)$unit=(int)$item['unit_price_cents'];echo '<li><span>'.(int)$item['quantity'].'× '.e($item['product_name']).' · Größe '.e($item['size']).'</span><strong>'.money($unit*(int)$item['quantity']).'</strong></li>';}
+    foreach(order_items($orderId) as $item)echo '<li><span>'.(int)$item['quantity'].'× '.e($item['product_name']).' · Größe '.e($item['size']).'</span><strong>'.money(yw_order_item_amounts($item)['gross']).'</strong></li>';
     if((int)($order['shipping_gross_cents']??0)>0)echo '<li><span>Versand</span><strong>'.money((int)$order['shipping_gross_cents']).'</strong></li>';
     echo '</ul>';
     $gross=(int)($order['gross_total_cents']??0);if($gross<=0)$gross=(int)$order['total_cents'];

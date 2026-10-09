@@ -71,6 +71,27 @@ abgelaufene Daten (Sicherheitsdaten, versendete Mails nach 90 Tagen, erledigte
 Anfragen nach 24 Monaten). cron.php ist über den Browser gesperrt. Der Systemstatus zeigt, wann er zuletzt lief.
 
 -------------------------------------------------------------------------------
+LEXWARE OFFICE ANBINDEN (optional, ab 10.11)
+-------------------------------------------------------------------------------
+1. In Lexware Office als Benutzer anmelden, der Kontakte und Rechnungen anlegen
+   darf (am besten der Inhaber/Administrator). Der Tarif muss Rechnungen
+   enthalten, sonst antwortet Lexware mit „402“.
+2. https://app.lexware.de/addons/public-api öffnen (Erweiterungen → Public API),
+   Schlüssel erzeugen und kopieren. Der Schlüssel handelt mit den Rechten dieses
+   Benutzers – wie ein Passwort behandeln, nie per E-Mail weitergeben.
+3. In der config.php eintragen:   'lexware_api_key' => 'DER-SCHLÜSSEL',
+   'lexware_api_base' bleibt 'https://api.lexware.io' (nur für Tests ändern).
+4. Admin → System → Lexware Office → „Verbindung testen“. Dort auch Belegtitel,
+   Einleitung und ob Bestellernamen in den Positionen stehen sollen.
+5. Je Firma einmal den Kontakt anlegen oder einen vorhandenen verknüpfen.
+Danach: Auf der Auftragsseite „Rechnungsentwurf erzeugen“ oder auf der
+Lexware-Seite eine Monats-Sammelrechnung (optional je Kostenstelle). Es entstehen
+NUR Entwürfe – prüfen, finalisieren und versenden immer in Lexware. Jeder Auftrag
+kann nur einmal abgerechnet werden. Meldet Lexware eine Zeitüberschreitung, bleibt
+der Auftrag gesperrt, bis unter „Rechnungsentwürfe → Klären“ entschieden ist.
+Schlüssel widerrufen: in Lexware löschen und den Eintrag in der config.php leeren.
+
+-------------------------------------------------------------------------------
 VOR DEM ÖFFENTLICHEN START
 -------------------------------------------------------------------------------
 Siehe ABNAHME-CHECKLISTE-V10.md. Insbesondere Impressum (inkl. USt-IdNr.) und die

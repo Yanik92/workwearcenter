@@ -17,6 +17,9 @@ require_once __DIR__.'/order_schedule.php';
 require_once __DIR__.'/order_mail_actions.php';
 require_once __DIR__.'/magic_login.php';
 require_once __DIR__.'/exchange.php';
+require_once __DIR__.'/pricing.php';
+require_once __DIR__.'/lexware.php';
+require_once __DIR__.'/payroll.php';
 
 function yw_locked_company(int $id): array {
     $q=db()->prepare('SELECT * FROM companies WHERE id=? FOR UPDATE'); $q->execute([$id]);
@@ -28,9 +31,9 @@ function yw_locked_company(int $id): array {
 function yw_schema_ready(): bool {
     static $ready=false;
     if($ready)return true; // pro Anfrage nur einmal prüfen
-    $current='Versionsmarke 10.8.0';
+    $current='Versionsmarke 10.11.0';
     try {
-        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.8.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.8.0 fehlt';return false;}
+        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.11.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.11.0 fehlt – bitte update.php ausführen';return false;}
         foreach([
             'SELECT tracking_number,tracking_carrier,tracking_url FROM orders LIMIT 0',
             'SELECT image_back_path,image_sleeve_path,print_zones_json FROM products LIMIT 0',
@@ -55,6 +58,20 @@ function yw_schema_ready(): bool {
             'SELECT id,company_id FROM yw_equipment_profiles LIMIT 0',
             'SELECT profile_id,product_id FROM yw_equipment_profile_products LIMIT 0',
             'SELECT id,company_id,method,track_stock,stock_qty,reorder_level FROM yw_decoration_motifs LIMIT 0',
+            // 10.11: Umtausch & Retouren, Anmeldelink, Freigabe per E-Mail, Jahreswechsel-Mail, Sammelbestellung
+            'SELECT exchange_window_days,budget_year_mail,budget_year_mail_period,batch_mode,batch_day,batch_anchor FROM companies LIMIT 0',
+            'SELECT budget_mail_period FROM employee_accounts LIMIT 0',
+            'SELECT id,order_item_id,type,status,unit_company_cents,budget_delta_cents FROM yw_exchange_requests LIMIT 0',
+            'SELECT id,token_hash,expires_at,used_at FROM yw_login_links LIMIT 0',
+            'SELECT id,nonce_hash,expires_at,used_at FROM yw_decision_tokens LIMIT 0',
+            // 10.11: Probeshop
+            'SELECT id,token,logo_path,garment_tone,expires_at,view_count FROM yw_probeshops LIMIT 0',
+            // 10.11: Positionsrundung wie Lexware, Lexware-Anbindung
+            'SELECT line_net_cents,line_gross_cents,line_employee_cents,line_company_cents FROM order_items LIMIT 0',
+            'SELECT shipping_vat_rate FROM orders LIMIT 0',
+            'SELECT lexware_contact_id,lexware_customer_number FROM companies LIMIT 0',
+            'SELECT id,dedupe_key,status,lexware_id FROM yw_lexware_documents LIMIT 0',
+            'SELECT order_id,document_id FROM yw_lexware_document_orders LIMIT 0',
         ] as $current) db()->query($current);
         return $ready=true;
     }
@@ -198,7 +215,7 @@ function place_account_order(array $company,array $account): never {
         $profileRules=yw_account_profile_rules($account);
         foreach($q as $p){$productId=(int)$p['id'];if($profileRules!==null && !isset($profileRules[$productId]))continue;$p['profile_rule']=$profileRules[$productId]??null;$products[$productId]=$p;}
         $selection=yw_normalize_cart_selection($_POST['qty']??null,$_POST['size']??null);
-        $items=[]; $net=0; $gross=0; $employee=0; $employer=0;
+        $items=[]; $calcLines=[];
         foreach($selection as $productId=>$selected){
             $qty=(int)$selected['quantity'];
             if(!isset($products[$productId])) throw new DomainException('Artikel oder Menge nicht freigegeben.');
@@ -208,25 +225,27 @@ function place_account_order(array $company,array $account): never {
             $limit=yw_effective_product_limit($p,$p['profile_rule']);
             yw_check_limits(null,0,0,$limit,yw_quantity_used($company,$account,$productId),$qty);
             $price=product_price_breakdown($p,$company);
-            $net+=$price['net']*$qty; $gross+=$price['gross']*$qty;
-            $employee+=$price['employee']*$qty; $employer+=$price['employer']*$qty;
+            $calcLines[]=['net_unit'=>$price['net'],'qty'=>$qty,'vat'=>$price['vat']];
             $snapshot=['version'=>1,'name'=>company_product_display_name($p),'description'=>company_product_display_description($p),'color'=>$p['color'],'sku'=>$p['sku']??null,'decorations'=>company_product_decorations($p),'base_decoration_type'=>$p['decoration_type']??'','base_decoration_details'=>$p['decoration_details']??''];
             $items[]=[$p,$size,$qty,$price,json_encode($snapshot,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE)];
         }
         if(!$items) throw new DomainException('Bitte mindestens einen Artikel auswählen.');
-        $shipping=shipping_breakdown($company,$gross);
-        if(($company['delivery_mode']??'company')==='pickup') $shipping=['net'=>0,'gross'=>0,'employee'=>0,'company'=>0];
-        $net+=$shipping['net']; $gross+=$shipping['gross']; $employee+=$shipping['employee']; $employer+=$shipping['company'];
+        // 10.11: Rundung je Position und Steuer je Steuersatz wie in der Lexware-Rechnung (pricing.php).
+        $calc=yw_calc_items($calcLines,company_employee_share_percent($company));
+        $shipping=shipping_breakdown($company,$calc['gross'],$calc['net_by_rate']);
+        if(($company['delivery_mode']??'company')==='pickup') $shipping=['net'=>0,'vat'=>null,'gross'=>0,'employee'=>0,'company'=>0];
+        $net=$calc['net']+$shipping['net']; $gross=$calc['gross']+$shipping['gross']; $employee=$calc['employee']+$shipping['employee']; $employer=$calc['company']+$shipping['company'];
         yw_check_limits(yw_budget_limit($company,$account),yw_budget_used($company,$account),$employer);
         $delivery=['mode'=>$company['delivery_mode'],'address'=>trim((string)$company['delivery_address']),'company'=>$company['legal_name'],'employee'=>$account['name'],'department'=>$account['department'],'cost_center'=>$account['cost_center']];
         if($delivery['mode']==='company' && $delivery['address']==='') throw new DomainException('Die Firmenlieferadresse fehlt. Bitte den Verantwortlichen kontaktieren.');
         $inviteId=ensure_account_invite($company,$account);
         $status=(int)$company['approval_required']===1?'pending':'approved';
-        $q=db()->prepare('INSERT INTO orders(company_id,invite_id,employee_account_id,total_cents,net_total_cents,gross_total_cents,employee_total_cents,company_total_cents,shipping_net_cents,shipping_gross_cents,shipping_employee_cents,shipping_company_cents,status,note,submission_token,delivery_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-        $q->execute([$company['id'],$inviteId,$account['id'],$net,$net,$gross,$employee,$employer,$shipping['net'],$shipping['gross'],$shipping['employee'],$shipping['company'],$status,mb_substr(is_string($_POST['note']??null)?trim($_POST['note']):'',0,500),$token,json_encode($delivery,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE)]);
+        $q=db()->prepare('INSERT INTO orders(company_id,invite_id,employee_account_id,total_cents,net_total_cents,gross_total_cents,employee_total_cents,company_total_cents,shipping_net_cents,shipping_gross_cents,shipping_employee_cents,shipping_company_cents,status,note,submission_token,delivery_snapshot_json,shipping_vat_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+        $q->execute([$company['id'],$inviteId,$account['id'],$net,$net,$gross,$employee,$employer,$shipping['net'],$shipping['gross'],$shipping['employee'],$shipping['company'],$status,mb_substr(is_string($_POST['note']??null)?trim($_POST['note']):'',0,500),$token,json_encode($delivery,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE),$shipping['net']>0?$shipping['vat']:null]);
         $orderId=(int)db()->lastInsertId();
-        $q=db()->prepare('INSERT INTO order_items(order_id,product_id,product_name,size,quantity,unit_price_cents,unit_net_cents,vat_rate,unit_gross_cents,employee_share_cents,company_share_cents,decoration_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
-        foreach($items as [$p,$size,$qty,$price,$snapshot]) $q->execute([$orderId,$p['id'],company_product_display_name($p),$size,$qty,$price['net'],$price['net'],$price['vat'],$price['gross'],$price['employee'],$price['employer'],$snapshot]);
+        // Stückwerte (unit_*) bleiben zur Anzeige erhalten; maßgeblich sind die Positionswerte (line_*).
+        $q=db()->prepare('INSERT INTO order_items(order_id,product_id,product_name,size,quantity,unit_price_cents,unit_net_cents,vat_rate,unit_gross_cents,employee_share_cents,company_share_cents,decoration_snapshot_json,line_net_cents,line_gross_cents,line_employee_cents,line_company_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+        foreach($items as $index=>[$p,$size,$qty,$price,$snapshot]){$line=$calc['lines'][$index];$q->execute([$orderId,$p['id'],company_product_display_name($p),$size,$qty,$price['net'],$price['net'],$price['vat'],$price['gross'],$price['employee'],$price['employer'],$snapshot,$line['net'],$line['gross'],$line['employee'],$line['company']]);}
         db()->commit();
     } catch(Throwable $e) {
         if(db()->inTransaction()) db()->rollBack();

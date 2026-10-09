@@ -197,7 +197,7 @@ function yw_customer_report_export(string $slug): never {
     if($orders){
         $ids=array_map(fn($o)=>(int)$o['id'],$orders);
         $in=implode(',',array_fill(0,count($ids),'?'));
-        $iq=db()->prepare("SELECT order_id,product_name,size,quantity,unit_gross_cents,employee_share_cents,company_share_cents FROM order_items WHERE order_id IN ($in) ORDER BY id");
+        $iq=db()->prepare("SELECT order_id,product_name,size,quantity,unit_price_cents,unit_gross_cents,employee_share_cents,company_share_cents,line_net_cents,line_gross_cents,line_employee_cents,line_company_cents FROM order_items WHERE order_id IN ($in) ORDER BY id");
         $iq->execute($ids);foreach($iq as $row)$items[(int)$row['order_id']][]=$row;
     }
     audit_log('customer.report_export','company',(int)$company['id'],['company_id'=>(int)$company['id'],'period_start'=>$start]);
@@ -210,8 +210,8 @@ function yw_customer_report_export(string $slug): never {
     foreach($orders as $o){
         $base=[date('d.m.Y',strtotime((string)$o['created_at'])),yw_order_number((int)$o['id']),$statusLabels[$o['status']]??$o['status'],$o['status']==='approved'?company_portal_fulfillment_status((string)($o['fulfillment_status']??'')):'',$o['name'],$o['employee_number'],$o['department'],$o['cost_center'],$o['location']];
         foreach($items[(int)$o['id']]??[] as $it){
-            $qty=(int)$it['quantity'];
-            fputcsv($out,array_map('yw_csv_safe',array_merge($base,[$it['product_name'],$it['size'],$qty,yw_report_money((int)$it['unit_gross_cents']),yw_report_money($qty*(int)$it['unit_gross_cents']),yw_report_money($qty*(int)$it['employee_share_cents']),yw_report_money($qty*(int)$it['company_share_cents'])])),';','"','');
+            $qty=(int)$it['quantity'];$amounts=yw_order_item_amounts($it);
+            fputcsv($out,array_map('yw_csv_safe',array_merge($base,[$it['product_name'],$it['size'],$qty,yw_report_money((int)$it['unit_gross_cents']),yw_report_money($amounts['gross']),yw_report_money($amounts['employee']),yw_report_money($amounts['company'])])),';','"','');
         }
         if((int)$o['shipping_gross_cents']>0){
             fputcsv($out,array_map('yw_csv_safe',array_merge($base,['Versand','',1,yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_employee_cents']),yw_report_money((int)$o['shipping_company_cents'])])),';','"','');
@@ -223,7 +223,7 @@ function yw_customer_report_export(string $slug): never {
 function yw_customer_report_card(array $company): void {
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$start,$end]=yw_report_period($company,$previous);
-    $q=db()->prepare("SELECT i.product_name,SUM(i.quantity) qty,SUM(i.quantity*i.company_share_cents) company_spend,SUM(i.quantity*i.employee_share_cents) employee_spend FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.company_id=? AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? GROUP BY i.product_name ORDER BY qty DESC,i.product_name LIMIT 15");
+    $q=db()->prepare("SELECT i.product_name,SUM(i.quantity) qty,SUM(COALESCE(i.line_company_cents,i.quantity*i.company_share_cents)) company_spend,SUM(COALESCE(i.line_employee_cents,i.quantity*i.employee_share_cents)) employee_spend FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.company_id=? AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? GROUP BY i.product_name ORDER BY qty DESC,i.product_name LIMIT 15");
     $q->execute([(int)$company['id'],$start,$end]);$articles=$q->fetchAll();
     $label='Budgetjahr '.date('d.m.Y',strtotime($start)).' – '.date('d.m.Y',strtotime($end)-1);
     $slug=e($company['slug']);
@@ -247,6 +247,7 @@ function yw_customer_people_page(array $company,array $account): void {
     echo '<section class="cp-kpis"><article class="cp-kpi"><div class="icon">'.wc_public_icon('user').'</div><strong>'.$active.'</strong><span>Aktive Konten</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('check').'</div><strong>'.$openOrders.'</strong><span>Offene Bestellfreigaben</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('lock').'</div><strong>'.$pending.'</strong><span>Offene Registrierungen</span></article></section>';
     echo '<section class="cp-card"><h2>Verbrauch nach Organisation</h2><p>Firmenanteil inklusive offener Reservierungen im '.((($_GET['jahr']??'')==='vorjahr')?'vorherigen':'aktuellen').' Budgetjahr.</p><div style="overflow:auto"><table><thead><tr><th>Abteilung</th><th>Kostenstelle</th><th>Standort</th><th>Mitarbeiter</th><th>Firmenanteil</th></tr></thead><tbody>';foreach($groups as $group)echo '<tr><td>'.e($group['department']).'</td><td>'.e($group['cost_center']).'</td><td>'.e($group['location']).'</td><td>'.(int)$group['employees'].'</td><td>'.money((int)$group['company_spend']).'</td></tr>';echo '</tbody></table></div></section>';
     yw_customer_report_card($company);
+    yw_payroll_manager_card($company);
     echo '<section class="cp-card"><h2>Mitarbeiter hinzufügen</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_add"><div class="grid2"><label>Name<input name="name" maxlength="160" required></label><label>E-Mail<input type="email" name="email" maxlength="190" required></label><label>Abteilung<input name="department" maxlength="120"></label><label>Kostenstelle<input name="cost_center" maxlength="120"></label><label>Standort<input name="location" maxlength="120"></label><label>Personalnummer<input name="employee_number" maxlength="80"></label><label>Eintritt<input type="date" name="employment_start"></label><label>Austritt<input type="date" name="employment_end"></label>'.yw_equipment_profile_select($profiles,null).'</div><button class="btn primary">Anlegen und Einrichtungslink senden</button></form></section>';
     echo '<section class="cp-card"><h2>CSV-Import</h2><p>Spalten: Name, E-Mail, Abteilung, Kostenstelle, Standort, Personalnummer, Eintritt, Austritt, Ausstattungsprofil. Profilnamen müssen exakt einem aktiven Profil entsprechen. Bestehende E-Mails werden aktualisiert; Rollen bleiben dabei erhalten. Maximal 200 Zeilen.</p><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_import"><label>Mitarbeiter-CSV<input type="file" name="employees_csv" accept=".csv,text/csv" required></label><button class="btn">CSV importieren</button></form><p><a href="/'.e($company['slug']).'/mitarbeiter.csv">Aktuelle Mitarbeiter als CSV exportieren</a></p></section>';
     $statusLabels=['pending'=>'Wartet auf Freigabe','approved'=>'Freigegeben','rejected'=>'Abgelehnt'];
