@@ -316,4 +316,6 @@ test_ok(str_contains($shopSrc,'login_throttled($loginKey,25,false)') && str_cont
 $regSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/registration.php');
 test_ok(str_contains($regSrc,'login_throttled($pinKey,30,false)') && str_contains($regSrc,'record_login_failure($pinKey,false)'),'Firmen-PIN der Registrierung wird IP-unabhängig je Firma gedrosselt');
 
+foreach(['password_reset.php','admin_password_reset.php'] as $resetFile){$resetSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/'.$resetFile);test_ok(str_contains($resetSrc,'login_throttled($emailKey,5,false)') && str_contains($resetSrc,'record_login_failure($emailKey,false)'),"Passwort-Links je Adresse IP-unabhängig begrenzt ($resetFile)");}
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

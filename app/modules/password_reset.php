@@ -36,8 +36,9 @@ function yw_password_forgot_page(string $slug): void {
             record_login_failure($globalKey);
             if(filter_var($email,FILTER_VALIDATE_EMAIL)){
                 $emailKey='reset-email-'.$company['id'].'-'.hash('sha256',$email);
-                if(!login_throttled($emailKey,5)){
-                    record_login_failure($emailKey);
+                // Je Adresse höchstens 5 Links in 15 Minuten, unabhängig von der IP (wie beim Anmeldelink).
+                if(!login_throttled($emailKey,5,false)){
+                    record_login_failure($emailKey,false);
                     $q=db()->prepare("SELECT id,name,email FROM employee_accounts WHERE company_id=? AND email=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) LIMIT 1");
                     $q->execute([$company['id'],$email]); $account=$q->fetch();
                     if($account){
