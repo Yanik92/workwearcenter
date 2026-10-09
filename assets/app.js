@@ -262,6 +262,62 @@
     });
     update();
   });
+
+  /* ---------- 10.12.1: Katalogbilder in Paketen hochladen (große Auswahl sprengt sonst post_max_size) ---------- */
+  document.querySelectorAll('[data-katalog-upload]').forEach(function (form) {
+    if (!window.fetch || !window.FormData) return;
+    var input = form.querySelector('input[type="file"]');
+    var status = form.querySelector('[data-katalog-upload-status]');
+    var button = form.querySelector('button[type="submit"]');
+    var maxBytes = parseInt(form.dataset.maxBytes, 10) || 7000000;
+    var maxFiles = parseInt(form.dataset.maxFiles, 10) || 20;
+    form.addEventListener('submit', function (ev) {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      ev.preventDefault();
+      var tooBig = files.filter(function (f) { return f.size > maxBytes; });
+      files = files.filter(function (f) { return f.size <= maxBytes; });
+      var batches = [], cur = [], curSize = 0;
+      files.forEach(function (f) {
+        if (cur.length && (cur.length >= maxFiles || curSize + f.size > maxBytes)) { batches.push(cur); cur = []; curSize = 0; }
+        cur.push(f); curSize += f.size;
+      });
+      if (cur.length) batches.push(cur);
+      var done = 0, uploaded = 0, assigned = 0, problems = tooBig.map(function (f) { return f.name + ': zu groß für den Upload, bitte per FTP ablegen'; });
+      button.disabled = true;
+      function finish() {
+        var msg = uploaded + ' Bilddatei(en) übernommen, ' + assigned + ' Produkt(e) zugeordnet.';
+        if (problems.length) msg += ' Nicht übernommen: ' + problems.slice(0, 6).join(' · ') + (problems.length > 6 ? ' …' : '');
+        status.textContent = msg + ' Zuordnung wird geprüft …';
+        // Abschluss als normales Formular: der Server zeigt dann die vollständige Rückmeldung (fehlende und unbekannte Dateien).
+        var f = document.createElement('form');
+        f.method = 'post'; f.action = form.getAttribute('action') || window.location.pathname + window.location.search;
+        [['csrf', form.querySelector('input[name="csrf"]').value], ['action', 'katalog_images_assign'], ['upload_summary', msg]].forEach(function (kv) {
+          var i = document.createElement('input'); i.type = 'hidden'; i.name = kv[0]; i.value = kv[1]; f.appendChild(i);
+        });
+        document.body.appendChild(f); f.submit();
+      }
+      function next() {
+        if (done >= batches.length) { finish(); return; }
+        status.textContent = 'Paket ' + (done + 1) + ' von ' + batches.length + ' wird übertragen …';
+        var fd = new FormData();
+        fd.append('csrf', form.querySelector('input[name="csrf"]').value);
+        fd.append('action', 'katalog_images_upload');
+        fd.append('ajax', '1');
+        batches[done].forEach(function (f) { fd.append('katalog_images[]', f, f.name); });
+        fetch(form.getAttribute('action') || window.location.pathname + window.location.search, { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (j.ok) { uploaded += j.files; assigned += j.assigned; problems = problems.concat(j.problems || []); }
+            else problems.push(j.error);
+          })
+          .catch(function () { problems.push('Paket ' + (done + 1) + ' konnte nicht übertragen werden'); })
+          .then(function () { done++; next(); });
+      }
+      if (!batches.length) { finish(); return; }
+      next();
+    });
+  });
   /* ---------- 10.9: Logo-Ebenen exakt auf die sichtbare Bildfläche legen ---------- */
   function fitMockupLayers() {
     document.querySelectorAll('.mockup-view').forEach(function (view) {

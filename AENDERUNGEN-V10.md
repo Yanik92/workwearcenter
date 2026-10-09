@@ -358,3 +358,10 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - Für Releases: `php tools/dateiliste-erzeugen.php` erzeugt die Prüfsummenliste.
 
 **Beim Hochladen per FileZilla:** Bei der Frage „Zieldatei existiert bereits“ **„Überschreiben“** wählen und „Immer diese Aktion verwenden“ anhaken – nicht „Überschreiben, falls Quelle neuer“. Sonst bleiben ältere Dateien auf dem Server liegen.
+
+## Nachtrag 10.12.2 – Katalogbilder: Zuordnung repariert
+- **Zweifarbige Artikel** (z. B. JN010 black/red) wurden nie erkannt, weil der Schrägstrich im Farbnamen im Dateinamen gesucht wurde. Jetzt passt `JN010_black_red.jpg`, also der Name, den Daiber selbst in der Liste führt.
+- Dateinamen werden großzügig erkannt: Groß-/Kleinschreibung, Bindestrich oder Unterstrich, Zusätze wie `_front`, `-back` oder ` (1)`. Der längste passende Anfang gewinnt, `JN010_black_red.jpg` landet also nicht bei black.
+- Dateinamen mit Leerzeichen, Klammern oder Umlauten wurden beim Hochladen stillschweigend verworfen. Sie werden jetzt übernommen und sicher umbenannt.
+- **Große Auswahl:** Viele Bilder auf einmal überschritten die Upload-Grenze des Servers, und es kam nur „Sicherheitsprüfung fehlgeschlagen“. Jetzt überträgt die Seite die Bilder automatisch in Paketen mit Fortschrittsanzeige. Ist ein Formular trotzdem zu groß, erscheint ein klarer Hinweis mit der Größe.
+- Nach dem Upload meldet die Seite, welche Produkte noch ohne Bild sind (mit dem erwarteten Dateinamen) und welche Dateien zu keinem Katalogartikel passen. Die Liste „Fehlende Dateien“ nannte bisher falsche Namen (z. B. `jn840-navy_navy.jpg`).

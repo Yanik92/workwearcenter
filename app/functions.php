@@ -79,6 +79,10 @@ function csrf(): string {
 function csrf_field(): string { return '<input type="hidden" name="csrf" value="' . e(csrf()) . '">'; }
 function verify_csrf(): void {
     if (empty($_SESSION['csrf']) || !is_string($_POST['csrf'] ?? null) || !hash_equals((string)$_SESSION['csrf'], $_POST['csrf'])) {
+        // Ist der Upload größer als post_max_size, verwirft PHP das ganze Formular – dann ehrlich sagen, woran es liegt.
+        if (!$_POST && !$_FILES && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+            http_response_code(413); exit('<!doctype html><meta charset="utf-8"><title>Upload zu groß</title><body style="font-family:system-ui;max-width:640px;margin:60px auto;padding:0 20px;line-height:1.6"><h1>Upload zu groß</h1><p>Die Dateien waren zusammen ' . e(number_format((int)$_SERVER['CONTENT_LENGTH'] / 1048576, 1, ',', '.')) . ' MB groß, der Server nimmt höchstens ' . e((string)ini_get('post_max_size')) . ' auf einmal an. Bitte weniger oder kleinere Dateien wählen, große Bildmengen per FTP ablegen.</p><p>Mit der Zurück-Taste des Browsers zurück zur Seite.</p></body>');
+        }
         http_response_code(419); exit('Sicherheitsprüfung fehlgeschlagen. Bitte Seite neu laden.');
     }
 }

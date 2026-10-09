@@ -278,26 +278,79 @@ function yw_katalog_store_image(string $source): string {
 /** Ordnet allen Daiber-Produkten ohne Bild die passende Datei zu. */
 function yw_katalog_assign_images(): array {
     $index=yw_katalog_image_index();$assigned=0;$missing=[];
-    if(!$index)return ['assigned'=>0,'missing'=>[],'files'=>0];
+    if(!$index)return ['assigned'=>0,'missing'=>[],'files'=>0,'unknown'=>[]];
+    $images=yw_katalog_image_map(true);
     $products=db()->query("SELECT id,sku,color,name FROM products WHERE supplier_name='Daiber' AND (image_path IS NULL OR image_path='')")->fetchAll();
     $update=db()->prepare('UPDATE products SET image_path=? WHERE id=?');
     foreach($products as $p){
-        $want=yw_katalog_expected_image(yw_katalog_base_sku((string)$p['sku'],mb_strtolower((string)$p['color'])),(string)$p['color']);
-        $file=null;foreach($want as $candidate)if(isset($index[$candidate])){$file=$index[$candidate];break;}
-        if($file===null){$missing[]=$want[0];continue;}
+        $base=yw_katalog_base_sku((string)$p['sku'],mb_strtolower((string)$p['color']));
+        $file=yw_katalog_find_image($base,(string)$p['color']);
+        if($file===null){$missing[]=yw_katalog_expected_filename($base,(string)$p['color']);continue;}
         try{$path=yw_katalog_store_image($file);$update->execute([$path,(int)$p['id']]);$assigned++;}
-        catch(Throwable $e){$missing[]=$want[0].' ('.$e->getMessage().')';}
+        catch(Throwable $e){$missing[]=basename($file).' ('.$e->getMessage().')';}
     }
     if($assigned)audit_log('product.images_assigned','product',null,['count'=>$assigned]);
-    return ['assigned'=>$assigned,'missing'=>$missing,'files'=>count($index)];
+    return ['assigned'=>$assigned,'missing'=>$missing,'files'=>count($index),'unknown'=>$images['unknown']];
 }
 
-/** Mögliche Dateinamen des Daiber-Masterbilds für Artikel + Farbe. */
-function yw_katalog_expected_image(string $sku,string $color): array {
-    $base=strtolower($sku.'_'.$color);
-    $alt=strtolower($sku.'_'.str_replace(['-',' '],['_','_'],$color));
-    $out=[];foreach([$base,$alt] as $b)foreach(['jpg','jpeg','png','webp'] as $ext)$out[]=$b.'.'.$ext;
-    return array_values(array_unique($out));
+/** Vergleichsschlüssel für Bilddateien: klein, ohne Endung, alle Trennzeichen als „_“ (JN010_Black-Red (1).JPG → jn010_black_red_1). */
+function yw_katalog_image_key(string $name): string {
+    $name=basename(str_replace('\\','/',$name));
+    $name=(string)preg_replace('/\.(jpe?g|png|webp)$/i','',$name);
+    $name=strtr(mb_strtolower($name),['ä'=>'ae','ö'=>'oe','ü'=>'ue','ß'=>'ss']);
+    return trim((string)preg_replace('/[^a-z0-9]+/','_',$name),'_');
+}
+
+/** Sicherer Dateiname für den Bilderordner (Umlaute, Leerzeichen, Klammern werden ersetzt). */
+function yw_katalog_safe_filename(string $name): ?string {
+    if(!preg_match('/\.(jpe?g|png|webp)$/i',$name,$m))return null;
+    $key=yw_katalog_image_key($name);
+    return $key===''?null:$key.'.'.strtolower($m[1]);
+}
+
+/**
+ * Ordnet die Dateien im Bilderordner den Katalogfarben zu: Schlüssel „artikel_farbe“ → Datei.
+ * Erkannt wird der längste passende Anfang des Dateinamens, damit z. B. JN010_black_red.jpg zur
+ * Farbe black/red gehört und nicht zu black, und JN840_navy_front.jpg oder „JN840_navy (1).jpg“
+ * trotzdem zu navy. Bei mehreren Dateien gewinnt der genaue Name, sonst der kürzeste.
+ * Rückgabe: ['map'=>[schlüssel=>pfad], 'unknown'=>[dateinamen ohne Katalogtreffer]].
+ */
+function yw_katalog_image_map(bool $fresh=false): array {
+    static $cache=null;
+    if($cache!==null&&!$fresh)return $cache;
+    $known=[];
+    $catalog=yw_katalog_load();
+    if($catalog)foreach($catalog['articles'] as $sku=>$a)foreach($a['col'] as $color=>$c){
+        $known[yw_katalog_image_key($sku.'_'.$color)]=true;
+        if(!empty($c['img']))$known[yw_katalog_image_key((string)$c['img'])]=true;
+    }
+    $map=[];$rank=[];$unknown=[];
+    foreach(yw_katalog_image_index() as $name=>$path){
+        $parts=explode('_',yw_katalog_image_key($name));$hit=null;
+        for($n=count($parts);$n>=2;$n--){$try=implode('_',array_slice($parts,0,$n));if(isset($known[$try])){$hit=$try;break;}}
+        if($hit===null){$unknown[]=$name;continue;}
+        $r=[count($parts)-$n,strlen($name)];
+        if(!isset($rank[$hit])||$r<$rank[$hit]){$rank[$hit]=$r;$map[$hit]=$path;}
+    }
+    sort($unknown);
+    return $cache=['map'=>$map,'unknown'=>$unknown];
+}
+
+/** Bilddatei für Artikel + Farbe aus dem Bilderordner oder null. */
+function yw_katalog_find_image(string $sku,string $color): ?string {
+    $map=yw_katalog_image_map()['map'];
+    $key=yw_katalog_image_key($sku.'_'.$color);
+    if(isset($map[$key]))return $map[$key];
+    $catalog=yw_katalog_load();$a=$catalog['articles'][strtoupper($sku)]??null;
+    if($a)foreach($a['col'] as $name=>$c)if(mb_strtolower((string)$name)===mb_strtolower($color)&&!empty($c['img'])){$k=yw_katalog_image_key((string)$c['img']);if(isset($map[$k]))return $map[$k];}
+    return null;
+}
+
+/** Dateiname, unter dem Daiber das Masterbild führt (für Hinweise „Bild fehlt“). */
+function yw_katalog_expected_filename(string $sku,string $color): string {
+    $catalog=yw_katalog_load();$a=$catalog['articles'][strtoupper($sku)]??null;
+    if($a)foreach($a['col'] as $name=>$c)if(mb_strtolower((string)$name)===mb_strtolower($color)&&!empty($c['img']))return (string)$c['img'];
+    return strtoupper($sku).'_'.str_replace(['/',' '],'_',mb_strtolower($color)).'.jpg';
 }
 
 /** Entpackt ein ZIP mit Katalogbildern in den Bilderordner (nur Bilddateien, flach). */
@@ -308,10 +361,11 @@ function yw_katalog_import_zip(string $tmp): int {
     $count=0;
     for($i=0;$i<$zip->numFiles&&$i<5000;$i++){
         $name=(string)$zip->getNameIndex($i);$base=basename(str_replace('\\','/',$name));
-        if(!preg_match('/^[A-Za-z0-9._ -]+\.(jpe?g|png|webp)$/i',$base))continue;
+        if(str_starts_with($base,'._')||str_contains($name,'__MACOSX/'))continue; // macOS-Begleitdateien
+        $safe=yw_katalog_safe_filename($base);if($safe===null)continue;
         $stat=$zip->statIndex($i);if(!$stat||($stat['size']??0)>40*1024*1024)continue;
         $stream=$zip->getStream($name);if(!$stream)continue;
-        $target=$dir.'/'.strtolower($base);
+        $target=$dir.'/'.$safe;
         file_put_contents($target,$stream);fclose($stream);
         try{yw_validate_uploaded_raster($target,'Bild '.$base);}catch(Throwable $e){@unlink($target);continue;}
         $count++;
@@ -348,7 +402,7 @@ function yw_katalog_create_products(string $sku,array $colors,array $sizesPerCol
             $purchase=(int)round($cost*100);
             $sale=$priceMode==='fixed'?$fixedCents:(int)(ceil($purchase*$factor/10)*10); // auf 10 Cent aufrunden
             $image=null;
-            if($index){foreach(yw_katalog_expected_image($sku,$label) as $cand)if(isset($index[$cand])){try{$image=yw_katalog_store_image($index[$cand]);$withImage++;}catch(Throwable $e){$image=null;}break;}}
+            if($index&&($file=yw_katalog_find_image($sku,(string)$color))!==null){try{$image=yw_katalog_store_image($file);$withImage++;}catch(Throwable $e){$image=null;}}
             $insert->execute([$a['n'],$categoryId?:null,$categoryName,$description,$sale,$purchase,json_encode($sizes,JSON_UNESCAPED_UNICODE),$label,$image,'','',yw_katalog_product_sku($sku,$label),$brand,'Daiber']);
             $created[]=['id'=>(int)db()->lastInsertId(),'color'=>$label,'sale'=>$sale,'purchase'=>$purchase,'image'=>$image!==null];
         }
@@ -391,28 +445,58 @@ function yw_admin_katalog_action(string $action): void {
         flash('success',$msg);redirect('/admin?tab=katalog&artikel='.rawurlencode(strtoupper($sku)));
     }
     if($action==='katalog_images_upload'){
-        $files=$_FILES['katalog_images']??null;$count=0;
-        if(!$files||!is_array($files['name']??null))throw new RuntimeException('Bitte Bilddateien oder eine ZIP-Datei auswählen.');
-        $dir=yw_katalog_images_dir();if(!is_dir($dir)&&!mkdir($dir,0755,true)&&!is_dir($dir))throw new RuntimeException('Bilderordner konnte nicht erstellt werden.');
-        foreach($files['name'] as $i=>$name){
-            if((int)$files['error'][$i]!==UPLOAD_ERR_OK)continue;
-            $tmp=(string)$files['tmp_name'][$i];if(!is_uploaded_file($tmp))continue;
-            $base=strtolower(basename((string)$name));
-            if(preg_match('/\.zip$/',$base)){$count+=yw_katalog_import_zip($tmp);continue;}
-            if(!preg_match('/^[a-z0-9._ -]+\.(jpe?g|png|webp)$/',$base))continue;
-            yw_validate_uploaded_raster($tmp,'Bild '.$base);
-            if(move_uploaded_file($tmp,$dir.'/'.$base))$count++;
+        // Mit ajax=1 schickt app.js große Auswahlen in Paketen; Antwort dann als JSON.
+        $ajax=($_POST['ajax']??'')==='1';
+        @set_time_limit(300);
+        $files=$_FILES['katalog_images']??null;$count=0;$problems=[];
+        try{
+            if(!$files||!is_array($files['name']??null))throw new RuntimeException('Bitte Bilddateien oder eine ZIP-Datei auswählen.');
+            $dir=yw_katalog_images_dir();if(!is_dir($dir)&&!mkdir($dir,0755,true)&&!is_dir($dir))throw new RuntimeException('Bilderordner konnte nicht erstellt werden.');
+            foreach($files['name'] as $i=>$name){
+                $name=basename(str_replace('\\','/',(string)$name));$error=(int)$files['error'][$i];
+                if($error===UPLOAD_ERR_NO_FILE)continue;
+                if($error!==UPLOAD_ERR_OK){$problems[]=$name.': '.upload_error_message($error,'Datei');continue;}
+                $tmp=(string)$files['tmp_name'][$i];if(!is_uploaded_file($tmp))continue;
+                if(preg_match('/\.zip$/i',$name)){$count+=yw_katalog_import_zip($tmp);continue;}
+                $safe=yw_katalog_safe_filename($name);
+                if($safe===null){$problems[]=$name.': kein JPG, PNG oder WebP';continue;}
+                try{yw_validate_uploaded_raster($tmp,'Bild '.$name);}catch(RuntimeException $e){$problems[]=$e->getMessage();continue;}
+                if(move_uploaded_file($tmp,$dir.'/'.$safe))$count++;
+            }
+            if($count===0)throw new RuntimeException('Keine Bilddatei übernommen'.($problems?': '.implode(' · ',array_slice($problems,0,5)):' (erlaubt: JPG, PNG, WebP oder ZIP).'));
+        }catch(RuntimeException $e){
+            if(!$ajax)throw $e;
+            header('Content-Type: application/json; charset=utf-8');echo json_encode(['ok'=>false,'error'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);exit;
         }
-        if($count===0)throw new RuntimeException('Keine passenden Bilddateien gefunden (JPG, PNG, WebP oder ZIP).');
         $r=yw_katalog_assign_images();
-        flash('success',$count.' Bilddatei(en) übernommen, '.$r['assigned'].' Produkt(en) zugeordnet.');redirect('/admin?tab=katalog#bilder');
+        if($ajax){header('Content-Type: application/json; charset=utf-8');echo json_encode(['ok'=>true,'files'=>$count,'assigned'=>$r['assigned'],'problems'=>$problems],JSON_UNESCAPED_UNICODE);exit;}
+        flash('success',yw_katalog_images_message($count,$r,$problems));redirect('/admin?tab=katalog#bilder');
     }
     if($action==='katalog_images_assign'){
         @set_time_limit(300);
         $r=yw_katalog_assign_images();
-        flash($r['assigned']?'success':'error',$r['files'].' Dateien im Bilderordner, '.$r['assigned'].' Produkt(en) neu zugeordnet'.($r['missing']?'. Noch ohne Datei: '.implode(', ',array_slice($r['missing'],0,15)).(count($r['missing'])>15?' …':''):'.'));
+        $summary=mb_substr(trim((string)($_POST['upload_summary']??'')),0,1500);
+        flash($r['assigned']||$summary!==''?'success':'error',$summary!==''?$summary.yw_katalog_images_message(null,$r,[],false):yw_katalog_images_message(null,$r,[]));
         redirect('/admin?tab=katalog#bilder');
     }
+}
+
+/** Höchstgröße eines Upload-Pakets in Bytes (etwas unter post_max_size und upload_max_filesize). */
+function yw_katalog_upload_budget(): int {
+    $bytes=static function(string $v): int{$v=trim($v);if($v==='')return 0;$n=(float)$v;return (int)match(strtolower(substr($v,-1))){'g'=>$n*1073741824,'m'=>$n*1048576,'k'=>$n*1024,default=>$n};};
+    $post=$bytes((string)ini_get('post_max_size'));
+    $limit=$post>0?$post:8*1048576;
+    return max(512*1024,(int)($limit*0.9)-64*1024);
+}
+
+/** Rückmeldung nach Upload oder Zuordnung: was übernommen wurde, was fehlt und welche Dateien unbekannt sind. */
+function yw_katalog_images_message(?int $uploaded,array $r,array $problems,bool $counts=true): string {
+    $msg='';
+    if($counts)$msg=($uploaded!==null?$uploaded.' Bilddatei(en) übernommen, ':$r['files'].' Dateien im Bilderordner, ').$r['assigned'].' Produkt(e) neu zugeordnet.';
+    if($r['missing'])$msg.=' Noch ohne Bild: '.implode(', ',array_slice($r['missing'],0,10)).(count($r['missing'])>10?' … (+'.(count($r['missing'])-10).')':'').'.';
+    if(!empty($r['unknown']))$msg.=' Keinem Katalogartikel zuzuordnen: '.implode(', ',array_slice($r['unknown'],0,8)).(count($r['unknown'])>8?' … (+'.(count($r['unknown'])-8).')':'').' – der Name muss mit Artikelnummer_Farbe beginnen.';
+    if($problems)$msg.=' Nicht übernommen: '.implode(' · ',array_slice($problems,0,5)).(count($problems)>5?' …':'').'.';
+    return $msg;
 }
 
 function yw_katalog_swatch(array $c): string {
@@ -449,7 +533,7 @@ function yw_admin_katalog_page(): void {
         $a=$catalog['articles'][$artikel];$minPrice=yw_katalog_article_min_price($a);
         $allSizes=[];foreach($a['col'] as $c)foreach($c['sz'] as $sz)if(!in_array($sz,$allSizes,true))$allSizes[]=$sz;
         $surcharge=[];foreach($a['col'] as $c)foreach($c['ps'] as $sz=>$pr)$surcharge[$sz]=max($surcharge[$sz]??0,(float)$pr-(float)$c['p']);
-        $inShop=0;$withImg=0;foreach($a['col'] as $color=>$c){$label=yw_katalog_color_label((string)$color);if(isset($existing[$artikel.'|'.mb_strtolower($label)]))$inShop++;foreach(yw_katalog_expected_image($artikel,$label) as $cand)if(isset($imageIndex[$cand])){$withImg++;break;}}
+        $inShop=0;$withImg=0;foreach($a['col'] as $color=>$c){$label=yw_katalog_color_label((string)$color);if(isset($existing[$artikel.'|'.mb_strtolower($label)]))$inShop++;if(yw_katalog_find_image($artikel,(string)$color)!==null)$withImg++;}
         $features=array_values(array_filter(array_map('trim',explode("\n",(string)($a['f']??'')))));
 
         echo '<form method="post" class="katalog-article" data-katalog data-ek="'.e(number_format($minPrice,2,'.','')).'">'.csrf_field().'<input type="hidden" name="action" value="katalog_create"><input type="hidden" name="sku" value="'.e($artikel).'">';
@@ -463,9 +547,9 @@ function yw_admin_katalog_page(): void {
         echo '<section class="card"><div class="katalog-section-head"><div><h3>Farben</h3><p class="muted">Jede gewählte Farbe wird ein eigenes Produkt im Shop. '.($inShop?$inShop.' Farbe(n) sind bereits angelegt.':'').'</p></div><div class="katalog-tools"><button type="button" class="btn small" data-katalog-select="all">Alle</button><button type="button" class="btn small" data-katalog-select="image">Nur mit Bild</button><button type="button" class="btn small" data-katalog-select="none">Keine</button></div></div><div class="katalog-colors">';
         foreach($a['col'] as $color=>$c){
             $label=yw_katalog_color_label((string)$color);$has=isset($existing[$artikel.'|'.mb_strtolower($label)]);
-            $imgFile=null;foreach(yw_katalog_expected_image($artikel,$label) as $cand)if(isset($imageIndex[$cand])){$imgFile=$cand;break;}
+            $imgFile=yw_katalog_find_image($artikel,(string)$color);
             $extra=(float)$c['p']-$minPrice;
-            echo '<label class="kcolor'.($has?' is-done':'').'" data-has-image="'.($imgFile?'1':'0').'"><input type="checkbox" name="colors[]" value="'.e((string)$color).'" data-ek="'.e(number_format((float)$c['p'],2,'.','')).'" '.($has?'disabled':'').'>'.yw_katalog_swatch($c).'<span class="kcolor-body"><span class="kcolor-name">'.e($label).'</span><span class="kcolor-meta">'.e((string)$c['de']).($extra>0.001?' · EK +'.money((int)round($extra*100)):'').'</span><span class="kcolor-state">'.($has?'<span class="kstate done">Im Shop</span>':'').($imgFile?'<span class="kstate ok">Bild vorhanden</span>':'<span class="kstate missing" title="'.e((string)($c['img']??$artikel.'_'.$color.'.jpg')).'">Bild fehlt</span>').'</span></span></label>';
+            echo '<label class="kcolor'.($has?' is-done':'').'" data-has-image="'.($imgFile?'1':'0').'"><input type="checkbox" name="colors[]" value="'.e((string)$color).'" data-ek="'.e(number_format((float)$c['p'],2,'.','')).'" '.($has?'disabled':'').'>'.yw_katalog_swatch($c).'<span class="kcolor-body"><span class="kcolor-name">'.e($label).'</span><span class="kcolor-meta">'.e((string)$c['de']).($extra>0.001?' · EK +'.money((int)round($extra*100)):'').'</span><span class="kcolor-state">'.($has?'<span class="kstate done">Im Shop</span>':'').($imgFile?'<span class="kstate ok">Bild vorhanden</span>':'<span class="kstate missing" title="Erwartet: '.e(yw_katalog_expected_filename($artikel,(string)$color)).'">Bild fehlt</span>').'</span></span></label>';
         }
         echo '</div></section>';
 
@@ -508,12 +592,18 @@ function yw_admin_katalog_page(): void {
     }
 
     /* ---- Bilder ---- */
-    echo '<section class="card katalog-images" id="bilder"><div class="katalog-section-head"><div><h3>Produktbilder aus der Daiber Media Cloud</h3><p class="muted">Erkannt wird der Dateiname <code>Artikel_Farbe.jpg</code>, z. B. <code>JN840_navy.jpg</code> – so heißen die Masterbilder in der Media Cloud. Nur die Bilder der Artikel nötig, die im Shop sind; große Fotos werden automatisch verkleinert.</p></div><div class="katalog-stat-inline"><strong>'.count($imageIndex).'</strong> Dateien im Ordner'.($withoutImage?' · <strong class="warn">'.$withoutImage.'</strong> Produkte ohne Bild':'').'</div></div>';
-    echo '<div class="katalog-image-ways"><form method="post" enctype="multipart/form-data" class="katalog-way">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_upload"><h4>Hochladen</h4><p class="muted">Einzelne Bilder oder eine ZIP-Datei, bis '.e(ini_get('upload_max_filesize')).' je Upload.</p><input type="file" name="katalog_images[]" multiple accept=".jpg,.jpeg,.png,.webp,.zip"><button class="btn primary" type="submit">Hochladen und zuordnen</button></form>';
+    echo '<section class="card katalog-images" id="bilder"><div class="katalog-section-head"><div><h3>Produktbilder aus der Daiber Media Cloud</h3><p class="muted">Der Dateiname muss mit <code>Artikelnummer_Farbe</code> beginnen, z. B. <code>JN840_navy.jpg</code> oder <code>JN010_black_red.jpg</code> für black/red – so heißen die Masterbilder in der Media Cloud. Zusätze wie <code>_front</code> oder <code>(1)</code> und Groß-/Kleinschreibung sind egal. Nur die Bilder der Artikel nötig, die im Shop sind; große Fotos werden automatisch verkleinert.</p></div><div class="katalog-stat-inline"><strong>'.count($imageIndex).'</strong> Dateien im Ordner'.($withoutImage?' · <strong class="warn">'.$withoutImage.'</strong> Produkte ohne Bild':'').'</div></div>';
+    echo '<div class="katalog-image-ways"><form method="post" enctype="multipart/form-data" class="katalog-way" data-katalog-upload data-max-bytes="'.(int)yw_katalog_upload_budget().'" data-max-files="'.max(1,min(50,(int)ini_get('max_file_uploads')?:20)).'">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_upload"><h4>Hochladen</h4><p class="muted">Beliebig viele Bilder auf einmal auswählen – sie werden automatisch in Paketen übertragen. ZIP-Dateien bis '.e(ini_get('upload_max_filesize')).'; größere ZIPs entpacken und die Bilder auswählen oder per FTP ablegen.</p><input type="file" name="katalog_images[]" multiple accept=".jpg,.jpeg,.png,.webp,.zip"><button class="btn primary" type="submit">Hochladen und zuordnen</button><p class="muted small" data-katalog-upload-status role="status" aria-live="polite"></p></form>';
     echo '<form method="post" class="katalog-way">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_assign"><h4>Per FTP</h4><p class="muted">Dateien in <code>uploads/katalog/bilder/</code> legen (Unterordner erlaubt), dann hier zuordnen lassen.</p><button class="btn" type="submit">Bilder zuordnen</button></form></div>';
+    $unknownImages=$imageIndex?yw_katalog_image_map()['unknown']:[];
+    if($unknownImages){
+        echo '<details class="katalog-details"><summary>Dateien ohne passenden Katalogartikel ('.count($unknownImages).')</summary><p class="muted">Diese Dateien liegen im Bilderordner, ihr Name beginnt aber nicht mit Artikelnummer_Farbe aus der Daiber-Liste. Umbenennen, dann „Bilder zuordnen“.</p><div class="katalog-chips">';
+        foreach(array_slice($unknownImages,0,200) as $n)echo '<span class="chip mono">'.e($n).'</span>';
+        echo '</div></details>';
+    }
     if($withoutImage){
         echo '<details class="katalog-details"><summary>Fehlende Dateien anzeigen ('.$withoutImage.')</summary><div class="katalog-chips">';
-        foreach($existing as $p)if(empty($p['image_path']))echo '<span class="chip mono">'.e(yw_katalog_expected_image((string)$p['sku'],(string)$p['color'])[0]).'</span>';
+        foreach($existing as $p)if(empty($p['image_path']))echo '<span class="chip mono">'.e(yw_katalog_expected_filename(yw_katalog_base_sku((string)$p['sku'],mb_strtolower((string)$p['color'])),(string)$p['color'])).'</span>';
         echo '</div></details>';
     }
     echo '</section>';
