@@ -148,8 +148,10 @@ function yw_admin_preview_start(int $companyId): never {
 }
 
 function yw_admin_preview_stop(): never {
+    // Zurück zur Kundenakte der angesehenen Firma statt zur Kundenliste.
+    $companyId=(int)($_SESSION['admin_preview_company']??0);
     unset($_SESSION['admin_preview_company']);
-    redirect('/admin?tab=companies');
+    redirect($companyId>0?yw_customer_url($companyId):'/admin?tab=companies');
 }
 
 /** Künstliches Konto für die Vorschau; null, wenn keine Vorschau aktiv ist. */
