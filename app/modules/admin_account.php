@@ -61,8 +61,9 @@ function yw_use_recovery_code(array $admin,string $input): bool {
     foreach($hashes as $i=>$hash){
         if(is_string($hash) && password_verify($normalized,$hash)){
             unset($hashes[$i]);
-            db()->prepare('UPDATE admins SET recovery_codes_json=? WHERE id=?')->execute([json_encode(array_values($hashes)),(int)$admin['id']]);
-            return true;
+            // Nur wenn die Liste seit dem Lesen unverändert ist – sonst wurde der Code parallel schon verbraucht.
+            $u=db()->prepare('UPDATE admins SET recovery_codes_json=? WHERE id=? AND recovery_codes_json=?');$u->execute([json_encode(array_values($hashes)),(int)$admin['id'],(string)$admin['recovery_codes_json']]);
+            return $u->rowCount()===1;
         }
     }
     return false;
@@ -98,8 +99,8 @@ function admin_2fa_page(): void {
         else{
             $code=is_string($_POST['code']??null)?$_POST['code']:'';
             $step=yw_totp_verify((string)$admin['totp_secret'],$code,$admin['totp_last_step']!==null?(int)$admin['totp_last_step']:null);
-            if($step!==null){
-                db()->prepare('UPDATE admins SET totp_last_step=? WHERE id=?')->execute([$step,(int)$admin['id']]);
+            // Zeitschritt atomar verbrauchen: zwei gleichzeitige Anfragen mit demselben Code melden nur einmal an.
+            if($step!==null && ($u=db()->prepare('UPDATE admins SET totp_last_step=? WHERE id=? AND (totp_last_step IS NULL OR totp_last_step<?)'))->execute([$step,(int)$admin['id'],$step]) && $u->rowCount()===1){
                 clear_login_failures($key);clear_login_failures($key.'-global',false);
                 yw_admin_complete_login($admin);
             }

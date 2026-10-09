@@ -318,4 +318,7 @@ test_ok(str_contains($regSrc,'login_throttled($pinKey,30,false)') && str_contain
 
 foreach(['password_reset.php','admin_password_reset.php'] as $resetFile){$resetSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/'.$resetFile);test_ok(str_contains($resetSrc,'login_throttled($emailKey,5,false)') && str_contains($resetSrc,'record_login_failure($emailKey,false)'),"Passwort-Links je Adresse IP-unabhängig begrenzt ($resetFile)");}
 
+$accountSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_account.php');
+test_ok(str_contains($accountSrc,'(totp_last_step IS NULL OR totp_last_step<?)') && str_contains($accountSrc,'AND recovery_codes_json=?') && str_contains($accountSrc,'return $u->rowCount()===1;'),'TOTP-Code und Wiederherstellungscode werden atomar nur einmal verbraucht (keine Mehrfachanmeldung durch parallele Anfragen)');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
