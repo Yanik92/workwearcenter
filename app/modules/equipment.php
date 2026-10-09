@@ -48,7 +48,7 @@ function yw_effective_product_limit(array $product,?array $profileRule): ?int {
 }
 
 function yw_equipment_profile_select(array $profiles,?int $selected,string $name='equipment_profile_id'): string {
-    $html='<label>Ausstattungsprofil<select name="'.e($name).'"><option value="">Kein Profil · gesamtes Sortiment</option>';
-    foreach($profiles as $id=>$profile)$html.='<option value="'.$id.'" '.($selected===$id?'selected':'').'>'.e($profile['name']).($profile['is_default']?' · Standard':'').'</option>';
+    $html='<label>'.e(t('people.profile')).'<select name="'.e($name).'"><option value="">'.e(t('people.profile_none')).'</option>';
+    foreach($profiles as $id=>$profile)$html.='<option value="'.$id.'" '.($selected===$id?'selected':'').'>'.e($profile['name']).($profile['is_default']?' · '.e(t('people.profile_default')):'').'</option>';
     return $html.'</select></label>';
 }

@@ -23,9 +23,7 @@ function yw_payroll_range(string $month): array {
 }
 
 function yw_payroll_month_label(string $month): string {
-    $names=[1=>'Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-    [$y,$m]=array_map('intval',explode('-',yw_payroll_month($month)));
-    return $names[$m].' '.$y;
+    return yw_month_label(yw_payroll_month($month)); // 10.12: Monatsnamen je Sprache (Verwaltung: Deutsch)
 }
 
 /** Hat die Firma überhaupt Eigenanteile (prozentual oder Versand trägt der Mitarbeiter)? */
@@ -123,7 +121,7 @@ function yw_payroll_admin_export(): never {
 }
 
 function yw_payroll_table(array $overview,callable $link): string {
-    $html='<div style="overflow:auto"><table class="table"><thead><tr><th>Monat</th><th>Personen</th><th>Aufträge</th><th>Eigenanteil</th><th></th></tr></thead><tbody>';
+    $html='<div style="overflow:auto"><table class="table"><thead><tr><th>'.e(t('payroll.month')).'</th><th>'.e(t('payroll.persons')).'</th><th>'.e(t('payroll.orders')).'</th><th>'.e(t('payroll.share')).'</th><th></th></tr></thead><tbody>';
     foreach($overview as $month=>$o)$html.='<tr><td>'.e(yw_payroll_month_label($month)).'</td><td>'.(int)$o['persons'].'</td><td>'.(int)$o['orders'].'</td><td>'.money((int)$o['sum']).'</td><td><a href="'.e($link($month)).'">CSV</a></td></tr>';
     return $html.'</tbody></table></div>';
 }
@@ -132,10 +130,10 @@ function yw_payroll_table(array $overview,callable $link): string {
 function yw_payroll_manager_card(array $company): void {
     if(!yw_payroll_has_share($company))return;
     $slug=(string)$company['slug'];
-    echo '<section class="cp-card cp-report"><div class="cp-report-head"><div><h2>Lohnabzug Eigenanteil</h2><p>Eigenanteile je Mitarbeiter aus den im Monat freigegebenen Bestellungen – für die Lohnabrechnung.</p></div>';
-    echo '<form method="get" action="/'.e($slug).'/lohnabzug.csv" class="cp-report-actions"><label>Monat <input type="month" name="monat" value="'.e(yw_payroll_month('')).'" required></label><button class="cp-btn" type="submit">CSV herunterladen</button></form></div>';
+    echo '<section class="cp-card cp-report"><div class="cp-report-head"><div><h2>'.e(t('payroll.title')).'</h2><p>'.e(t('payroll.intro')).'</p></div>';
+    echo '<form method="get" action="/'.e($slug).'/lohnabzug.csv" class="cp-report-actions"><label>'.e(t('payroll.month')).' <input type="month" name="monat" value="'.e(yw_payroll_month('')).'" required></label><button class="cp-btn" type="submit">'.e(t('payroll.download')).'</button></form></div>';
     echo yw_payroll_table(yw_payroll_overview((int)$company['id']),fn(string $m): string => '/'.$slug.'/lohnabzug.csv?monat='.$m);
-    echo '<p class="muted">Spalten: Personalnummer, Name, Kostenstelle, Summe Eigenanteil, Auftragsnummern. Stichtag ist die Freigabe; später stornierte Bestellungen sind nicht enthalten – bei bereits übermittelten Monaten bitte in der Lohnabrechnung korrigieren.</p></section>';
+    echo '<p class="muted">'.e(t('payroll.note')).'</p></section>';
 }
 
 /** Karte in der Kundenakte der Verwaltung. */

@@ -189,15 +189,12 @@ function handle_admin_action(): never {
             $accountId=(int)($_POST['account_id']??0);
             $decision=(string)($_POST['decision']??'');
             if(!in_array($decision,['approved','rejected'],true)) throw new RuntimeException('Freigabeentscheidung ist ungültig.');
-            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.company_id,c.slug FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
+            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
             $stmt->execute([$accountId]);$account=$stmt->fetch();
             if(!$account) throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
             $stmt=db()->prepare('UPDATE employee_accounts SET registration_status=?,active=? WHERE id=?');
             $stmt->execute([$decision,$decision==='approved'?1:0,$accountId]);
-            $accessText=$decision==='approved'
-                ? "Hallo ".$account['name'].",\n\ndein Zugang zum Firmen-Shop wurde freigegeben.\n\nAnmeldung: ".workwearcenter_url($account['slug'].'/login')
-                : "Hallo ".$account['name'].",\n\ndeine Registrierung für den Firmen-Shop wurde nicht freigegeben. Bitte wende dich bei Rückfragen an deinen Firmenverantwortlichen.";
-            send_system_mail((string)$account['email'],$decision==='approved'?'Dein Zugang wurde freigegeben':'Information zu deiner Registrierung',$accessText);
+            yw_mail_to_person($account,yw_access_mail($decision==='approved',['slug'=>$account['slug']],true)); // 10.12: in der Sprache der Person
             audit_log('employee.access_'.$decision,'employee',$accountId,['company_id'=>(int)$account['company_id']]);
             flash('success',$decision==='approved'?'Mitarbeiter wurde freigegeben.':'Registrierung wurde abgelehnt.');
             $returnCompany=(int)($_POST['return_company']??0);
@@ -216,7 +213,7 @@ function handle_admin_action(): never {
                 $changedPlaceholders=implode(',',array_fill(0,count($changedIds),'?'));
                 $stmt=db()->prepare("UPDATE orders SET fulfillment_status=?,production_updated_at=NOW() WHERE status='approved' AND id IN ($changedPlaceholders)");
                 $stmt->execute([$status,...$changedIds]);
-                foreach($changedOrders as $changedOrder){$orderId=(int)$changedOrder['id'];audit_log('order.fulfillment_updated','order',$orderId,['status'=>$status]);notify_order_employee($orderId,'Status deiner Bestellung #'.$orderId,"Der Bearbeitungsstatus deiner Bestellung wurde geändert: ".(yw_production_statuses()[$status]??$status)."\n\nBestellstatus ansehen: ".workwearcenter_url((string)$changedOrder['slug'].'/login'));}
+                foreach($changedOrders as $changedOrder){$orderId=(int)$changedOrder['id'];audit_log('order.fulfillment_updated','order',$orderId,['status'=>$status]);yw_notify_order_status($orderId,$status,(string)$changedOrder['slug']);}
             }
             flash('success',count($changedIds).' Aufträge wurden aktualisiert.');
             redirect('/admin?tab=orders');
@@ -769,7 +766,7 @@ function handle_admin_action(): never {
             $stmt->execute([$status,$orderId,$status]);
             if($stmt->rowCount()){
                 audit_log('order.fulfillment_updated','order',$orderId,['status'=>$status]);
-                notify_order_employee($orderId,'Status deiner Bestellung #'.$orderId,'Der Bearbeitungsstatus deiner Bestellung wurde geändert: '.company_portal_fulfillment_status($status)."\n\nBestellstatus ansehen: ".workwearcenter_url((string)$companySlug.'/bestellungen'));
+                yw_notify_order_status($orderId,$status,(string)$companySlug);
                 flash('success','Auftragsstatus gespeichert.');
             }else flash('success','Der Auftrag hatte diesen Status bereits. Es wurde keine neue E-Mail versendet.');
             redirect(!empty($_POST['return_order'])?yw_order_url((int)$_POST['return_order']):'/admin?tab=orders');
@@ -789,9 +786,7 @@ function handle_admin_action(): never {
             $handed=db()->prepare("SELECT COUNT(*) FROM yw_handover WHERE order_id=? AND status IN ('sending','delivered','acknowledged')");$handed->execute([$orderId]);$wasHanded=(int)$handed->fetchColumn()>0;
             db()->commit();
             audit_log('order.cancelled_by_admin','order',$orderId,['company_id'=>(int)$order['company_id'],'previous_status'=>$order['status'],'reason'=>$reason]);
-            $msg="Deine Bestellung ".yw_order_number($orderId)." wurde storniert.\n\nGrund: ".$reason."\n\nDas Budget ist wieder frei. Bestellungen ansehen: ".workwearcenter_url((string)$order['slug'].'/bestellungen');
-            notify_order_employee($orderId,'Bestellung '.yw_order_number($orderId).' storniert',$msg);
-            if($order['status']==='approved')notify_company_managers((int)$order['company_id'],'Bestellung '.yw_order_number($orderId).' storniert',$msg);
+            yw_notify_order_cancelled_by_admin($orderId,(int)$order['company_id'],(string)$order['slug'],$reason,$order['status']==='approved'); // 10.12: je Sprache
             flash('success','Auftrag storniert. Budget und Stückzahlen sind wieder frei.'.($wasHanded?' Achtung: Der Auftrag war schon an die Auftragszentrale übergeben – dort bitte ebenfalls stornieren.':''));
             redirect(yw_order_url($orderId));
         }

@@ -74,7 +74,7 @@ function yw_batch_available_at(int $orderId): string {
 function yw_batch_shop_notice(array $company): string {
     $date=yw_company_batch_date($company);
     if(!$date)return '';
-    return '<div class="cp-manager-alert yw-batch-notice"><strong>Nächster Sammeltermin: '.e($date->format('d.m.Y')).'</strong><br>Freigegebene Bestellungen werden gesammelt und zu diesem Termin an die Produktion übergeben.</div>';
+    return '<div class="cp-manager-alert yw-batch-notice"><strong>'.e(t('batch.next',['date'=>yw_date($date)])).'</strong><br>'.e(t('batch.text')).'</div>';
 }
 
 /** Zurückgehaltene Übergaben einer Firma nach geänderten Sammeleinstellungen neu terminieren. */
@@ -111,8 +111,8 @@ function yw_send_budget_year_mails(int $limit=500): int {
             [$start,$end]=yw_period((int)$company['budget_reset_month'],$now);
             if(!yw_budget_mail_due($start,$company['budget_year_mail_period'],$now))continue;
             $period=substr($start,0,10);
-            $q=db()->prepare("SELECT * FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved' AND anonymized_at IS NULL AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) AND (budget_mail_period IS NULL OR budget_mail_period<>?) ORDER BY id");
-            $q->execute([(int)$company['id'],$period]);
+            $q=db()->prepare("SELECT *,? shop_languages FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved' AND anonymized_at IS NULL AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) AND (budget_mail_period IS NULL OR budget_mail_period<>?) ORDER BY id");
+            $q->execute([$company['shop_languages']??null,(int)$company['id'],$period]);
             $complete=true;
             foreach($q->fetchAll() as $account){
                 if($sent>=$limit){$complete=false;break;}
@@ -122,9 +122,10 @@ function yw_send_budget_year_mails(int $limit=500): int {
                 if(!$claim->rowCount())continue;
                 $limitCents=yw_budget_limit($company,$account);
                 if(!$limitCents)continue; // Budget 0 € – keine „neues Budget“-Mail
-                $to=(new DateTimeImmutable($end))->modify('-1 day')->format('d.m.Y');
-                send_system_mail((string)$account['email'],'Dein neues Budget ist da',
-                    "Hallo ".$account['name'].",\n\nim Firmenshop von ".$company['legal_name']." beginnt ein neues Budgetjahr.\n\nDein Budget: ".money((int)$limitCents)."\nBudgetjahr: ".(new DateTimeImmutable($start))->format('d.m.Y').' – '.$to."\n\nZum Shop: ".workwearcenter_url((string)$company['slug'].'/produkte'));
+                // 10.12: in der Sprache der Person (Beträge und Datum im Format dieser Sprache)
+                $shopUrl=workwearcenter_url((string)$company['slug'].'/produkte');
+                yw_mail_to_person($account,fn(array $p)=>[t('mail.budget.subject'),
+                    t('mail.hello',['name'=>$p['name']])."\n\n".t('mail.budget.body',['company'=>$company['legal_name']])."\n\n".t('mail.budget.amount').': '.money((int)$limitCents)."\n".t('mail.budget.year').': '.yw_date($start).' – '.yw_date((new DateTimeImmutable($end))->modify('-1 day'))."\n\n".t('mail.budget.to_shop').': '.$shopUrl]);
                 $sent++;
             }
             if($complete){
@@ -153,7 +154,7 @@ function yw_customer_section_order_options(array $company): void {
     $id=(int)$company['id'];
     $mode=(string)($company['batch_mode']??'off');
     $next=yw_company_batch_date($company);
-    echo '<details class="card admin-toolbox" open><summary>Umtausch, Jahreswechsel & Sammelbestellung</summary><div class="admin-toolbox-body">';
+    echo '<details class="card admin-toolbox" open><summary>Umtausch, Jahreswechsel, Sammelbestellung & Sprachen</summary><div class="admin-toolbox-body">';
     echo '<form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="company_order_options"><input type="hidden" name="company_id" value="'.$id.'">';
     echo '<label>Frist für Größentausch und Rückgabe (Tage ab Versand bzw. Freigabe)<input type="number" name="exchange_window_days" min="0" max="365" value="'.(int)($company['exchange_window_days']??30).'" required></label><p class="muted">0 = Mitarbeitende können im Shop keinen Tausch und keine Rückgabe beantragen.</p>';
     echo '<label class="check"><input type="checkbox" name="budget_year_mail" value="1" '.((int)($company['budget_year_mail']??1)?'checked':'').'><span>Mail „Dein neues Budget ist da“ zu Beginn jedes Budgetjahres (nur bei aktivem Geldbudget)</span></label>';
@@ -162,6 +163,11 @@ function yw_customer_section_order_options(array $company): void {
     echo '</select></label>';
     echo '<label>Stichtag im Monat (bei „Monatlich“)<input type="number" name="batch_day" min="1" max="28" value="'.(int)($company['batch_day']??1).'"></label>';
     echo '<label>Erster Termin (bei „Alle 14 Tage“)<input type="date" name="batch_anchor" value="'.e((string)($company['batch_anchor']??'')).'"></label>';
+    // 10.12: Sprachen des Firmenshops (Deutsch immer); Website und Verwaltung bleiben deutsch.
+    $offered=yw_company_langs($company);
+    echo '<fieldset class="yw-lang-options" style="border:1px solid #e4e8ef;border-radius:10px;padding:10px 14px"><legend style="font-weight:700;padding:0 4px">Sprachen im Firmenshop</legend><p class="muted">Mitarbeitende wählen ihre Sprache im Shop; Mails gehen in der gewählten Sprache. Produktnamen und -beschreibungen bleiben wie gepflegt.</p><div style="display:flex;flex-wrap:wrap;gap:6px 20px">';
+    foreach(YW_LANGS as $code=>$label)echo '<label class="check"><input type="checkbox" name="shop_languages[]" value="'.e($code).'" '.(in_array($code,$offered,true)?'checked':'').($code==='de'?' disabled':'').'><span lang="'.e($code).'">'.e($label).($code==='de'?' (immer)':'').'</span></label>';
+    echo '</div></fieldset>';
     echo '<p class="muted">'.($next?'Nächster Sammeltermin: <strong>'.e($next->format('d.m.Y')).'</strong>. Freigegebene Bestellungen werden bis dahin zurückgehalten und dann gemeinsam übergeben.':'Freigegebene Bestellungen werden sofort an die Auftragszentrale übergeben.').'</p>';
     echo '<button class="btn primary">Einstellungen speichern</button></form></div></details>';
 }
@@ -178,10 +184,11 @@ function yw_admin_order_options_action(): never {
         $anchor=trim((string)($_POST['batch_anchor']??''));
         if($anchor!=='' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/D',$anchor) || !checkdate((int)substr($anchor,5,2),(int)substr($anchor,8,2),(int)substr($anchor,0,4))))throw new RuntimeException('Erster Termin ist kein gültiges Datum.');
         if($mode==='biweekly' && $anchor==='')$anchor=date('Y-m-d',strtotime('+1 day'));
-        $q=db()->prepare('UPDATE companies SET exchange_window_days=?,budget_year_mail=?,batch_mode=?,batch_day=?,batch_anchor=? WHERE id=?');
-        $q->execute([(int)$days,!empty($_POST['budget_year_mail'])?1:0,$mode,$day,$anchor!==''?$anchor:null,$companyId]);
+        $languages=yw_company_langs_value(is_array($_POST['shop_languages']??null)?$_POST['shop_languages']:[]);
+        $q=db()->prepare('UPDATE companies SET exchange_window_days=?,budget_year_mail=?,batch_mode=?,batch_day=?,batch_anchor=?,shop_languages=? WHERE id=?');
+        $q->execute([(int)$days,!empty($_POST['budget_year_mail'])?1:0,$mode,$day,$anchor!==''?$anchor:null,$languages,$companyId]);
         $moved=yw_batch_reschedule_company($companyId);
-        audit_log('company.order_options','company',$companyId,['company_id'=>$companyId,'batch_mode'=>$mode,'exchange_window_days'=>(int)$days,'rescheduled'=>$moved]);
+        audit_log('company.order_options','company',$companyId,['company_id'=>$companyId,'batch_mode'=>$mode,'exchange_window_days'=>(int)$days,'rescheduled'=>$moved,'shop_languages'=>$languages??'alle']);
         flash('success','Einstellungen gespeichert.'.($moved?' '.$moved.' zurückgehaltene Übergabe(n) neu terminiert.':''));
     }catch(Throwable $e){
         if(!$e instanceof RuntimeException)error_log('Order options: '.$e->getMessage());

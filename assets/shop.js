@@ -7,8 +7,35 @@
   'use strict';
   document.documentElement.classList.add('js-shop');
 
+  /* 10.12: Texte und Zahlenformat der Shopsprache aus dem Seitenkopf (data-yw-i18n, kein Inline-Skript). */
+  var I18N = { lang: 'de', dec: ',', thou: '.', money: '{n} €', t: {} };
+  try { var raw = document.documentElement.getAttribute('data-yw-i18n'); if (raw) I18N = JSON.parse(raw); } catch (e) { /* Deutsch */ }
+  var DEFAULTS = {
+    item: 'Artikel', size: 'Größe {size}', each_net: 'je {amount} netto', line_total: 'zusammen {amount} brutto',
+    your_share: 'Dein Anteil {amount}', change: 'Ändern', change_label: '{name} ändern', remove: 'Entfernen',
+    remove_label: '{name} entfernen', removed: '{name} wurde entfernt.', limit_reached: 'Für diesen Artikel ist das Stücklimit erreicht.',
+    added: '{qty}× {name} ist in deiner Auswahl.', added_size: '{qty}× {name} (Größe {size}) ist in deiner Auswahl.',
+    selected: '{n} ausgewählt', sending: 'Wird gesendet …'
+  };
+  var pluralIndex = function (lang, n) {
+    n = Math.abs(n); var m10 = n % 10, m100 = n % 100;
+    if (lang === 'pl') return n === 1 ? 0 : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? 1 : 2;
+    if (lang === 'ru') return (m10 === 1 && m100 !== 11) ? 0 : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? 1 : 2;
+    if (lang === 'ro') return n === 1 ? 0 : (n === 0 || (m100 >= 1 && m100 <= 19)) ? 1 : 2;
+    return n === 1 ? 0 : 1;
+  };
+  var tr = function (key, params) {
+    params = params || {};
+    var text = (I18N.t && I18N.t[key] !== undefined) ? I18N.t[key] : DEFAULTS[key];
+    if (Array.isArray(text)) text = text[Math.min(pluralIndex(I18N.lang, parseInt(params.n || 0, 10)), text.length - 1)];
+    return String(text === undefined ? key : text).replace(/\{(\w+)\}/g, function (m, name) { return params[name] !== undefined ? String(params[name]) : m; });
+  };
+  // Gleiches Format wie yw_money() in app/i18n.php (ganze Cent, Beträge immer in Euro)
   var euro = function (cents) {
-    return (cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    var negative = cents < 0, abs = Math.abs(Math.round(cents));
+    var whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, I18N.thou);
+    var amount = whole + I18N.dec + ('0' + (abs % 100)).slice(-2);
+    return (negative ? '-' : '') + String(I18N.money || '{n} €').replace('{n}', amount);
   };
   var int = function (v) { return parseInt(v || '0', 10) || 0; };
 
@@ -200,18 +227,22 @@
       li.className = 'sp-cart-line';
       var text = document.createElement('div');
       var strong = document.createElement('strong');
-      strong.textContent = qty + '× ' + (input.dataset.lineName || 'Artikel');
+      var itemName = input.dataset.lineName || tr('item');
+      strong.textContent = qty + '× ' + itemName;
       var small = document.createElement('small');
-      small.textContent = 'Größe ' + (sizeSel ? sizeSel.value : '–') + ' · je ' + euro(int(input.dataset.gross)) + ' brutto (' + euro(int(input.dataset.net)) + ' netto)';
+      var lv = lineValues[input.id] || { gross: int(input.dataset.gross) * qty, employee: int(input.dataset.employee) * qty };
+      // 10.12: Netto je Stück + Positionsbetrag (brutto wird je Steuersatz gerundet, ein Stück-Brutto wäre irreführend)
+      var parts = [tr('size', { size: sizeSel ? sizeSel.value : '–' }), tr('each_net', { amount: euro(int(input.dataset.net)) })];
+      if (shareActive) parts.push(tr('line_total', { amount: euro(lv.gross) }));
+      small.textContent = parts.join(' · ');
       text.appendChild(strong); text.appendChild(small);
       var price = document.createElement('b');
-      var lv = lineValues[input.id] || { gross: int(input.dataset.gross) * qty, employee: int(input.dataset.employee) * qty };
-      price.textContent = shareActive ? 'Dein Anteil ' + euro(lv.employee) : euro(lv.gross);
+      price.textContent = shareActive ? tr('your_share', { amount: euro(lv.employee) }) : euro(lv.gross);
       var actions = document.createElement('div');
       actions.className = 'sp-cart-line-actions';
       var edit = document.createElement('button');
-      edit.type = 'button'; edit.textContent = 'Ändern';
-      edit.setAttribute('aria-label', (input.dataset.lineName || 'Artikel') + ' ändern');
+      edit.type = 'button'; edit.textContent = tr('change');
+      edit.setAttribute('aria-label', tr('change_label', { name: itemName }));
       edit.addEventListener('click', function () {
         var dialog = document.getElementById(input.dataset.group || '');
         if (!dialog) return;
@@ -219,11 +250,11 @@
         openDetail(dialog, edit);
       });
       var remove = document.createElement('button');
-      remove.type = 'button'; remove.textContent = 'Entfernen';
-      remove.setAttribute('aria-label', (input.dataset.lineName || 'Artikel') + ' entfernen');
+      remove.type = 'button'; remove.textContent = tr('remove');
+      remove.setAttribute('aria-label', tr('remove_label', { name: itemName }));
       remove.addEventListener('click', function () {
         input.value = '0'; update();
-        toast((input.dataset.lineName || 'Artikel') + ' wurde entfernt.');
+        toast(tr('removed', { name: itemName }));
         if (panel) panel.focus();
       });
       actions.appendChild(edit); actions.appendChild(remove);
@@ -275,7 +306,7 @@
       var n = groups[card.dataset.group] || 0;
       card.classList.toggle('is-selected', n > 0);
       var badge = card.querySelector('[data-group-count]');
-      if (badge) { badge.hidden = n === 0; badge.textContent = n + ' ausgewählt'; }
+      if (badge) { badge.hidden = n === 0; badge.textContent = tr('selected', { n: n }); }
     });
 
     var budgetBox = document.querySelector('[data-budget-remaining]');
@@ -317,11 +348,11 @@
       var dialog = button.closest('[data-detail]');
       var id = activeVariant(dialog);
       var input = document.getElementById('qty-' + id);
-      if (!input || input.disabled) { toast('Für diesen Artikel ist das Stücklimit erreicht.'); return; }
+      if (!input || input.disabled) { toast(tr('limit_reached')); return; }
       if (int(input.value) === 0) input.value = '1';
       update();
       var size = document.getElementById(input.dataset.sizeTarget || '');
-      var msg = input.value + '× ' + (input.dataset.lineName || 'Artikel') + (size ? ' (Größe ' + size.value + ')' : '') + ' ist in deiner Auswahl.';
+      var msg = tr(size ? 'added_size' : 'added', { qty: input.value, name: input.dataset.lineName || tr('item'), size: size ? size.value : '' });
       // Karte zeigt danach die zuletzt gewählte Farbe
       var card = document.querySelector('.sp-card[data-group="' + dialog.id + '"] .sp-card-visual .mockup-view');
       var src = dialog.querySelector('[data-variant-visual="' + id + '"] .mockup-view');
@@ -337,7 +368,7 @@
   });
   form.addEventListener('submit', function () {
     var submit = form.querySelector('.shop-submit');
-    if (submit) { window.setTimeout(function () { submit.disabled = true; submit.textContent = 'Wird gesendet …'; }, 0); }
+    if (submit) { window.setTimeout(function () { submit.disabled = true; submit.textContent = tr('sending'); }, 0); }
   });
   update();
 })();

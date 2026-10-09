@@ -30,8 +30,8 @@ function yw_budget_limit(array $company,array $account): ?int {
 }
 
 function yw_check_limits(?int $budget,int $used,int $requested,?int $quantityLimit=null,int $quantityUsed=0,int $quantityRequested=0): void {
-    if($budget!==null && $used+$requested>$budget) throw new DomainException('Der Firmenanteil übersteigt das verfügbare Budget. Bitte die Bestellung verkleinern oder den Verantwortlichen kontaktieren.');
-    if($quantityLimit!==null && $quantityUsed+$quantityRequested>$quantityLimit) throw new DomainException('Das Mengenlimit eines Artikels wird überschritten.');
+    if($budget!==null && $used+$requested>$budget) throw new DomainException(t('err.over_budget'));
+    if($quantityLimit!==null && $quantityUsed+$quantityRequested>$quantityLimit) throw new DomainException(t('err.over_limit'));
 }
 
 function yw_registration_policy(string $mode): array {

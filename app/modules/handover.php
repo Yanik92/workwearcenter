@@ -659,12 +659,8 @@ function yw_status_apply(int $orderId,array $o,string $actor): array {
         ->execute([$status,mb_substr($actor,0,40),$carrier,$number,$url,$reference,$orderId]);
     if($statusChanged||$trackingChanged){
         audit_log($actor==='auftragszentrale'?'order.status_from_auftragszentrale':'order.status_from_api','order',$orderId,['status'=>$status,'tracking'=>$number!==''?$carrier.' '.$number:null]);
-        $text='Der Stand deiner Bestellung '.yw_order_number($orderId).' hat sich geändert: '.company_portal_fulfillment_status($status).'.';
-        $link=yw_tracking_link($carrier,$number,$url);
-        if($number!=='')$text.="\n\nVersand mit ".($carrier!==''?$carrier:'Paketdienst')."\nSendungsnummer: ".$number;
-        if($link)$text.="\nSendung verfolgen: ".$link;
-        $text.="\n\nBestellstatus ansehen: ".workwearcenter_url((string)$order['slug'].'/bestellungen');
-        notify_order_employee($orderId,'Neuer Stand deiner Bestellung '.yw_order_number($orderId),$text);
+        // 10.12: Text in der Sprache der Person (order_mail_actions.php)
+        yw_notify_order_status($orderId,$status,(string)$order['slug'],$carrier,$number,yw_tracking_link($carrier,$number,$url));
     }
     return ['ok'=>true,'order'=>yw_order_number($orderId),'status'=>$status,'changed'=>$statusChanged||$trackingChanged];
 }

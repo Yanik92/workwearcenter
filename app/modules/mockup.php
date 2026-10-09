@@ -212,9 +212,9 @@ function yw_mockup_views(array $product,array $motifsById): array {
     $zones=yw_product_zones($product);
     $decorations=company_product_decorations($product);
     $result=[];
-    if($customFront!=='')$result['front']=['view'=>'front','label'=>'Vorne','image'=>$customFront,'layers'=>[],'custom'=>true];
-    if($customBack!=='')$result['back']=['view'=>'back','label'=>'Hinten','image'=>$customBack,'layers'=>[],'custom'=>true];
-    $labels=['front'=>'Vorne','back'=>'Hinten','sleeve'=>'Ärmel'];
+    $labels=['front'=>t('mockup.front'),'back'=>t('mockup.back'),'sleeve'=>t('mockup.sleeve')]; // 10.12: je Sprache
+    if($customFront!=='')$result['front']=['view'=>'front','label'=>$labels['front'],'image'=>$customFront,'layers'=>[],'custom'=>true];
+    if($customBack!=='')$result['back']=['view'=>'back','label'=>$labels['back'],'image'=>$customBack,'layers'=>[],'custom'=>true];
     foreach($views as $view=>$image){
         if(isset($result[$view]))continue;
         $result[$view]=['view'=>$view,'label'=>$labels[$view],'image'=>$image,'layers'=>[],'custom'=>false];

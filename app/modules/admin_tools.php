@@ -225,15 +225,16 @@ function yw_send_reminders(int $days=3): int {
         $q=db()->prepare("SELECT o.id,o.company_id,c.slug,c.shop_name,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o JOIN companies c ON c.id=o.company_id LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.status='pending' AND o.reminder_sent_at IS NULL AND o.created_at<DATE_SUB(NOW(),INTERVAL ? DAY) AND c.active=1 LIMIT 50");
         $q->execute([$days]);
         foreach($q as $o){
-            notify_company_managers((int)$o['company_id'],'Erinnerung: Bestellung '.yw_order_number((int)$o['id']).' wartet auf Freigabe',
-                "Hallo,\n\ndie Bestellung ".yw_order_number((int)$o['id']).' von '.$o['employee_name'].' wartet seit mehr als '.$days." Tagen auf eine Entscheidung.\n\nFreigaben öffnen: ".workwearcenter_url($o['slug'].'/freigaben')."\n\nDiese Erinnerung wird je Bestellung nur einmal verschickt.");
+            // 10.12: je verantwortlicher Person in deren Sprache
+            notify_company_managers((int)$o['company_id'],fn(array $m)=>[t('mail.remind_order.subject',['order'=>yw_order_number((int)$o['id'])]),
+                t('mail.hello_plain')."\n\n".t('mail.remind_order.body',['order'=>yw_order_number((int)$o['id']),'name'=>$o['employee_name'],'days'=>$days])."\n\n".t('mail.remind_order.open').': '.workwearcenter_url($o['slug'].'/freigaben')."\n\n".t('mail.remind_order.once')]);
             db()->prepare('UPDATE orders SET reminder_sent_at=NOW() WHERE id=?')->execute([(int)$o['id']]);$sent++;
         }
         $r=db()->prepare("SELECT ea.id,ea.company_id,ea.name,c.slug FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.registration_status='pending' AND ea.reminder_sent_at IS NULL AND ea.anonymized_at IS NULL AND ea.created_at<DATE_SUB(NOW(),INTERVAL ? DAY) AND c.active=1 LIMIT 50");
         $r->execute([$days]);
         foreach($r as $a){
-            notify_company_managers((int)$a['company_id'],'Erinnerung: Registrierung von '.$a['name'].' wartet auf Freigabe',
-                "Hallo,\n\n".$a['name'].' hat sich vor mehr als '.$days." Tagen im Firmenshop registriert und wartet auf die Freigabe.\n\nMitarbeiter verwalten: ".workwearcenter_url($a['slug'].'/mitarbeiter')."\n\nDiese Erinnerung wird je Person nur einmal verschickt.");
+            notify_company_managers((int)$a['company_id'],fn(array $m)=>[t('mail.remind_reg.subject',['name'=>$a['name']]),
+                t('mail.hello_plain')."\n\n".t('mail.remind_reg.body',['name'=>$a['name'],'days'=>$days])."\n\n".t('mail.remind_reg.open').': '.workwearcenter_url($a['slug'].'/mitarbeiter')."\n\n".t('mail.remind_reg.once')]);
             db()->prepare('UPDATE employee_accounts SET reminder_sent_at=NOW() WHERE id=?')->execute([(int)$a['id']]);$sent++;
         }
     }catch(Throwable $e){error_log('WorkwearCenter reminders: '.$e->getMessage());}

@@ -42,7 +42,7 @@ if ($path === '/sitemap.xml') {
 }
 if ($path === '/robots.txt') {
     header('Content-Type: text/plain; charset=UTF-8');
-    echo "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /update.php\nDisallow: /install.php\nDisallow: /api/\nDisallow: /probeshop/\nDisallow: /uploads/probeshop/\nDisallow: /*/login\nDisallow: /*/registrieren\nDisallow: /*/passwort-\nDisallow: /*/anmeldelink\nDisallow: /*/mail-freigabe\nDisallow: /*/mitarbeiter\nDisallow: /*/bestellungen\nDisallow: /*/freigaben\nDisallow: /*/produkte\nDisallow: /*/profil\nDisallow: /*/auswertung.csv\nDisallow: /*/lohnabzug.csv\n\nSitemap: https://".yw_public_host()."/sitemap.xml\n";
+    echo "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /update.php\nDisallow: /install.php\nDisallow: /api/\nDisallow: /probeshop/\nDisallow: /uploads/probeshop/\nDisallow: /*/login\nDisallow: /*/registrieren\nDisallow: /*/passwort-\nDisallow: /*/anmeldelink\nDisallow: /*/sprache\nDisallow: /*/mail-freigabe\nDisallow: /*/mitarbeiter\nDisallow: /*/bestellungen\nDisallow: /*/freigaben\nDisallow: /*/produkte\nDisallow: /*/profil\nDisallow: /*/auswertung.csv\nDisallow: /*/lohnabzug.csv\n\nSitemap: https://".yw_public_host()."/sitemap.xml\n";
     exit;
 }
 
@@ -108,6 +108,8 @@ if (preg_match('#^/([a-z0-9-]+)/registrieren$#', $path, $match)) { employee_regi
 if (preg_match('#^/([a-z0-9-]+)/passwort-vergessen$#', $path, $match)) { yw_password_forgot_page($match[1]); exit; }
 if (preg_match('#^/([a-z0-9-]+)/passwort-neu/([a-f0-9]{64})$#', $path, $match)) { yw_password_reset_page($match[1],$match[2]); exit; }
 if (preg_match('#^/([a-z0-9-]+)/login$#', $path, $match)) { employee_account_login_page($match[1]); exit; }
+/* 10.12: Sprachwahl im Firmenshop (POST mit CSRF) */
+if (preg_match('#^/([a-z0-9-]+)/sprache$#', $path, $match)) { yw_lang_switch($match[1]); }
 /* 10.11: Anmeldelink per E-Mail und Freigabe aus der E-Mail (eigene Module) */
 if (preg_match('#^/([a-z0-9-]+)/anmeldelink$#', $path, $match)) { yw_magic_login_request($match[1]); exit; }
 if (preg_match('#^/([a-z0-9-]+)/anmeldelink/([a-f0-9]{64})$#', $path, $match)) { yw_magic_login_page($match[1],$match[2]); exit; }

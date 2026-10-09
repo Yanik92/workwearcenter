@@ -211,26 +211,15 @@ function yw_company_decoration_motifs(int $companyId,bool $includeInactive=false
 }
 
 function decoration_position_options(): array {
-    return [
-        'chest_left'=>'Brust links',
-        'chest_right'=>'Brust rechts',
-        'back_top'=>'Rücken oben',
-        'back_large'=>'Rücken groß',
-        'sleeve_left'=>'Ärmel links',
-        'sleeve_right'=>'Ärmel rechts',
-        'neck'=>'Nacken',
-        'other'=>'Sonstiges',
-    ];
+    $options=[];
+    foreach(['chest_left','chest_right','back_top','back_large','sleeve_left','sleeve_right','neck','other'] as $key)$options[$key]=t('deco.pos.'.$key);
+    return $options;
 }
 
 function decoration_method_options(): array {
-    return [
-        'print'=>'Druck',
-        'dtf'=>'DTF',
-        'flex'=>'Flex',
-        'embroidery'=>'Stick',
-        'other'=>'Sonstiges',
-    ];
+    $options=[];
+    foreach(['print','dtf','flex','embroidery','other'] as $key)$options[$key]=t('deco.method.'.$key);
+    return $options;
 }
 
 function decoration_position_label(string $value): string {
@@ -269,9 +258,9 @@ function product_price_breakdown(array $product,array $company): array {
 
 function financing_label(array $company): string {
     if((string)($company['financing_mode']??'company')==='percentage'){
-        return rtrim(rtrim(number_format(company_employee_share_percent($company),2,',','.'),'0'),',').' % Mitarbeiter-Eigenanteil';
+        return t('fin.employee_share',['pct'=>yw_percent(company_employee_share_percent($company))]);
     }
-    return 'Firma übernimmt 100 %';
+    return t('fin.company_full',['pct'=>yw_percent(100)]);
 }
 
 
@@ -310,13 +299,13 @@ function shipping_breakdown(array $company,int $itemsGrossCents,array $itemsNetB
 }
 
 function shipping_rule_label(array $company): string {
-    if(!shipping_enabled($company)) return 'Keine Versandkosten';
+    if(!shipping_enabled($company)) return t('ship.none');
     $gross=gross_from_net((int)($company['shipping_net_cents']??0),(float)($company['shipping_vat_rate']??19.0));
     // 10.11: Die Versandsteuer wird mit der Ware je Steuersatz gerundet – brutto daher „ca.“ (± 1 Cent).
-    $text='Versand '.money((int)($company['shipping_net_cents']??0)).' netto (ca. '.money($gross).' brutto)';
+    $text=t('ship.cost',['net'=>money((int)($company['shipping_net_cents']??0)),'gross'=>money($gross)]);
     $freeFrom=(int)($company['free_shipping_gross_cents']??0);
-    if($freeFrom>0) $text.=' · kostenfrei ab '.money($freeFrom).' Warenwert brutto';
-    $text.=' · trägt '.(((string)($company['shipping_payer']??'company'))==='employee'?'Mitarbeiter':'Firma');
+    if($freeFrom>0) $text.=' · '.t('ship.free_from',['amount'=>money($freeFrom)]);
+    $text.=' · '.(((string)($company['shipping_payer']??'company'))==='employee'?t('ship.paid_by_employee'):t('ship.paid_by_company'));
     return $text;
 }
 
@@ -442,11 +431,11 @@ function yw_shop_brand_mark(array $company,string $class='cp-brand'): string {
 }
 
 function company_portal_section_title(string $section): string {
-    return ['overview'=>'Übersicht','produkte'=>'Produkte','bestellungen'=>'Meine Bestellungen','freigaben'=>'Freigaben','mitarbeiter'=>'Mitarbeiter','profil'=>'Mein Profil'][$section]??'Firmenshop';
+    return ['overview'=>t('nav.overview'),'produkte'=>t('nav.products'),'bestellungen'=>t('nav.orders'),'freigaben'=>t('nav.approvals'),'mitarbeiter'=>t('nav.people'),'profil'=>t('nav.profile')][$section]??t('nav.shop');
 }
 
 function company_portal_footer(array $company): void {
-    echo '<footer class="cp-foot"><span>'.e($company['legal_name']).' · Mitarbeiter-Shop</span><span>WorkwearCenter · <a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></span></footer>';
+    echo '<footer class="cp-foot"><span>'.e($company['legal_name']).' · '.e(t('shop.staff_shop')).'</span><span>WorkwearCenter · <a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></span></footer>';
     echo '</div></div>';
 }
 
@@ -456,25 +445,25 @@ function yw_shop_budget_info(array $company,array $account): array {
     $limit=$remaining===null?null:(int)yw_budget_limit($company,$account);
     [$start,$end]=yw_period((int)$company['budget_reset_month']);
     $percent=($limit!==null&&$limit>0)?(int)round(max(0,min(100,$remaining/$limit*100))):0;
-    return ['remaining'=>$remaining,'limit'=>$limit,'percent'=>$percent,'to'=>(new DateTimeImmutable($end))->modify('-1 day')->format('d.m.Y')];
+    return ['remaining'=>$remaining,'limit'=>$limit,'percent'=>$percent,'to'=>yw_date((new DateTimeImmutable($end))->modify('-1 day'))];
 }
 
 /** Budget-Karte wie im Mustershop. */
 function yw_shop_budget_box(array $company,array $account): string {
     $b=yw_shop_budget_info($company,$account);
     if($b['remaining']===null){
-        return '<div class="cp-budgetbox"><div class="cp-budgetbox-row"><span>Jahresbudget</span><strong>Ohne Limit</strong></div><small>'.e(financing_label($company)).'</small></div>';
+        return '<div class="cp-budgetbox"><div class="cp-budgetbox-row"><span>'.e(t('budget.annual')).'</span><strong>'.e(t('budget.unlimited')).'</strong></div><small>'.e(financing_label($company)).'</small></div>';
     }
-    return '<div class="cp-budgetbox" data-budget-remaining="'.(int)$b['remaining'].'"><div class="cp-budgetbox-row"><span>Verfügbares Jahresbudget</span><strong>'.money((int)$b['remaining']).'</strong></div>'
-        .'<div class="cp-budgetbox-bar" role="progressbar" aria-label="Verbleibendes Budget" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'.$b['percent'].'"><span style="width:'.$b['percent'].'%"></span></div>'
-        .'<small>von '.money((int)$b['limit']).' · gilt bis '.e($b['to']).'</small></div>';
+    return '<div class="cp-budgetbox" data-budget-remaining="'.(int)$b['remaining'].'"><div class="cp-budgetbox-row"><span>'.e(t('budget.available_annual')).'</span><strong>'.money((int)$b['remaining']).'</strong></div>'
+        .'<div class="cp-budgetbox-bar" role="progressbar" aria-label="'.e(t('budget.remaining_aria')).'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'.$b['percent'].'"><span style="width:'.$b['percent'].'%"></span></div>'
+        .'<small>'.e(t('budget.of_until',['limit'=>money((int)$b['limit']),'date'=>$b['to']])).'</small></div>';
 }
 
-function yw_shop_greeting(string $name): string {
-    $hour=(int)date('G');
+function yw_shop_greeting(string $name,?int $hour=null): string {
+    $hour=$hour??(int)date('G');
     $first=trim((string)(preg_split('/\s+/u',trim($name))[0]??''));
-    $hello=$hour<11?'Guten Morgen':($hour<18?'Hallo':'Guten Abend');
-    return $hello.($first!==''?', '.$first:'').'.';
+    $key=$hour<11?'greet.morning':($hour<18?'greet.day':'greet.evening');
+    return $first!==''?t($key.'_name',['name'=>$first]):t($key);
 }
 
 /** Seitenleiste + Kopfzeile (Aufbau wie im Mustershop). */
@@ -482,58 +471,43 @@ function company_portal_header(array $company,array $account,string $section): v
     $manager=account_is_manager($account);
     $slug='/'.$company['slug'];
     $nav=[
-        'overview'=>['Übersicht',$slug,'home'],
-        'produkte'=>['Produkte',$slug.'/produkte','shirt'],
-        'bestellungen'=>['Meine Bestellungen',$slug.'/bestellungen','box'],
+        'overview'=>[t('nav.overview'),$slug,'home'],
+        'produkte'=>[t('nav.products'),$slug.'/produkte','shirt'],
+        'bestellungen'=>[t('nav.orders'),$slug.'/bestellungen','box'],
     ];
     $pending=0;
     if($manager){
-        $nav['freigaben']=['Freigaben',$slug.'/freigaben','check'];
-        $nav['mitarbeiter']=['Mitarbeiter',$slug.'/mitarbeiter','users'];
+        $nav['freigaben']=[t('nav.approvals'),$slug.'/freigaben','check'];
+        $nav['mitarbeiter']=[t('nav.people'),$slug.'/mitarbeiter','users'];
         $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$q->execute([(int)$company['id']]);$pending=(int)$q->fetchColumn();
     }
-    $nav['profil']=['Mein Profil',$slug.'/profil','user'];
+    $nav['profil']=[t('nav.profile'),$slug.'/profil','user'];
     $hasLogo=yw_company_logo_path($company)!=='';
 
-    echo '<a class="cp-skip" href="#inhalt">Zum Inhalt springen</a><div class="cp-app">';
+    echo '<a class="cp-skip" href="#inhalt">'.e(t('nav.skip')).'</a><div class="cp-app">';
     echo '<aside class="cp-side" data-cp-side><div class="cp-side-head"><a class="cp-brand'.($hasLogo?' has-logo':'').'" href="'.e($slug).'">'.yw_shop_brand_mark($company);
-    echo '<span class="cp-brand-text">'.($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'<small>Mitarbeiter-Shop</small></span></a>';
-    echo '<button class="cp-menu-toggle" type="button" aria-expanded="false" aria-controls="cp-menu" hidden>'.yw_shop_icon('menu').'<span>Menü</span></button></div>';
-    echo '<div class="cp-menu" id="cp-menu"><nav class="cp-nav" aria-label="Shop-Navigation">';
+    echo '<span class="cp-brand-text">'.($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'<small>'.e(t('shop.staff_shop')).'</small></span></a>';
+    echo '<button class="cp-menu-toggle" type="button" aria-expanded="false" aria-controls="cp-menu" hidden>'.yw_shop_icon('menu').'<span>'.e(t('nav.menu')).'</span></button></div>';
+    echo '<div class="cp-menu" id="cp-menu"><nav class="cp-nav" aria-label="'.e(t('nav.aria')).'">';
     foreach($nav as $key=>[$label,$href,$icon]){
-        $badge=$key==='freigaben'&&$pending>0?'<span class="cp-nav-badge" aria-label="'.$pending.' offen">'.$pending.'</span>':'';
+        $badge=$key==='freigaben'&&$pending>0?'<span class="cp-nav-badge" aria-label="'.e(tn('nav.open_count',$pending)).'">'.$pending.'</span>':'';
         echo '<a href="'.e($href).'"'.($section===$key?' class="active" aria-current="page"':'').'>'.yw_shop_icon($icon).'<span>'.e($label).'</span>'.$badge.'</a>';
     }
-    echo '</nav><div class="cp-person"><div><strong>'.e($account['name']).'</strong><small>'.($manager?'Verantwortliche Person':'Mitarbeiterkonto').(!empty($account['department'])?' · '.e($account['department']):'').'</small></div>';
-    echo '<form method="post" action="'.e($slug).'/logout">'.csrf_field().'<button class="cp-logout" type="submit">'.yw_shop_icon('logout').'<span>Abmelden</span></button></form></div></div></aside>';
+    echo '</nav><div class="cp-person"><div><strong>'.e($account['name']).'</strong><small>'.e($manager?t('nav.role_manager'):t('nav.role_employee')).(!empty($account['department'])?' · '.e($account['department']):'').'</small></div>';
+    echo '<form method="post" action="'.e($slug).'/logout">'.csrf_field().'<button class="cp-logout" type="submit">'.yw_shop_icon('logout').'<span>'.e(t('nav.logout')).'</span></button></form></div></div></aside>';
 
     echo '<div class="cp-mainwrap"><header class="cp-top"><div class="cp-top-title"><strong>'.e(company_portal_section_title($section)).'</strong><small>'.e($company['shop_name']).'</small></div>';
-    echo '<a class="cp-avatar" href="'.e($slug).'/profil" title="Mein Profil"><span aria-hidden="true">'.e(yw_shop_initials((string)$account['name'])).'</span><span class="cp-sr">Mein Profil</span></a></header>';
+    // 10.12: Sprachumschalter im Kopf (auch am Handy ohne Menü erreichbar)
+    echo '<div class="cp-top-tools">'.yw_lang_switcher($company,'cp-top-lang');
+    echo '<a class="cp-avatar" href="'.e($slug).'/profil" title="'.e(t('nav.profile')).'"><span aria-hidden="true">'.e(yw_shop_initials((string)$account['name'])).'</span><span class="cp-sr">'.e(t('nav.profile')).'</span></a></div></header>';
 }
 
 function company_portal_order_status(string $status): string {
-    return [
-        'pending'=>'Freigabe offen',
-        'approved'=>'Freigegeben',
-        'rejected'=>'Abgelehnt',
-        'cancelled'=>'Zurückgezogen',
-    ][$status] ?? $status;
+    return in_array($status,['pending','approved','rejected','cancelled'],true)?t('status.'.$status):$status;
 }
 
 function company_portal_fulfillment_status(string $status): string {
-    return [
-        'new'=>'Neu',
-        'processing'=>'In Bearbeitung (Bestand)',
-        'accepted'=>'Angenommen',
-        'goods_ordered'=>'Ware bestellt',
-        'goods_received'=>'Ware eingetroffen',
-        'production'=>'In Produktion',
-        'quality_check'=>'Qualitätskontrolle',
-        'ready'=>'Versand-/abholbereit',
-        'shipped'=>'Versendet',
-        'picked_up'=>'Abgeholt',
-        'completed'=>'Abgeschlossen',
-    ][$status] ?? $status;
+    return in_array($status,['new','processing','accepted','goods_ordered','goods_received','production','quality_check','ready','shipped','picked_up','completed'],true)?t('fulfil.'.$status):$status;
 }
 
 /**
@@ -627,9 +601,9 @@ function yw_shop_price_html(array $breakdowns): string {
     if(!$breakdowns)return '';
     $share=(float)$breakdowns[0]['employee_percent']>0;
     $values=array_map(fn($b)=>(int)($share?$b['employee']:$b['gross']),$breakdowns);
-    $min=min($values);$from=count(array_unique($values))>1?'ab ':'';
-    if($share)return '<span class="sp-price"><small>Dein Anteil</small><strong>'.$from.money($min).'</strong></span>';
-    return '<span class="sp-price is-company"><strong>'.$from.money($min).'</strong><small>übernimmt deine Firma</small></span>';
+    $min=min($values);$amount=count(array_unique($values))>1?t('price.from',['amount'=>money($min)]):money($min);
+    if($share)return '<span class="sp-price"><small>'.e(t('price.your_share')).'</small><strong>'.e($amount).'</strong></span>';
+    return '<span class="sp-price is-company"><strong>'.e($amount).'</strong><small>'.e(t('price.company_pays')).'</small></span>';
 }
 
 /** Kategorie-Filter wie im Mustershop. */
@@ -637,7 +611,7 @@ function company_shop_categories(array $groups): void {
     $categories=[];
     foreach($groups as $g){$p=$g[0];$cid=(int)($p['category_id']??0);if($cid)$categories[$cid]=product_category_name($cid,(string)($p['category']??''));}
     if(count($categories)<2)return;
-    echo '<div class="sp-filters shop-category-filter" role="group" aria-label="Nach Kategorie filtern"><button type="button" class="active" aria-pressed="true" data-filter="all">Alle Artikel</button>';
+    echo '<div class="sp-filters shop-category-filter" role="group" aria-label="'.e(t('product.filter_aria')).'"><button type="button" class="active" aria-pressed="true" data-filter="all">'.e(t('product.filter_all')).'</button>';
     foreach($categories as $id=>$name)echo '<button type="button" aria-pressed="false" data-filter="'.(int)$id.'">'.e($name).'</button>';
     echo '</div>';
 }
@@ -663,12 +637,12 @@ function company_product_card(array $variants,array $company,array $motifs,strin
     $html.='<h2><a href="'.e($href).'" data-open-product="'.e($dialogId).'">'.e($name).'</a></h2>';
     if($line!=='')$html.='<p class="sp-line">'.e($line).'</p>';
     if(count($variants)>1){
-        $html.='<div class="sp-dots" aria-label="'.count($variants).' Farben: '.e(implode(', ',array_map(fn($v)=>(string)$v['color'],$variants))).'">';
+        $html.='<div class="sp-dots" aria-label="'.e(tn('product.colors',count($variants)).': '.implode(', ',array_map(fn($v)=>(string)$v['color'],$variants))).'">';
         foreach(array_slice($variants,0,6) as $v)$html.=yw_shop_swatch($v);
         if(count($variants)>6)$html.='<span class="sp-dots-more">+'.(count($variants)-6).'</span>';
-        $html.='<span class="sp-dots-label">'.count($variants).' Farben</span></div>';
+        $html.='<span class="sp-dots-label">'.e(tn('product.colors',count($variants))).'</span></div>';
     }
-    $html.='<div class="sp-buy">'.yw_shop_price_html($breakdowns).'<button class="sp-add" type="button" data-open-product="'.e($dialogId).'" aria-haspopup="dialog">Auswählen</button></div>';
+    $html.='<div class="sp-buy">'.yw_shop_price_html($breakdowns).'<button class="sp-add" type="button" data-open-product="'.e($dialogId).'" aria-haspopup="dialog">'.e(t('product.choose')).'</button></div>';
     $html.='</div></article>';
     return $html;
 }
@@ -684,17 +658,19 @@ function company_product_detail(array $variants,array $company,array $motifs,int
     $category=product_category_name((int)($active['category_id']??0),(string)($active['category']??''));
 
     $html='<dialog class="sp-detail" id="'.e($dialogId).'" aria-labelledby="'.e($dialogId).'-title"'.($open?' open':'').' data-detail>';
-    $html.='<div class="sp-detail-inner"><button class="sp-detail-close" type="button" data-close-detail aria-label="Schließen">'.yw_shop_icon('close').'</button>';
+    $html.='<div class="sp-detail-inner"><button class="sp-detail-close" type="button" data-close-detail aria-label="'.e(t('common.close')).'">'.yw_shop_icon('close').'</button>';
     // Bild mit Logo, Umschalter vorne/hinten/Ärmel – je Farbe ein eigenes Bild
-    $html.='<div class="sp-detail-media">';
+    $html.='<div class="sp-detail-media">';$hasLogo=false;
     foreach($variants as $v){
         $views=yw_mockup_views($v,$motifs);
-        $label=company_product_display_name($v).(trim((string)$v['color'])!==''?' in '.$v['color']:'');
+        $label=trim((string)$v['color'])!==''?t('product.name_in_color',['name'=>company_product_display_name($v),'color'=>$v['color']]):company_product_display_name($v);
+        if($views)foreach($views as $view)if($view['layers'])$hasLogo=true;
         $html.='<div class="sp-variant-visual'.((int)$v['id']===(int)$active['id']?' is-active':'').'" data-variant-visual="'.(int)$v['id'].'">';
         $html.=$views?yw_mockup_html($views,$label,true,'sp-detail-mockup'):'<span class="sp-card-placeholder">'.yw_shop_icon('shirt').'</span>';
         $html.='</div>';
     }
-    $html.='<p class="sp-media-note">Vorschau mit deinem Firmenlogo · Darstellung ähnlich</p></div>';
+    // 10.12: Hinweis auf das Firmenlogo nur, wenn tatsächlich ein Logo-Motiv im Bild liegt.
+    $html.=($hasLogo?'<p class="sp-media-note">'.e(t('product.logo_preview_note')).'</p>':'').'</div>';
 
     $html.='<div class="sp-detail-info">'.($category!==''?'<span class="sp-cat">'.e($category).'</span>':'');
     $html.='<h2 id="'.e($dialogId).'-title">'.e($name).'</h2>';
@@ -702,7 +678,7 @@ function company_product_detail(array $variants,array $company,array $motifs,int
 
     // Farbauswahl
     if(count($variants)>1){
-        $html.='<div class="sp-colors-wrap"><span class="sp-label" id="'.e($dialogId).'-colors">Farbe: <b data-color-name>'.e((string)$active['color']).'</b></span><div class="sp-colors" role="radiogroup" aria-labelledby="'.e($dialogId).'-colors">';
+        $html.='<div class="sp-colors-wrap"><span class="sp-label" id="'.e($dialogId).'-colors">'.e(t('product.color')).': <b data-color-name>'.e((string)$active['color']).'</b></span><div class="sp-colors" role="radiogroup" aria-labelledby="'.e($dialogId).'-colors">';
         foreach($variants as $v){
             $on=(int)$v['id']===(int)$active['id'];
             $html.='<button type="button" role="radio" aria-checked="'.($on?'true':'false').'" tabindex="'.($on?'0':'-1').'" data-variant="'.(int)$v['id'].'" data-color="'.e((string)$v['color']).'">'.yw_shop_swatch($v,'sp-swatch').'<span>'.e((string)$v['color']).'</span></button>';
@@ -722,62 +698,62 @@ function company_product_detail(array $variants,array $company,array $motifs,int
         $color=trim((string)$v['color']);
         $html.='<fieldset class="sp-variant'.($pid===(int)$active['id']?' is-active':'').'" data-variant-panel="'.$pid.'"><legend class="sp-variant-legend">'.e($vName).($color!==''?' · '.e($color):'').'</legend>';
         $html.='<div class="sp-variant-price">'.yw_shop_price_html([$price]).'</div>';
-        $html.='<div class="sp-fields"><label class="sp-field"><span>Größe</span><select id="size-'.$pid.'" name="size['.$pid.']"'.($maxQty===0?' disabled':'').'>';
+        $html.='<div class="sp-fields"><label class="sp-field"><span>'.e(t('common.size')).'</span><select id="size-'.$pid.'" name="size['.$pid.']"'.($maxQty===0?' disabled':'').'>';
         foreach($sizes as $size)$html.='<option value="'.e((string)$size).'"'.((string)$size===$preSize?' selected':'').'>'.e((string)$size).'</option>';
         $html.='</select></label>';
         $qtyId='qty-'.$pid;
-        $html.='<div class="sp-field"><label for="'.$qtyId.'">Menge</label><div class="shop-stepper"><button type="button" data-qty-step="-1" data-qty-target="'.$qtyId.'" aria-label="Menge verringern"'.($maxQty===0?' disabled':'').'>−</button>';
+        $html.='<div class="sp-field"><label for="'.$qtyId.'">'.e(t('common.quantity')).'</label><div class="shop-stepper"><button type="button" data-qty-step="-1" data-qty-target="'.$qtyId.'" aria-label="'.e(t('product.qty_less')).'"'.($maxQty===0?' disabled':'').'>−</button>';
         $html.='<input class="shop-qty" id="'.$qtyId.'" type="number" inputmode="numeric" min="0" max="'.$maxQty.'" value="'.$preQty.'" name="qty['.$pid.']" data-gross="'.(int)$price['gross'].'" data-net="'.(int)$price['net'].'" data-vat="'.e((string)$price['vat']).'" data-share="'.e((string)$price['employee_percent']).'" data-employee="'.(int)$price['employee'].'" data-company="'.(int)$price['employer'].'" data-group="'.e($dialogId).'" data-line-name="'.e($vName.($color!==''?' · '.$color:'')).'" data-size-target="size-'.$pid.'"'.($maxQty===0?' disabled':'').'>';
-        $html.='<button type="button" data-qty-step="1" data-qty-target="'.$qtyId.'" aria-label="Menge erhöhen"'.($maxQty===0?' disabled':'').'>+</button></div></div></div>';
-        if($maxQty===0)$html.='<p class="shop-limit-reached">Stücklimit für dieses Budgetjahr erreicht.</p>';
-        elseif(array_key_exists('profile_remaining_qty',$v))$html.='<p class="sp-hint">Noch '.(int)$v['profile_remaining_qty'].' Stück in diesem Budgetjahr möglich.</p>';
-        if(isset($v['profile_starter_qty']) && (int)$v['profile_starter_qty']>0)$html.='<p class="sp-hint">Empfohlen für deine Grundausstattung: '.(int)$v['profile_starter_qty'].' Stück.</p>';
+        $html.='<button type="button" data-qty-step="1" data-qty-target="'.$qtyId.'" aria-label="'.e(t('product.qty_more')).'"'.($maxQty===0?' disabled':'').'>+</button></div></div></div>';
+        if($maxQty===0)$html.='<p class="shop-limit-reached">'.e(t('product.limit_reached')).'</p>';
+        elseif(array_key_exists('profile_remaining_qty',$v))$html.='<p class="sp-hint">'.e(tn('product.remaining_qty',(int)$v['profile_remaining_qty'])).'</p>';
+        if(isset($v['profile_starter_qty']) && (int)$v['profile_starter_qty']>0)$html.='<p class="sp-hint">'.e(tn('product.starter_qty',(int)$v['profile_starter_qty'])).'</p>';
         $html.='</fieldset>';
     }
-    $html.='<div class="sp-detail-actions"><button class="sp-primary" type="button" data-add-detail>In die Auswahl</button><button class="sp-secondary" type="button" data-close-detail>Weiter ansehen</button></div>';
+    $html.='<div class="sp-detail-actions"><button class="sp-primary" type="button" data-add-detail>'.e(t('product.add')).'</button><button class="sp-secondary" type="button" data-close-detail>'.e(t('product.keep_browsing')).'</button></div>';
     $html.='<p class="sp-detail-status" data-detail-status role="status" aria-live="polite"></p>';
 
     // Veredelung
     $decorations=company_product_decorations($active);
     if($decorations){
-        $html.='<section class="sp-section"><h3>Veredelung</h3><ul class="sp-specs">';
+        $html.='<section class="sp-section"><h3>'.e(t('product.decoration')).'</h3><ul class="sp-specs">';
         foreach($decorations as $d){$t=trim((string)($d['text']??''));$html.='<li><span>'.e(decoration_position_label((string)($d['position']??''))).'</span><b>'.e(decoration_method_label((string)($d['method']??''))).($t!==''?' · '.e($t):'').'</b></li>';}
         $html.='</ul></section>';
     }elseif(trim((string)($active['decoration_details']??''))!==''){
-        $html.='<section class="sp-section"><h3>Veredelung</h3><p>'.nl2br(e((string)$active['decoration_details'])).'</p></section>';
+        $html.='<section class="sp-section"><h3>'.e(t('product.decoration')).'</h3><p>'.nl2br(e((string)$active['decoration_details'])).'</p></section>';
     }
 
     // Beschreibung kurz, Rest aufklappbar
     $parts=yw_shop_description_parts(company_product_display_description($active));
     if($parts['intro']!==''||$parts['bullets']){
-        $html.='<section class="sp-section"><h3>Über den Artikel</h3>';
+        $html.='<section class="sp-section"><h3>'.e(t('product.about')).'</h3>';
         if($parts['intro']!==''){
             $intro=$parts['intro'];
-            if(mb_strlen($intro)>220){$cut=mb_substr($intro,0,200);$cut=mb_substr($cut,0,max(120,(int)mb_strrpos($cut,' ')));$html.='<p>'.e($cut).' …</p><details class="sp-more"><summary>mehr anzeigen</summary><p>'.e($intro).'</p></details>';}
+            if(mb_strlen($intro)>220){$cut=mb_substr($intro,0,200);$cut=mb_substr($cut,0,max(120,(int)mb_strrpos($cut,' ')));$html.='<p>'.e($cut).' …</p><details class="sp-more"><summary>'.e(t('product.show_more')).'</summary><p>'.e($intro).'</p></details>';}
             else $html.='<p>'.e($intro).'</p>';
         }
         if($parts['bullets']){
             $html.='<ul class="sp-bullets">';foreach(array_slice($parts['bullets'],0,4) as $b)$html.='<li>'.e($b).'</li>';$html.='</ul>';
-            if(count($parts['bullets'])>4){$html.='<details class="sp-more"><summary>mehr anzeigen</summary><ul class="sp-bullets">';foreach(array_slice($parts['bullets'],4) as $b)$html.='<li>'.e($b).'</li>';$html.='</ul></details>';}
+            if(count($parts['bullets'])>4){$html.='<details class="sp-more"><summary>'.e(t('product.show_more')).'</summary><ul class="sp-bullets">';foreach(array_slice($parts['bullets'],4) as $b)$html.='<li>'.e($b).'</li>';$html.='</ul></details>';}
         }
         $html.='</section>';
     }
     if($parts['material']||$parts['care']){
-        $html.='<section class="sp-section"><h3>Material &amp; Pflege</h3><ul class="sp-specs">';
-        foreach($parts['material'] as $m)$html.='<li><span>Material</span><b>'.e($m).'</b></li>';
-        foreach($parts['care'] as $c)$html.='<li><span>Pflege</span><b>'.e($c).'</b></li>';
+        $html.='<section class="sp-section"><h3>'.e(t('product.material_care')).'</h3><ul class="sp-specs">';
+        foreach($parts['material'] as $m)$html.='<li><span>'.e(t('product.material')).'</span><b>'.e($m).'</b></li>';
+        foreach($parts['care'] as $c)$html.='<li><span>'.e(t('product.care')).'</span><b>'.e($c).'</b></li>';
         $html.='</ul></section>';
     }
     $sizesAll=[];foreach($variants as $v)foreach(json_decode((string)$v['sizes'],true)?:[] as $s)$sizesAll[(string)$s]=true;
-    if($sizesAll)$html.='<section class="sp-section"><h3>Größen</h3><p class="sp-sizes">'.e(implode(' · ',array_keys($sizesAll))).'</p></section>';
+    if($sizesAll)$html.='<section class="sp-section"><h3>'.e(t('product.sizes')).'</h3><p class="sp-sizes">'.e(implode(' · ',array_keys($sizesAll))).'</p></section>';
     $html.='</div></div></dialog>';
     return $html;
 }
 
 function company_shop_footer(array $company): void {
     echo '<footer class="company-shop-footer"><div class="shop-wrap company-shop-footer-inner">';
-    echo '<span>'.e($company['legal_name']).' · Mitarbeiter-Shop</span>';
-    echo '<span>WorkwearCenter · <a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></span>';
+    echo '<span>'.e($company['legal_name']).' · '.e(t('shop.staff_shop')).'</span>';
+    echo '<span>WorkwearCenter · <a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></span>';
     echo '</div></footer>';
 }
 
@@ -793,6 +769,7 @@ function employee_account_login_page(string $slug): void {
     }
 
     if(company_portal_account($company)) redirect('/'.$slug);
+    yw_shop_lang_init($company); // 10.12: Sprache vor der Anmeldung (Cookie bzw. Browser)
 
     $error='';
     if(is_post()){
@@ -802,7 +779,7 @@ function employee_account_login_page(string $slug): void {
         $loginKey='employee-'.(int)$company['id'].'-'.hash('sha256',$email);
 
         if(login_throttled($loginKey)){
-            $error='Zu viele Anmeldeversuche. Bitte 15 Minuten warten.';
+            $error=t('auth.too_many');
         }else{
             $stmt=db()->prepare("SELECT * FROM employee_accounts WHERE company_id=? AND email=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) LIMIT 1");
             $stmt->execute([(int)$company['id'],$email]);
@@ -820,6 +797,10 @@ function employee_account_login_page(string $slug): void {
                 session_regenerate_id(true);
                 $_SESSION['employee_account_id']=(int)$account['id'];
                 $_SESSION['employee_auth_version']=(int)($account['auth_version']??1);
+                // 10.12: Vor der Anmeldung gewählte Sprache übernehmen, solange am Konto noch keine steht.
+                if(!yw_lang_valid($account['language']??null) && yw_lang_valid($_COOKIE[YW_LANG_COOKIE]??null)){
+                    try{db()->prepare('UPDATE employee_accounts SET language=? WHERE id=? AND language IS NULL')->execute([yw_lang(),(int)$account['id']]);}catch(Throwable $e){}
+                }
                 try{
                     db()->prepare('UPDATE employee_accounts SET last_login_at=NOW() WHERE id=?')->execute([(int)$account['id']]);
                 }catch(Throwable $e){}
@@ -827,19 +808,19 @@ function employee_account_login_page(string $slug): void {
             }
 
             record_login_failure($loginKey);
-            $error='Anmeldung nicht möglich. Zugangsdaten oder Freigabestatus prüfen.';
+            $error=t('auth.login_failed');
         }
     }
 
-    $card='<h2>Anmelden</h2><p>Mit deinem persönlichen Firmenkonto.</p>';
+    $card='<h2>'.e(t('auth.login_title')).'</h2><p>'.e(t('auth.login_sub')).'</p>';
     if($error) $card.='<div class="flash error" role="alert">'.e($error).'</div>';
     $card.='<form method="post" class="form-stack">'.csrf_field()
-        .'<label>E-Mail<input type="email" name="email" autocomplete="email" required></label>'
-        .'<label>Passwort<input type="password" name="password" autocomplete="current-password" required></label>'
-        .'<button class="cp-btn-primary" type="submit">Im Shop anmelden</button></form>';
+        .'<label>'.e(t('common.email')).'<input type="email" name="email" autocomplete="email" required></label>'
+        .'<label>'.e(t('common.password')).'<input type="password" name="password" autocomplete="current-password" required></label>'
+        .'<button class="cp-btn-primary" type="submit">'.e(t('auth.login_button')).'</button></form>';
     $card.=yw_magic_login_form($company); // 10.11: Anmeldelink per E-Mail (app/modules/magic_login.php)
-    $card.='<div class="cp-login-help"><a href="/'.e($company['slug']).'/passwort-vergessen">Passwort vergessen?</a><span>Noch kein Zugang? <a href="/'.e($company['slug']).'/registrieren">Registrieren</a></span></div>';
-    yw_shop_auth_page($company,'Login – '.$company['shop_name'],['Mitarbeiter-Shop','Deine Firmenkleidung an einem Ort.','Freigegebene Artikel mit deinem Firmenlogo, persönliche Bestellübersicht und dein Budget immer im Blick.'],$card);
+    $card.='<div class="cp-login-help"><a href="/'.e($company['slug']).'/passwort-vergessen">'.e(t('auth.forgot_link')).'</a><span>'.e(t('auth.no_access')).' <a href="/'.e($company['slug']).'/registrieren">'.e(t('auth.register_link')).'</a></span></div>';
+    yw_shop_auth_page($company,t('auth.login_page_title',['shop'=>$company['shop_name']]),[t('shop.staff_shop'),t('auth.login_headline'),t('auth.login_intro')],$card);
 }
 
 /**
@@ -847,21 +828,23 @@ function employee_account_login_page(string $slug): void {
  * (links Firmenfarbe mit Logo bzw. Initialen, rechts die Karte). $intro = [Kicker, Überschrift, Text].
  */
 function yw_shop_auth_page(array $company,string $title,array $intro,string $cardHtml): void {
+    if(!yw_lang_shop_active())yw_shop_lang_init($company);
     render_head($title,$company);
     echo company_portal_style($company);
     $hasLogo=yw_company_logo_path($company)!=='';
     echo '<main class="cp-login"><section class="cp-login-brand">';
     // Mit Logo steht der Firmenname nur im Logo; ohne Logo Initialen in Firmenfarbe + Name.
     echo '<div class="cp-login-identity'.($hasLogo?' has-logo':'').'">'.yw_shop_brand_mark($company,'cp-login').($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'</div>';
-    echo '<div class="cp-login-copy"><span class="cp-login-kicker">'.e($intro[0]??'Mitarbeiter-Shop').'</span><h1>'.e($intro[1]??'').'</h1><p>'.e($intro[2]??'').'</p></div>';
-    echo '<p class="cp-login-powered">Bereitgestellt über das WorkwearCenter von Yanik Textildruck</p></section>';
-    echo '<section class="cp-login-form"><div class="cp-login-card">'.$cardHtml.'</div><p class="cp-login-legal"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></p></section></main>';
+    echo '<div class="cp-login-copy"><span class="cp-login-kicker">'.e($intro[0]??t('shop.staff_shop')).'</span><h1>'.e($intro[1]??'').'</h1><p>'.e($intro[2]??'').'</p></div>';
+    echo '<p class="cp-login-powered">'.e(t('auth.powered')).'</p></section>';
+    // 10.12: Sprachwahl über der Karte (auch vor der Anmeldung)
+    echo '<section class="cp-login-form">'.yw_lang_switcher($company,'cp-login-lang').'<div class="cp-login-card">'.$cardHtml.'</div><p class="cp-login-legal"><a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></p></section></main>';
     render_foot();
 }
 
 /** Rückmeldung nach Registrierung bzw. Passwort-Aktion im selben Rahmen. */
 function yw_shop_auth_message(array $company,string $slug,string $title,string $text,array $intro): void {
-    yw_shop_auth_page($company,$title.' – '.(string)($company['shop_name']??''),$intro,'<h2>'.e($title).'</h2><p>'.e($text).'</p><div class="cp-login-help"><a href="/'.e($slug).'/login">Zum Login</a></div>');
+    yw_shop_auth_page($company,$title.' – '.(string)($company['shop_name']??''),$intro,'<h2>'.e($title).'</h2><p>'.e($text).'</p><div class="cp-login-help"><a href="/'.e($slug).'/login">'.e(t('auth.to_login')).'</a></div>');
 }
 
 function company_portal_page(string $slug,string $section='overview'): void {
@@ -877,15 +860,16 @@ function company_portal_page(string $slug,string $section='overview'): void {
 
     $account=company_portal_account($company);
     if(!$account) redirect('/'.$slug.'/login');
+    yw_shop_lang_init($company,$account); // 10.12: Sprache des Kontos (sonst Cookie/Browser)
 
     $manager=account_is_manager($account);
     if(in_array($section,['freigaben','mitarbeiter'],true) && !$manager){
         http_response_code(403);
-        simple_message('Kein Zugriff','Dieser Bereich ist nur für Verantwortliche freigeschaltet.');
+        simple_message(t('err.no_access_title'),t('err.no_access_text'));
         return;
     }
 
-    if(is_post() && yw_is_preview($account)){flash('info','Vorschau-Modus: Änderungen und Bestellungen sind hier abgeschaltet.');redirect('/'.$slug.($section==='overview'?'':'/'.$section));}
+    if(is_post() && yw_is_preview($account)){flash('info',t('flash.preview_mode'));redirect('/'.$slug.($section==='overview'?'':'/'.$section));}
     if(is_post()){
         verify_csrf();
         $action=(string)($_POST['action']??'');
@@ -912,22 +896,27 @@ function company_portal_page(string $slug,string $section='overview'): void {
             $stmt->execute([$orderId,(int)$company['id'],(int)$account['id']]);
             if($stmt->rowCount()){
                 audit_log('order.cancelled','order',$orderId,['company_id'=>(int)$company['id']]);
-                notify_company_managers((int)$company['id'],'Bestellung #'.$orderId.' zurückgezogen',$account['name'].' hat die Bestellung #'.$orderId.' zurückgezogen. Eine Freigabe ist nicht mehr nötig.');
-                flash('success','Bestellung #'.$orderId.' wurde zurückgezogen. Das reservierte Budget ist wieder frei.');
-            }else flash('error','Die Bestellung kann nicht mehr zurückgezogen werden – sie wurde bereits bearbeitet.');
+                $who=(string)$account['name'];
+                notify_company_managers((int)$company['id'],fn(array $m)=>[t('mail.cancelled.subject',['id'=>$orderId]),t('mail.cancelled.body',['name'=>$who,'id'=>$orderId])]);
+                flash('success',t('flash.order_cancelled',['id'=>$orderId]));
+            }else flash('error',t('flash.order_cancel_failed'));
             redirect('/'.$slug.'/bestellungen');
         }
 
         if($action==='profile' && $section==='profil'){
             $name=trim((string)($_POST['name']??''));
             if($name===''||mb_strlen($name)>160){
-                flash('error','Bitte einen Namen mit höchstens 160 Zeichen eingeben.');
+                flash('error',t('flash.name_invalid'));
                 redirect('/'.$slug.'/profil');
             }
-            $stmt=db()->prepare('UPDATE employee_accounts SET name=? WHERE id=? AND company_id=?');
-            $stmt->execute([$name,(int)$account['id'],(int)$company['id']]);
+            // 10.12: Sprache im Profil (nur angebotene Sprachen; sonst unverändert)
+            $language=(string)($_POST['language']??'');
+            if(!in_array($language,yw_company_langs($company),true))$language=yw_lang_valid($account['language']??null)?(string)$account['language']:null;
+            $stmt=db()->prepare('UPDATE employee_accounts SET name=?,language=? WHERE id=? AND company_id=?');
+            $stmt->execute([$name,$language,(int)$account['id'],(int)$company['id']]);
+            if($language!==null){yw_lang_cookie_set($language);yw_set_lang($language);}
             audit_log('employee.profile_updated','employee',(int)$account['id'],['company_id'=>(int)$company['id']]);
-            flash('success','Profil wurde gespeichert.');
+            flash('success',t('flash.profile_saved'));
             redirect('/'.$slug.'/profil');
         }
     }
@@ -965,7 +954,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
 function yw_shop_item_label(array $item): string {
     $snapshot=json_decode((string)($item['decoration_snapshot_json']??''),true);
     $color=is_array($snapshot)?trim((string)($snapshot['color']??'')):'';
-    return (string)$item['product_name'].($color!==''?' · '.$color:'').' · Größe '.(string)$item['size'];
+    return (string)$item['product_name'].($color!==''?' · '.$color:'').' · '.t('common.size_value',['size'=>(string)$item['size']]);
 }
 
 function company_portal_overview(array $company,array $account): void {
@@ -973,8 +962,8 @@ function company_portal_overview(array $company,array $account): void {
     $manager=account_is_manager($account);
     $approval=(int)($company['approval_required']??1)===1;
 
-    echo '<div class="cp-welcome"><div><h1>'.e(yw_shop_greeting((string)$account['name'])).'</h1><p>Hier ist deine Firmenkollektion von '.e($company['legal_name']).'. Wähle aus den für dich freigegebenen Artikeln.</p>';
-    echo '<p class="cp-rules">'.e(financing_label($company)).' · '.e(shipping_rule_label($company)).' · '.($approval?'Bestellungen werden intern freigegeben':'Keine interne Freigabe nötig').'</p></div>';
+    echo '<div class="cp-welcome"><div><h1>'.e(yw_shop_greeting((string)$account['name'])).'</h1><p>'.e(t('overview.intro',['company'=>$company['legal_name']])).'</p>';
+    echo '<p class="cp-rules">'.e(financing_label($company)).' · '.e(shipping_rule_label($company)).' · '.e($approval?t('rules.internal_approval'):t('rules.no_approval')).'</p></div>';
     echo yw_shop_budget_box($company,$account).'</div>';
 
     $equipmentProfile=yw_account_equipment_profile($account);
@@ -987,47 +976,47 @@ function company_portal_overview(array $company,array $account): void {
     if(!$last){
         $hasStarter=false;
         foreach((yw_account_profile_rules($account)??[]) as $rule)if((int)$rule['starter_qty']>0){$hasStarter=true;break;}
-        echo '<section class="cp-card cp-first-order"><div><h2>Deine erste Bestellung</h2>';
+        echo '<section class="cp-card cp-first-order"><div><h2>'.e(t('overview.first_title')).'</h2>';
         echo $hasStarter
-            ? '<p>Für dich ist eine Grundausstattung hinterlegt'.($equipmentProfile?' ('.e($equipmentProfile['name']).')':'').'. Mit einem Klick ist alles vorausgewählt – du musst nur noch deine Größen prüfen.</p></div><a class="cp-btn" href="'.e($slug).'/produkte?starter=1">Grundausstattung bestellen</a>'
-            : '<p>Wähle deine Artikel aus der Firmenkollektion. Beim nächsten Mal merkt sich der Shop deine Größen, und du kannst Bestellungen mit einem Klick wiederholen.</p></div><a class="cp-btn" href="'.e($slug).'/produkte">Zur Kollektion</a>';
+            ? '<p>'.e($equipmentProfile?t('overview.starter_profile',['profile'=>$equipmentProfile['name']]):t('overview.starter')).'</p></div><a class="cp-btn" href="'.e($slug).'/produkte?starter=1">'.e(t('overview.starter_button')).'</a>'
+            : '<p>'.e(t('overview.first_text')).'</p></div><a class="cp-btn" href="'.e($slug).'/produkte">'.e(t('overview.to_collection')).'</a>';
         echo '</section>';
     }else{
         $items=order_items_grouped([(int)$last['id']])[(int)$last['id']]??[];
         $status=(string)$last['status'];
         $gross=(int)($last['gross_total_cents']??0); if($gross<=0)$gross=(int)$last['total_cents'];
-        echo '<section class="cp-card cp-last-order"><div class="cp-card-head"><div><h2>Letzte Bestellung</h2><p>#'.(int)$last['id'].' · '.e(date('d.m.Y',strtotime((string)$last['created_at']))).' · '.money($gross).'</p></div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div>';
+        echo '<section class="cp-card cp-last-order"><div class="cp-card-head"><div><h2>'.e(t('overview.last_title')).'</h2><p>#'.(int)$last['id'].' · '.e(yw_date((string)$last['created_at'])).' · '.money($gross).'</p></div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div>';
         echo '<ul class="cp-mini-items">';
         foreach(array_slice($items,0,3) as $item)echo '<li><span>'.(int)$item['quantity'].'×</span> '.e(yw_shop_item_label($item)).'</li>';
-        if(count($items)>3)echo '<li class="muted">+ '.(count($items)-3).' weitere Position'.(count($items)-3===1?'':'en').'</li>';
+        if(count($items)>3)echo '<li class="muted">'.e(tn('overview.more_items',count($items)-3)).'</li>';
         echo '</ul>';
         $progress=company_portal_progress($last);
         if($progress!=='')echo $progress;
-        elseif($status==='pending')echo '<p class="cp-state-note">Wartet auf die Freigabe durch die verantwortliche Person. Dein Budget ist so lange reserviert.</p>';
-        echo '<div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte?nachbestellen='.(int)$last['id'].'">'.yw_shop_icon('repeat').'Nochmal bestellen</a><a class="cp-btn cp-btn-light" href="'.e($slug).'/bestellungen">Alle Bestellungen</a></div></section>';
+        elseif($status==='pending')echo '<p class="cp-state-note">'.e(t('overview.pending_note')).'</p>';
+        echo '<div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte?nachbestellen='.(int)$last['id'].'">'.yw_shop_icon('repeat').e(t('orders.reorder')).'</a><a class="cp-btn cp-btn-light" href="'.e($slug).'/bestellungen">'.e(t('overview.all_orders')).'</a></div></section>';
     }
 
     if($manager){
-        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending' ORDER BY o.id ASC");
+        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending' ORDER BY o.id ASC");
         $q->execute([(int)$company['id']]);$pending=$q->fetchAll();
-        echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>Offene Freigaben</h2><p>'.(count($pending)?count($pending).' Bestellung'.(count($pending)===1?' wartet':'en warten').' auf eine Entscheidung.':'Aktuell ist nichts offen.').'</p></div><span class="cp-count">'.count($pending).'</span></div>';
+        echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>'.e(t('overview.approvals_title')).'</h2><p>'.e(count($pending)?tn('overview.approvals_waiting',count($pending)):t('overview.approvals_none')).'</p></div><span class="cp-count">'.count($pending).'</span></div>';
         if($pending){
             echo '<ul class="cp-mini-items">';
-            foreach(array_slice($pending,0,4) as $o){$g=(int)($o['gross_total_cents']??0);if($g<=0)$g=(int)$o['total_cents'];echo '<li><span>#'.(int)$o['id'].'</span> '.e($o['employee_name']).' · '.e(date('d.m.',strtotime((string)$o['created_at']))).'<b>'.money($g).'</b></li>';}
-            echo '</ul><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/freigaben">Jetzt prüfen</a></div>';
-        }else echo '<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/freigaben">Bestellungen ansehen</a></div>';
+            foreach(array_slice($pending,0,4) as $o){$g=(int)($o['gross_total_cents']??0);if($g<=0)$g=(int)$o['total_cents'];echo '<li><span>#'.(int)$o['id'].'</span> '.e($o['employee_name']!==''?$o['employee_name']:t('common.unknown')).' · '.e(yw_date((string)$o['created_at'],'short')).'<b>'.money($g).'</b></li>';}
+            echo '</ul><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/freigaben">'.e(t('overview.review_now')).'</a></div>';
+        }else echo '<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/freigaben">'.e(t('overview.view_orders')).'</a></div>';
         echo '</section>';
     }elseif($last){
-        echo '<section class="cp-card cp-shop-card"><h2>Kollektion</h2><p>Alle für dich freigegebenen Artikel mit Logo-Vorschau, Farben und Größen.</p><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte">Zur Kollektion '.yw_shop_icon('arrow').'</a></div></section>';
+        echo '<section class="cp-card cp-shop-card"><h2>'.e(t('overview.collection_title')).'</h2><p>'.e(t('overview.collection_text')).'</p><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte">'.e(t('overview.to_collection')).' '.yw_shop_icon('arrow').'</a></div></section>';
     }
     echo '</div>';
 
     if($equipmentProfile){
-        echo '<section class="cp-card"><h2>Deine Sollausstattung · '.e($equipmentProfile['name']).'</h2><p>'.e($equipmentProfile['description']?:'Für deine Tätigkeit freigegebene Firmenkleidung im aktuellen Budgetjahr.').'</p>';
+        echo '<section class="cp-card"><h2>'.e(t('overview.target_title',['profile'=>$equipmentProfile['name']])).'</h2><p>'.e($equipmentProfile['description']?:t('overview.target_text')).'</p>';
         $products=shop_company_products((int)$company['id'],$account);
         $targets=array_filter($products,fn($p)=>$p['profile_target_qty']!==null);
-        if($targets){echo '<div class="cp-rule-list">';foreach($targets as $product){$used=yw_quantity_used($company,$account,(int)$product['id']);$target=(int)$product['profile_target_qty'];echo '<div class="cp-rule"><span>'.e(company_product_display_name($product)).(trim((string)$product['color'])!==''?' · '.e($product['color']):'').' · bestellt/reserviert '.$used.'</span><strong>'.max(0,$target-$used).' von '.$target.' offen</strong></div>';}echo '</div>';}
-        else echo '<p class="muted">Für dieses Profil sind Produkte freigegeben, aber keine jährlichen Sollmengen hinterlegt.</p>';
+        if($targets){echo '<div class="cp-rule-list">';foreach($targets as $product){$used=yw_quantity_used($company,$account,(int)$product['id']);$target=(int)$product['profile_target_qty'];echo '<div class="cp-rule"><span>'.e(company_product_display_name($product)).(trim((string)$product['color'])!==''?' · '.e($product['color']):'').' · '.e(t('overview.target_used',['n'=>$used])).'</span><strong>'.e(t('overview.target_open',['open'=>max(0,$target-$used),'target'=>$target])).'</strong></div>';}echo '</div>';}
+        else echo '<p class="muted">'.e(t('overview.target_none')).'</p>';
         echo '</section>';
     }
 }
@@ -1036,12 +1025,12 @@ function company_portal_products(array $company,array $account): void {
     $products=shop_company_products((int)$company['id'],$account);
     $slug=(string)$company['slug'];
 
-    echo '<div class="cp-welcome cp-welcome-products"><div><h1>Deine Firmenkollektion</h1><p>Wähle Artikel, Farbe, Größe und Menge. Die Kosten siehst du vor dem Absenden in deiner Auswahl.</p></div>'.yw_shop_budget_box($company,$account).'</div>';
+    echo '<div class="cp-welcome cp-welcome-products"><div><h1>'.e(t('products.title')).'</h1><p>'.e(t('products.intro')).'</p></div>'.yw_shop_budget_box($company,$account).'</div>';
 
     echo yw_batch_shop_notice($company); // 10.11: Sammelbestellung
 
     if(!$products){
-        echo '<div class="empty">Für dein Ausstattungsprofil sind derzeit keine Produkte freigeschaltet. Bitte wende dich an deinen Firmenverantwortlichen.</div>';
+        echo '<div class="empty">'.e(t('products.none')).'</div>';
         return;
     }
 
@@ -1058,14 +1047,14 @@ function company_portal_products(array $company,array $account): void {
         $q=db()->prepare("SELECT i.product_id,i.size,i.quantity FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.id=? AND o.company_id=? AND o.employee_account_id=?");
         $q->execute([$reorderId,(int)$company['id'],(int)$account['id']]);
         foreach($q as $row)$preset[(int)$row['product_id']]=['qty'=>(int)$row['quantity'],'size'=>(string)$row['size']];
-        if($preset)$presetNote='Die Auswahl aus Bestellung #'.$reorderId.' wurde übernommen. Bitte kurz prüfen und dann absenden.';
+        if($preset)$presetNote=t('products.reorder_note',['id'=>$reorderId]);
     }elseif(isset($_GET['starter'])){
         foreach($products as $p)if((int)($p['profile_starter_qty']??0)>0)$preset[(int)$p['id']]=['qty'=>(int)$p['profile_starter_qty'],'size'=>$lastSizes[(int)$p['id']]??''];
-        if($preset)$presetNote='Deine empfohlene Grundausstattung ist vorausgewählt. Bitte Größen prüfen und dann absenden.';
+        if($preset)$presetNote=t('products.starter_note');
     }
     $available=array_flip(array_map(fn($p)=>(int)$p['id'],$products));
-    if($preset && !array_intersect_key($preset,$available)){$preset=[];$presetNote='Die Artikel dieser Bestellung sind derzeit nicht mehr bestellbar.';}
-    if($presetNote!=='')echo '<div class="cp-manager-alert" role="status">'.e($presetNote).' <a href="#auswahl">Zur Auswahl</a></div>';
+    if($preset && !array_intersect_key($preset,$available)){$preset=[];$presetNote=t('products.reorder_unavailable');}
+    if($presetNote!=='')echo '<div class="cp-manager-alert" role="status">'.e($presetNote).' <a href="#auswahl">'.e(t('cart.to_selection')).'</a></div>';
 
     foreach($products as &$p){
         $profileRule=array_key_exists('profile_target_qty',$p)?['yearly_target_qty'=>$p['profile_target_qty']]:null;
@@ -1082,7 +1071,7 @@ function company_portal_products(array $company,array $account): void {
 
     echo '<div class="sp-tools">';
     company_shop_categories($groups);
-    echo '<a class="sp-cart-btn" href="#auswahl">'.yw_shop_icon('bag').'<span>Auswahl · <span data-selection-count>0</span></span></a></div>';
+    echo '<a class="sp-cart-btn" href="#auswahl">'.yw_shop_icon('bag').'<span>'.e(t('cart.selection')).' · <span data-selection-count>0</span></span></a></div>';
 
     echo '<form method="post" data-order-form>'.csrf_field().'<input type="hidden" name="action" value="order">';
     echo '<div class="sp-grid">';
@@ -1096,25 +1085,25 @@ function company_portal_products(array $company,array $account): void {
 
     $approval=(int)($company['approval_required']??1)===1;
     echo '<section class="sp-cart shop-order-panel" id="auswahl" tabindex="-1" aria-labelledby="auswahl-title" data-shipping-enabled="'.(shipping_enabled($company)?'1':'0').'" data-shipping-net="'.(int)($company['shipping_net_cents']??0).'" data-shipping-vat="'.e((string)($company['shipping_vat_rate']??19)).'" data-free-shipping="'.(int)($company['free_shipping_gross_cents']??0).'" data-shipping-payer="'.e((string)($company['shipping_payer']??'company')).'">';
-    echo '<div class="sp-cart-main"><h2 id="auswahl-title">Deine Auswahl</h2>';
-    echo '<p class="sp-cart-empty" data-cart-empty>Noch nichts ausgewählt. Öffne einen Artikel und lege Farbe, Größe und Menge fest.</p><ul class="sp-cart-lines" data-cart-lines></ul>';
-    echo '<label class="sp-note">Hinweis zur Bestellung <small>optional</small><textarea name="note" maxlength="500" placeholder="z. B. gemeinsam mit Abteilung Montage ausliefern"></textarea></label>';
+    echo '<div class="sp-cart-main"><h2 id="auswahl-title">'.e(t('cart.title')).'</h2>';
+    echo '<p class="sp-cart-empty" data-cart-empty>'.e(t('cart.empty')).'</p><ul class="sp-cart-lines" data-cart-lines></ul>';
+    echo '<label class="sp-note">'.e(t('cart.note')).' <small>'.e(t('common.optional')).'</small><textarea name="note" maxlength="500" placeholder="'.e(t('cart.note_placeholder')).'"></textarea></label>';
     echo yw_checkout_fields($company).'</div>';
-    echo '<div class="shop-submit-box"><div class="shop-selection-count"><strong data-selection-count>0</strong> Artikel ausgewählt</div>'
+    echo '<div class="shop-submit-box"><div class="shop-selection-count">'.t('cart.count_selected',['n'=>'<strong data-selection-count>0</strong>']).'</div>'
         .'<div class="shop-checkout-lines">'
-        .'<div><span>Warenwert netto</span><strong data-summary-net>0,00 €</strong></div>'
-        .'<div><span>Warenwert brutto</span><strong data-summary-gross>0,00 €</strong></div>'
-        .'<div><span>Versand brutto</span><strong data-summary-shipping>0,00 €</strong></div>'
-        .'<div class="total"><span>Gesamt brutto</span><strong data-summary-total>0,00 €</strong></div>'
-        .'<div class="employee"><span>Dein Anteil</span><strong data-summary-employee>0,00 €</strong></div>'
-        .'<div><span>Firma übernimmt</span><strong data-summary-company>0,00 €</strong></div>'
+        .'<div><span>'.e(t('cart.net')).'</span><strong data-summary-net>'.money(0).'</strong></div>'
+        .'<div><span>'.e(t('cart.gross')).'</span><strong data-summary-gross>'.money(0).'</strong></div>'
+        .'<div><span>'.e(t('cart.shipping')).'</span><strong data-summary-shipping>'.money(0).'</strong></div>'
+        .'<div class="total"><span>'.e(t('cart.total')).'</span><strong data-summary-total>'.money(0).'</strong></div>'
+        .'<div class="employee"><span>'.e(t('price.your_share')).'</span><strong data-summary-employee>'.money(0).'</strong></div>'
+        .'<div><span>'.e(t('price.company_pays_label')).'</span><strong data-summary-company>'.money(0).'</strong></div>'
         .'</div>'
         .'<p class="sp-rules">'.e(financing_label($company)).' · '.e(shipping_rule_label($company)).'</p>'
-        .'<p class="shop-budget-warning" data-budget-warning role="alert" hidden>Der Firmenanteil übersteigt dein verfügbares Budget. Bitte die Auswahl verkleinern.</p>'
-        .'<button class="shop-submit" type="submit" disabled>'.($approval?'Zur Freigabe senden':'Bestellung absenden').'</button>'
-        .'<p class="sp-rules">'.($approval?'Deine verantwortliche Person gibt die Bestellung frei. Bis dahin ist dein Budget reserviert.':'Die Bestellung wird direkt übernommen.').'</p></div>';
+        .'<p class="shop-budget-warning" data-budget-warning role="alert" hidden>'.e(t('cart.over_budget')).'</p>'
+        .'<button class="shop-submit" type="submit" disabled>'.e($approval?t('cart.submit_approval'):t('cart.submit')).'</button>'
+        .'<p class="sp-rules">'.e($approval?t('cart.approval_note'):t('cart.direct_note')).'</p></div>';
     echo '</section>';
-    echo '<div class="shop-mobile-cart" data-mobile-cart aria-hidden="true"><div><strong><span data-selection-count>0</span> Artikel</strong><small>'.(company_employee_share_percent($company)>0||(string)($company['shipping_payer']??'company')==='employee'?'Dein Anteil: <span data-summary-employee>0,00 €</span>':'Übernimmt deine Firma · <span data-summary-total>0,00 €</span>').'</small></div><button type="button" data-scroll-checkout tabindex="-1">Zur Auswahl</button></div>';
+    echo '<div class="shop-mobile-cart" data-mobile-cart aria-hidden="true"><div><strong>'.t('cart.mobile_count',['n'=>'<span data-selection-count>0</span>']).'</strong><small>'.(company_employee_share_percent($company)>0||(string)($company['shipping_payer']??'company')==='employee'?e(t('price.your_share')).': <span data-summary-employee>'.money(0).'</span>':e(t('cart.mobile_company')).' · <span data-summary-total>'.money(0).'</span>').'</small></div><button type="button" data-scroll-checkout tabindex="-1">'.e(t('cart.to_selection')).'</button></div>';
     echo '<div class="sp-toast" data-shop-toast role="status" aria-live="polite"></div>';
     echo '</form>';
 }
@@ -1130,12 +1119,12 @@ function company_portal_progress(array $o): string {
         default=>0,
     };
     $pickup=str_contains((string)($o['delivery_snapshot_json']??''),'"mode":"pickup"');
-    $labels=['Freigegeben','In Produktion','Fertig',$pickup?'Abgeholt':'Versendet'];
-    $html='<div class="cp-progress" aria-label="Bearbeitungsstand">';
+    $labels=[t('progress.approved'),t('progress.production'),t('progress.ready'),$pickup?t('progress.picked_up'):t('progress.shipped')];
+    $html='<div class="cp-progress" aria-label="'.e(t('progress.aria')).'">';
     foreach($labels as $i=>$label)$html.='<div class="cp-progress-step'.($i<=$stage?' done':'').($i===$stage?' current':'').'"><span></span><small>'.e($label).'</small></div>';
     $html.='</div>';
     $link=yw_tracking_link($o['tracking_carrier']??null,$o['tracking_number']??null,$o['tracking_url']??null);
-    if(!empty($o['tracking_number']))$html.='<div class="cp-tracking"><div><small>Sendungsnummer'.(!empty($o['tracking_carrier'])?' · '.e($o['tracking_carrier']):'').'</small><strong>'.e($o['tracking_number']).'</strong></div>'.($link?'<a class="cp-btn approve" href="'.e($link).'" target="_blank" rel="noopener noreferrer">Sendung verfolgen</a>':'').'</div>';
+    if(!empty($o['tracking_number']))$html.='<div class="cp-tracking"><div><small>'.e(t('progress.tracking_number')).(!empty($o['tracking_carrier'])?' · '.e($o['tracking_carrier']):'').'</small><strong>'.e($o['tracking_number']).'</strong></div>'.($link?'<a class="cp-btn approve" href="'.e($link).'" target="_blank" rel="noopener noreferrer">'.e(t('mail.track')).'</a>':'').'</div>';
     return $html;
 }
 
@@ -1148,10 +1137,10 @@ function company_portal_my_orders(array $company,array $account): void {
     $orders=$stmt->fetchAll();
     $itemsByOrder=order_items_grouped(array_column($orders,'id'));
 
-    echo '<div class="cp-section-head"><div><h1>Meine Bestellungen</h1><p>Hier findest du deine komplette Bestellhistorie und den aktuellen Status.</p></div></div>';
+    echo '<div class="cp-section-head"><div><h1>'.e(t('nav.orders')).'</h1><p>'.e(t('orders.intro')).'</p></div></div>';
 
     if(!$orders){
-        echo '<div class="empty">Du hast noch keine Bestellungen aufgegeben.</div>';
+        echo '<div class="empty">'.e(t('orders.none')).'</div>';
         return;
     }
 
@@ -1163,35 +1152,35 @@ function company_portal_my_orders(array $company,array $account): void {
         $employee=(int)($o['employee_total_cents']??0);
         $companyShare=(int)($o['company_total_cents']??0);
 
-        echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>Bestellung #'.(int)$o['id'].'</strong><div class="cp-order-meta">'.e(date('d.m.Y · H:i',strtotime($o['created_at']))).' Uhr · '.e(company_portal_fulfillment_status((string)($o['fulfillment_status']??'new'))).'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
+        echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>'.e(t('orders.order_no',['id'=>(int)$o['id']])).'</strong><div class="cp-order-meta">'.e(yw_date($o['created_at'],'datetime')).' · '.e(company_portal_fulfillment_status((string)($o['fulfillment_status']??'new'))).'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
         echo '<div class="cp-order-items">';
         foreach($items as $item){
             echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money(yw_order_item_amounts($item)['gross']).'</strong></div>';
         }
-        if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>Versand</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
+        if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>'.e(t('mail.sum.shipping')).'</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
         echo '</div>';
         echo company_portal_progress($o);
         echo yw_exchange_order_panel($company,$account,$o,$items); // 10.11: Umtausch & Rückgabe
-        echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>Gesamt brutto</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>Dein Anteil</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>Firma übernimmt</span><strong>'.money($companyShare).'</strong></div></div>';
-        if(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>Hinweis zur Entscheidung</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
+        echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>'.e(t('cart.total')).'</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>'.e(t('price.your_share')).'</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>'.e(t('price.company_pays_label')).'</span><strong>'.money($companyShare).'</strong></div></div>';
+        if(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>'.e(t('orders.decision_note')).'</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
         $own=(int)($o['employee_account_id']??0)===(int)$account['id'];
         if($own){
             echo '<div class="cp-action-row">';
-            if($status==='pending')echo '<form method="post" data-confirm="Bestellung #'.(int)$o['id'].' wirklich zurückziehen?">'.csrf_field().'<input type="hidden" name="action" value="cancel_order"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><button class="cp-btn reject" type="submit">Bestellung zurückziehen</button></form>';
-            echo '<a class="cp-btn cp-btn-light" href="/'.e($company['slug']).'/produkte?nachbestellen='.(int)$o['id'].'">Nochmal bestellen</a>';
+            if($status==='pending')echo '<form method="post" data-confirm="'.e(t('orders.cancel_confirm',['id'=>(int)$o['id']])).'">'.csrf_field().'<input type="hidden" name="action" value="cancel_order"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><button class="cp-btn reject" type="submit">'.e(t('orders.cancel')).'</button></form>';
+            echo '<a class="cp-btn cp-btn-light" href="/'.e($company['slug']).'/produkte?nachbestellen='.(int)$o['id'].'">'.e(t('orders.reorder')).'</a>';
             echo '</div>';
         }
         echo '</article>';
     }
     echo '</div>';
-    if($maxPage>1){echo '<nav class="cp-action-row" aria-label="Seiten der Bestellhistorie">';if($page>1)echo '<a class="btn" href="/'.e($company['slug']).'/bestellungen?seite='.($page-1).'">← Neuere</a>';echo '<span>Seite '.$page.' von '.$maxPage.'</span>';if($page<$maxPage)echo '<a class="btn" href="/'.e($company['slug']).'/bestellungen?seite='.($page+1).'">Ältere →</a>';echo '</nav>';}
+    if($maxPage>1){echo '<nav class="cp-action-row" aria-label="'.e(t('pager.orders_aria')).'">';if($page>1)echo '<a class="btn" href="/'.e($company['slug']).'/bestellungen?seite='.($page-1).'">← '.e(t('pager.newer')).'</a>';echo '<span>'.e(t('pager.page',['page'=>$page,'pages'=>$maxPage])).'</span>';if($page<$maxPage)echo '<a class="btn" href="/'.e($company['slug']).'/bestellungen?seite='.($page+1).'">'.e(t('pager.older')).' →</a>';echo '</nav>';}
 }
 
 function company_portal_approvals(array $company,array $account): void {
     $page=max(1,(int)($_GET['seite']??1));$perPage=50;
     $countStmt=db()->prepare('SELECT COUNT(*) FROM orders WHERE company_id=?');$countStmt->execute([(int)$company['id']]);$totalOrders=(int)$countStmt->fetchColumn();
     $maxPage=max(1,(int)ceil($totalOrders/$perPage));$page=min($page,$maxPage);$offset=($page-1)*$perPage;
-    $stmt=db()->prepare("SELECT o.*,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name
+    $stmt=db()->prepare("SELECT o.*,COALESCE(ea.name,i.employee_name,'') employee_name
         FROM orders o
         LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id
         LEFT JOIN invites i ON i.id=o.invite_id
@@ -1203,12 +1192,12 @@ function company_portal_approvals(array $company,array $account): void {
 
     $pendingStmt=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$pendingStmt->execute([(int)$company['id']]);$pending=(int)$pendingStmt->fetchColumn();
 
-    echo '<div class="cp-section-head"><div><h1>Freigaben</h1><p>Bestellungen deines Unternehmens prüfen, freigeben oder ablehnen.</p></div></div>';
-    if($pending>0) echo '<div class="cp-manager-alert"><strong>'.$pending.' offene Freigabe'.($pending===1?'':'n').'</strong> wartet auf deine Entscheidung.</div>';
+    echo '<div class="cp-section-head"><div><h1>'.e(t('nav.approvals')).'</h1><p>'.e(t('approvals.intro')).'</p></div></div>';
+    if($pending>0) echo '<div class="cp-manager-alert">'.tn('approvals.pending_alert',$pending,['count'=>'<strong>'.$pending.'</strong>']).'</div>';
     echo yw_exchange_manager_panel($company,$account); // 10.11: Anträge auf Umtausch & Rückgabe
 
     if(!$orders){
-        echo '<div class="empty">Noch keine Bestellungen vorhanden.</div>';
+        echo '<div class="empty">'.e(t('approvals.none')).'</div>';
         return;
     }
 
@@ -1220,23 +1209,23 @@ function company_portal_approvals(array $company,array $account): void {
         $employee=(int)($o['employee_total_cents']??0);
         $companyShare=(int)($o['company_total_cents']??0);
 
-        echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>Bestellung #'.(int)$o['id'].' · '.e($o['employee_name']).'</strong><div class="cp-order-meta">'.e(date('d.m.Y · H:i',strtotime($o['created_at']))).' Uhr · '.e(company_portal_fulfillment_status((string)($o['fulfillment_status']??'new'))).'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
+        echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>'.e(t('orders.order_no',['id'=>(int)$o['id']])).' · '.e($o['employee_name']!==''?$o['employee_name']:t('common.unknown')).'</strong><div class="cp-order-meta">'.e(yw_date($o['created_at'],'datetime')).' · '.e(company_portal_fulfillment_status((string)($o['fulfillment_status']??'new'))).'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
         echo '<div class="cp-order-items">';
         foreach($items as $item){
             echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money(yw_order_item_amounts($item)['gross']).'</strong></div>';
         }
-        if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>Versand</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
+        if((int)($o['shipping_gross_cents']??0)>0) echo '<div class="cp-order-item"><span>'.e(t('mail.sum.shipping')).'</span><strong>'.money((int)$o['shipping_gross_cents']).'</strong></div>';
         echo '</div>';
         echo company_portal_progress($o);
-        echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>Gesamt brutto</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>Mitarbeiter</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>Firma</span><strong>'.money($companyShare).'</strong></div></div>';
+        echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>'.e(t('cart.total')).'</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.employee')).'</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.company')).'</span><strong>'.money($companyShare).'</strong></div></div>';
         if($status==='pending'){
-            echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>Hinweis <small>bei Ablehnung erforderlich</small><textarea name="decision_note" maxlength="1000" placeholder="Kurzer Hinweis für den Mitarbeiter"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">Ablehnen</button><button class="cp-btn approve" type="submit" name="decision" value="approved">Freigeben</button></form></div>';
+            echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000" placeholder="'.e(t('approvals.note_placeholder')).'"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button><button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button></form></div>';
         }
-        elseif(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>Hinweis zur Entscheidung</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
+        elseif(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>'.e(t('orders.decision_note')).'</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
         echo '</article>';
     }
     echo '</div>';
-    if($maxPage>1){echo '<nav class="cp-action-row" aria-label="Seiten der Firmenbestellungen">';if($page>1)echo '<a class="btn" href="/'.e($company['slug']).'/freigaben?seite='.($page-1).'">← Neuere</a>';echo '<span>Seite '.$page.' von '.$maxPage.'</span>';if($page<$maxPage)echo '<a class="btn" href="/'.e($company['slug']).'/freigaben?seite='.($page+1).'">Ältere →</a>';echo '</nav>';}
+    if($maxPage>1){echo '<nav class="cp-action-row" aria-label="'.e(t('pager.company_aria')).'">';if($page>1)echo '<a class="btn" href="/'.e($company['slug']).'/freigaben?seite='.($page-1).'">← '.e(t('pager.newer')).'</a>';echo '<span>'.e(t('pager.page',['page'=>$page,'pages'=>$maxPage])).'</span>';if($page<$maxPage)echo '<a class="btn" href="/'.e($company['slug']).'/freigaben?seite='.($page+1).'">'.e(t('pager.older')).' →</a>';echo '</nav>';}
 }
 
 function legacy_company_portal_people(array $company,array $account): void {
@@ -1256,11 +1245,18 @@ function legacy_company_portal_people(array $company,array $account): void {
 }
 
 function company_portal_profile(array $company,array $account): void {
-    echo '<div class="cp-section-head"><div><h1>Profil</h1><p>Deine persönlichen Daten im Firmen-Shop.</p></div></div>';
+    echo '<div class="cp-section-head"><div><h1>'.e(t('profile.title')).'</h1><p>'.e(t('profile.intro')).'</p></div></div>';
     echo '<section class="cp-card"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="profile"><div class="cp-profile-grid">';
-    echo '<label>Name<input name="name" maxlength="160" value="'.e($account['name']).'" required></label>';
-    echo '<label>E-Mail<input value="'.e($account['email']).'" disabled></label>';
-    echo '<label>Abteilung (Verwaltung)<input disabled value="'.e((string)($account['department']??'')).'"></label>';
-    echo '<label>Kostenstelle (Verwaltung)<input disabled value="'.e((string)($account['cost_center']??'')).'"></label>';
-    echo '</div><button class="cp-save" type="submit">Profil speichern</button></form></section>';
+    echo '<label>'.e(t('common.name')).'<input name="name" maxlength="160" value="'.e($account['name']).'" required></label>';
+    echo '<label>'.e(t('common.email')).'<input value="'.e($account['email']).'" disabled></label>';
+    echo '<label>'.e(t('profile.department')).'<input disabled value="'.e((string)($account['department']??'')).'"></label>';
+    echo '<label>'.e(t('profile.cost_center')).'<input disabled value="'.e((string)($account['cost_center']??'')).'"></label>';
+    // 10.12: Sprache für Shop und E-Mails
+    $langs=yw_company_langs($company);
+    if(count($langs)>1){
+        echo '<label>'.e(t('profile.language')).' <small>'.e(t('profile.language_hint')).'</small><select name="language">';
+        foreach($langs as $code)echo '<option value="'.e($code).'" lang="'.e($code).'"'.($code===yw_lang()?' selected':'').'>'.e(YW_LANGS[$code]).'</option>';
+        echo '</select></label>';
+    }
+    echo '</div><button class="cp-save" type="submit">'.e(t('profile.save')).'</button></form></section>';
 }

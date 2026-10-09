@@ -121,19 +121,19 @@ function yw_company_setup_warnings(array $company): array {
 }
 
 function yw_normalize_cart_selection(mixed $qtyInput,mixed $sizeInput): array {
-    if(!is_array($qtyInput) || !is_array($sizeInput)) throw new DomainException('Bestellauswahl ungültig.');
+    if(!is_array($qtyInput) || !is_array($sizeInput)) throw new DomainException(t('err.selection_invalid'));
     $selection=[];
     foreach($qtyInput as $rawId=>$rawQty){
         if(is_int($rawId)) $productId=$rawId;
         elseif(is_string($rawId) && preg_match('/^[1-9]\d*$/D',$rawId) && (string)(int)$rawId===$rawId) $productId=(int)$rawId;
-        else throw new DomainException('Artikelkennung ungültig.');
-        if($productId<1 || isset($selection[$productId])) throw new DomainException('Artikelkennung doppelt oder ungültig.');
-        if(!is_scalar($rawQty) || !preg_match('/^\d{1,2}$/D',(string)$rawQty)) throw new DomainException('Menge ungültig.');
+        else throw new DomainException(t('err.item_invalid'));
+        if($productId<1 || isset($selection[$productId])) throw new DomainException(t('err.item_invalid'));
+        if(!is_scalar($rawQty) || !preg_match('/^\d{1,2}$/D',(string)$rawQty)) throw new DomainException(t('err.qty_invalid'));
         $qty=(int)$rawQty;
         if($qty===0) continue;
-        if($qty>10) throw new DomainException('Pro Artikel sind höchstens 10 Stück je Bestellung möglich.');
+        if($qty>10) throw new DomainException(t('err.qty_max'));
         $size=$sizeInput[$rawId]??null;
-        if(!is_string($size)) throw new DomainException('Größenauswahl ungültig.');
+        if(!is_string($size)) throw new DomainException(t('err.size_invalid'));
         $selection[$productId]=['quantity'=>$qty,'size'=>$size];
     }
     return $selection;
@@ -161,35 +161,35 @@ function yw_checkout_fields(array $company): string {
     if(count($tokens)>30) $tokens=array_slice($tokens,-30,null,true);
     $tokens[$token]=['time'=>time(),'account'=>(int)($_SESSION['employee_account_id']??0),'company'=>(int)$company['id']];
     $_SESSION['yw_order_tokens']=$tokens;
-    return '<input type="hidden" name="submission_token" value="'.e($token).'"><p class="muted">Lieferung: '.e(($company['delivery_mode']??'company')==='pickup'?'Abholung bei Yanik Textildruck':implode(', ',array_filter(array_map('trim',preg_split('/\R/u',(string)($company['delivery_address']??''))?:[])))).'. Rechnungen und Lieferscheine werden separat in Lexware Office bearbeitet.</p>';
+    return '<input type="hidden" name="submission_token" value="'.e($token).'"><p class="muted">'.e(t('cart.delivery',['address'=>($company['delivery_mode']??'company')==='pickup'?t('cart.pickup'):implode(', ',array_filter(array_map('trim',preg_split('/\R/u',(string)($company['delivery_address']??''))?:[])))])).'</p>';
 }
 
 function yw_shop_rules_summary(array $company,array $account): void {
     $limit=yw_budget_limit($company,$account);
     $remaining=employee_budget_remaining($company,$account);
     [$start,$end]=yw_period((int)$company['budget_reset_month']);
-    $from=(new DateTimeImmutable($start))->format('d.m.Y');
-    $to=(new DateTimeImmutable($end))->modify('-1 day')->format('d.m.Y');
+    $from=yw_date($start);
+    $to=yw_date((new DateTimeImmutable($end))->modify('-1 day'));
     $profile=yw_account_equipment_profile($account);$profileRules=yw_account_profile_rules($account);
     echo '<section class="cp-budget-card"'.($remaining===null?'':' data-budget-remaining="'.(int)$remaining.'"').'>';
-    echo '<div class="cp-budget-main"><span class="cp-budget-label">'.($remaining===null?'Firmenbudget':'Verfügbares Firmenbudget').'</span>';
+    echo '<div class="cp-budget-main"><span class="cp-budget-label">'.e($remaining===null?t('budget.company'):t('budget.available_company')).'</span>';
     if($remaining===null){
-        echo '<strong>Kein Jahresbudget festgelegt</strong>';
+        echo '<strong>'.e(t('budget.none')).'</strong>';
     }else{
         $percent=$limit>0?(int)round(max(0,min(100,$remaining/$limit*100))):0;
-        echo '<strong>'.money($remaining).'<small> von '.money((int)$limit).'</small></strong><div class="cp-budget-bar" role="progressbar" aria-label="Verbleibendes Budget" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'.$percent.'"><span style="width:'.$percent.'%"></span></div>';
+        echo '<strong>'.money($remaining).'<small> '.e(t('budget.of',['limit'=>money((int)$limit)])).'</small></strong><div class="cp-budget-bar" role="progressbar" aria-label="'.e(t('budget.remaining_aria')).'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'.$percent.'"><span style="width:'.$percent.'%"></span></div>';
     }
-    echo '<small class="cp-budget-period">Budgetjahr '.e($from).' – '.e($to).'</small></div>';
-    echo '<ul class="cp-budget-facts"><li>'.e(financing_label($company)).'</li><li>'.e(shipping_rule_label($company)).'</li><li>'.(((int)($company['approval_required']??1)===1)?'Bestellungen werden intern freigegeben':'Keine interne Freigabe nötig').'</li>';
-    if($profile)echo '<li>Ausstattungsprofil: '.e($profile['name']).'</li>';
-    if($batchDate=yw_company_batch_date($company))echo '<li>Nächster Sammeltermin: '.e($batchDate->format('d.m.Y')).'</li>';
+    echo '<small class="cp-budget-period">'.e(t('budget.year_range',['from'=>$from,'to'=>$to])).'</small></div>';
+    echo '<ul class="cp-budget-facts"><li>'.e(financing_label($company)).'</li><li>'.e(shipping_rule_label($company)).'</li><li>'.e(((int)($company['approval_required']??1)===1)?t('rules.internal_approval'):t('rules.no_approval')).'</li>';
+    if($profile)echo '<li>'.e(t('rules.profile',['profile'=>$profile['name']])).'</li>';
+    if($batchDate=yw_company_batch_date($company))echo '<li>'.e(t('batch.next',['date'=>yw_date($batchDate)])).'</li>';
     echo '</ul>';
     $limits=[];
     $q=db()->prepare('SELECT p.name,cp.custom_name,cp.product_id,cp.yearly_limit_qty FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=?');
     $q->execute([$company['id']]);
-    foreach($q as $p){$id=(int)$p['product_id'];if($profileRules!==null && !isset($profileRules[$id]))continue;$max=yw_effective_product_limit($p,$profileRules[$id]??null);if($max!==null)$limits[]=e($p['custom_name']?:$p['name']).': noch <b>'.max(0,$max-yw_quantity_used($company,$account,$id)).'</b> von '.$max;}
-    if($limits)echo '<div class="cp-budget-limits"><span>Stückzahlen im Budgetjahr</span>'.implode('',array_map(fn($l)=>'<em>'.$l.'</em>',$limits)).'</div>';
-    echo '<p class="cp-budget-note">Offene Bestellungen reservieren Budget und Stückzahlen, abgelehnte zählen nicht. Ein Eigenanteil wird nur ausgewiesen, nicht automatisch eingezogen.</p>';
+    foreach($q as $p){$id=(int)$p['product_id'];if($profileRules!==null && !isset($profileRules[$id]))continue;$max=yw_effective_product_limit($p,$profileRules[$id]??null);if($max!==null)$limits[]=e($p['custom_name']?:$p['name']).': '.t('rules.limit_left',['left'=>'<b>'.max(0,$max-yw_quantity_used($company,$account,$id)).'</b>','max'=>$max]);}
+    if($limits)echo '<div class="cp-budget-limits"><span>'.e(t('rules.limits_title')).'</span>'.implode('',array_map(fn($l)=>'<em>'.$l.'</em>',$limits)).'</div>';
+    echo '<p class="cp-budget-note">'.e(t('rules.note')).'</p>';
     echo '</section>';
 }
 
@@ -198,21 +198,21 @@ function place_account_order(array $company,array $account): never {
     $token=is_string($_POST['submission_token']??null)?$_POST['submission_token']:'';
     $binding=$_SESSION['yw_order_tokens'][$token]??[];
     if(!preg_match('/^[a-f0-9]{64}$/D',$token) || ($binding['account']??0)!==(int)$account['id'] || ($binding['company']??0)!==(int)$company['id'] || ($binding['time']??0)<time()-7200) {
-        flash('error','Bestellformular abgelaufen. Bitte neu öffnen.'); redirect('/'.$company['slug'].'/produkte');
+        flash('error',t('err.form_expired')); redirect('/'.$company['slug'].'/produkte');
     }
     try {
         db()->beginTransaction();
         // One company lock is shared by checkout and all rule/collection edits.
         $q=db()->prepare('SELECT * FROM companies WHERE id=? AND active=1 FOR UPDATE');
         $q->execute([$company['id']]); $company=$q->fetch();
-        if(!$company) throw new DomainException('Firmenshop nicht verfügbar.');
+        if(!$company) throw new DomainException(t('err.shop_unavailable'));
         $q=db()->prepare("SELECT * FROM employee_accounts WHERE id=? AND company_id=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) FOR UPDATE");
         $q->execute([$account['id'],$company['id']]); $account=$q->fetch();
-        if(!$account) throw new DomainException('Zugang nicht freigegeben.');
+        if(!$account) throw new DomainException(t('err.access_not_approved'));
         $q=db()->prepare('SELECT id FROM orders WHERE submission_token=? AND company_id=? AND employee_account_id=?');
         $q->execute([$token,$company['id'],$account['id']]);
         if($existing=$q->fetchColumn()) {
-            db()->rollBack(); flash('success','Bestellung #'.$existing.' wurde bereits gespeichert.'); redirect('/'.$company['slug'].'/bestellungen');
+            db()->rollBack(); flash('success',t('flash.order_already_saved',['id'=>$existing])); redirect('/'.$company['slug'].'/bestellungen');
         }
         $q=db()->prepare('SELECT p.*,cp.custom_name,cp.custom_description,cp.price_override_cents,cp.preview_front_path,cp.preview_back_path,cp.decorations_json,cp.yearly_limit_qty FROM products p JOIN company_products cp ON cp.product_id=p.id WHERE cp.company_id=? AND p.active=1 FOR UPDATE');
         $q->execute([$company['id']]); $products=[];
@@ -222,10 +222,10 @@ function place_account_order(array $company,array $account): never {
         $items=[]; $calcLines=[];
         foreach($selection as $productId=>$selected){
             $qty=(int)$selected['quantity'];
-            if(!isset($products[$productId])) throw new DomainException('Artikel oder Menge nicht freigegeben.');
+            if(!isset($products[$productId])) throw new DomainException(t('err.item_not_allowed'));
             $p=$products[$productId];
             $size=(string)$selected['size'];
-            if(!is_string($size) || !in_array($size,json_decode($p['sizes'],true)?:[],true)) throw new DomainException('Bitte eine zugelassene Größe auswählen.');
+            if(!is_string($size) || !in_array($size,json_decode($p['sizes'],true)?:[],true)) throw new DomainException(t('err.size_not_allowed'));
             $limit=yw_effective_product_limit($p,$p['profile_rule']);
             yw_check_limits(null,0,0,$limit,yw_quantity_used($company,$account,$productId),$qty);
             $price=product_price_breakdown($p,$company);
@@ -233,7 +233,7 @@ function place_account_order(array $company,array $account): never {
             $snapshot=['version'=>1,'name'=>company_product_display_name($p),'description'=>company_product_display_description($p),'color'=>$p['color'],'sku'=>$p['sku']??null,'decorations'=>company_product_decorations($p),'base_decoration_type'=>$p['decoration_type']??'','base_decoration_details'=>$p['decoration_details']??''];
             $items[]=[$p,$size,$qty,$price,json_encode($snapshot,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE)];
         }
-        if(!$items) throw new DomainException('Bitte mindestens einen Artikel auswählen.');
+        if(!$items) throw new DomainException(t('err.no_items'));
         // 10.11: Rundung je Position und Steuer je Steuersatz wie in der Lexware-Rechnung (pricing.php).
         $calc=yw_calc_items($calcLines,company_employee_share_percent($company));
         $shipping=shipping_breakdown($company,$calc['gross'],$calc['net_by_rate']);
@@ -241,7 +241,7 @@ function place_account_order(array $company,array $account): never {
         $net=$calc['net']+$shipping['net']; $gross=$calc['gross']+$shipping['gross']; $employee=$calc['employee']+$shipping['employee']; $employer=$calc['company']+$shipping['company'];
         yw_check_limits(yw_budget_limit($company,$account),yw_budget_used($company,$account),$employer);
         $delivery=['mode'=>$company['delivery_mode'],'address'=>trim((string)$company['delivery_address']),'company'=>$company['legal_name'],'employee'=>$account['name'],'department'=>$account['department'],'cost_center'=>$account['cost_center']];
-        if($delivery['mode']==='company' && $delivery['address']==='') throw new DomainException('Die Firmenlieferadresse fehlt. Bitte den Verantwortlichen kontaktieren.');
+        if($delivery['mode']==='company' && $delivery['address']==='') throw new DomainException(t('err.no_delivery_address'));
         $inviteId=ensure_account_invite($company,$account);
         $status=(int)$company['approval_required']===1?'pending':'approved';
         $q=db()->prepare('INSERT INTO orders(company_id,invite_id,employee_account_id,total_cents,net_total_cents,gross_total_cents,employee_total_cents,company_total_cents,shipping_net_cents,shipping_gross_cents,shipping_employee_cents,shipping_company_cents,status,note,submission_token,delivery_snapshot_json,shipping_vat_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -254,14 +254,15 @@ function place_account_order(array $company,array $account): never {
     } catch(Throwable $e) {
         if(db()->inTransaction()) db()->rollBack();
         if(!$e instanceof DomainException) error_log('Yanik checkout: '.$e->getMessage());
-        flash('error',$e instanceof DomainException?$e->getMessage():'Bestellung konnte nicht gespeichert werden. Bitte erneut versuchen.');
+        flash('error',$e instanceof DomainException?$e->getMessage():t('err.order_failed'));
         redirect('/'.($company['slug']??'').'/produkte');
     }
     audit_log('order.created','order',$orderId,['company_id'=>(int)$company['id'],'status'=>$status]);
     if($status==='approved')yw_handover_enqueue($orderId);
-    $summary=yw_order_mail_summary($orderId);
-    yw_notify_managers_new_order($company,$orderId,(int)$account['id'],$summary,$status); // 10.11: mit Freigabe-Links je Verantwortlichem
-    notify_order_employee($orderId,'Bestellbestätigung #'.$orderId,"Hallo ".$account['name'].",\n\ndeine Bestellung wurde erfolgreich gespeichert.\n\n".$summary."\n\nBestellstatus ansehen: ".workwearcenter_url((string)$company['slug'].'/bestellungen'));
-    flash('success','Bestellung #'.$orderId.' gespeichert. '.($status==='pending'?'Dein Budget ist bis zur Entscheidung reserviert.':'Die Bestellung ist freigegeben.'));
+    yw_notify_managers_new_order($company,$orderId,(int)$account['id'],'',$status); // 10.11: mit Freigabe-Links je Verantwortlichem (10.12: je Sprache)
+    // 10.12: Bestätigung in der Sprache der Person (Übersicht wird darin neu erstellt)
+    $statusUrl=workwearcenter_url((string)$company['slug'].'/bestellungen');
+    notify_order_employee($orderId,fn(array $p)=>[t('mail.confirm.subject',['id'=>$orderId]),t('mail.hello',['name'=>$p['name']])."\n\n".t('mail.confirm.body')."\n\n".yw_order_mail_summary($orderId)."\n\n".t('mail.view_status').': '.$statusUrl]);
+    flash('success',t('flash.order_saved',['id'=>$orderId]).' '.($status==='pending'?t('flash.order_saved_pending'):t('flash.order_saved_approved')));
     redirect('/'.$company['slug'].'/bestellungen');
 }

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__.'/i18n.php'; // 10.12: Übersetzungen, Zahlen- und Datumsformat je Sprache
+
 function db(): PDO { global $pdo; return $pdo; }
 function cfg(string $key): mixed { global $config; return $config[$key] ?? null; }
 function e(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
@@ -12,7 +14,7 @@ function yw_dummy_password_hash(): string {
     // Valid bcrypt cost-12 hash used only to equalise unknown-account logins.
     return '$2y$12$wLhB7ybs9BxhwD8cCvQ9IeBQCTPBN55VjA61nFj8s8Q8z7yR5q72K';
 }
-function money(int $cents): string { return number_format($cents / 100, 2, ',', '.') . ' €'; }
+function money(int $cents): string { return yw_money($cents); } // Format je Sprache (Deutsch: 1.234,56 €)
 function color_ok(string $color): bool { return (bool)preg_match('/^#[0-9a-f]{6}$/i', $color); }
 function slug_ok(string $slug): bool { return (bool)preg_match('/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/', $slug) && !yw_slug_reserved($slug); }
 /** Kurznamen, die mit festen Seiten, Ordnern oder Systemdateien kollidieren würden. */
@@ -196,7 +198,7 @@ function yw_mail_html(string $subject,string $message): string {
         $actionUrl=yw_mail_action_url($line);
         if($actionUrl!==null){
             $url=htmlspecialchars($actionUrl,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-            $content.='<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0"><tr><td bgcolor="#f36c21" style="border-radius:8px"><a href="'.$url.'" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">Jetzt im WorkwearCenter öffnen</a></td></tr></table>';
+            $content.='<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0"><tr><td bgcolor="#f36c21" style="border-radius:8px"><a href="'.$url.'" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">'.htmlspecialchars(t('mail.open_button'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</a></td></tr></table>';
             continue;
         }
         if(preg_match('/^([^:]{2,32}):\s*(https?:\/\/\S+)$/u',$line,$match) && ($actionUrl=yw_mail_action_url($match[2]))!==null){
@@ -213,7 +215,7 @@ function yw_mail_html(string $subject,string $message): string {
         if(preg_match('/^([^:]{2,32}):\s*(.+)$/u',$line,$match)){
             $value=htmlspecialchars($match[2],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
             // Nur Sendungsverfolgung bekannter Paketdienste wird verlinkt (kein Phishing über Freitexte).
-            if(preg_match('#^https://(?:www\.)?(?:dhl\.de|tracking\.dpd\.de|ups\.com|gls-group\.com|myhermes\.de)/\S*$#i',trim($match[2])))$value='<a href="'.$value.'" style="color:#d95a0c">Sendung verfolgen</a>';
+            if(preg_match('#^https://(?:www\.)?(?:dhl\.de|tracking\.dpd\.de|ups\.com|gls-group\.com|myhermes\.de)/\S*$#i',trim($match[2])))$value='<a href="'.$value.'" style="color:#d95a0c">'.htmlspecialchars(t('mail.track'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</a>';
             $details[]=[htmlspecialchars($match[1],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'),$value];
             continue;
         }
@@ -239,11 +241,12 @@ function yw_mail_html(string $subject,string $message): string {
         }
     } catch(Throwable $ignored) {}
     if($logo==='') $logo='<table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="width:42px;height:42px;background:#f36c21;color:#ffffff;font-size:16px;font-weight:900;text-align:center">YW</td><td style="padding-left:13px"><div style="font-size:13px;letter-spacing:1.6px;font-weight:800;color:#ffffff">YANIK WORKWEAR</div><div style="margin-top:4px;font-size:12px;color:#b9c0cc">by Yanik Textildruck</div></td></tr></table>';
-    return '<!doctype html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.$safeSubject.'</title></head><body style="margin:0;padding:0;background:#ece9e3;font-family:Arial,Helvetica,sans-serif"><div style="display:none;max-height:0;overflow:hidden;color:transparent">'.$safeSubject.'</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ece9e3"><tr><td align="center" style="padding:34px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #ddd9d1"><tr><td bgcolor="#172033" style="padding:26px 34px;background:#172033;border-top:7px solid #f36c21;border-bottom:1px solid #27364d">'.$logo.'</td></tr><tr><td style="padding:34px 34px 36px"><div style="margin-bottom:13px;font-size:11px;letter-spacing:1.7px;font-weight:800;color:#f36c21">WORKWEARCENTER · SERVICEINFORMATION</div><h1 style="margin:0 0 24px;color:#172033;font-size:27px;line-height:1.22">'.$safeSubject.'</h1>'.$content.'<p style="margin:30px 0 0;padding-top:22px;border-top:1px solid #e7e3dc;color:#3c4658;font-size:15px;line-height:1.6">Viele Grüße<br><strong>Ihr Team vom WorkwearCenter</strong></p></td></tr><tr><td style="padding:21px 34px;background:#172033;color:#b9c0cc;font-size:12px;line-height:1.65"><strong style="color:#ffffff">WorkwearCenter.de</strong><br>Der Unternehmensshop von WorkwearCenter by Yanik Textildruck<br><a href="https://workwearcenter.de" style="color:#f7955f;text-decoration:none">workwearcenter.de</a> · <a href="mailto:info@yanik-textildruck.de" style="color:#f7955f;text-decoration:none">info@yanik-textildruck.de</a></td></tr></table><div style="max-width:620px;padding:13px 4px 0;text-align:center;color:#7a7f87;font-size:11px;line-height:1.45">Diese Nachricht wurde automatisch aufgrund eines Vorgangs im WorkwearCenter versendet.</div></td></tr></table></body></html>';
+    $h=static fn(string $key): string => htmlspecialchars(t($key),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+    return '<!doctype html><html lang="'.yw_lang().'"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.$safeSubject.'</title></head><body style="margin:0;padding:0;background:#ece9e3;font-family:Arial,Helvetica,sans-serif"><div style="display:none;max-height:0;overflow:hidden;color:transparent">'.$safeSubject.'</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ece9e3"><tr><td align="center" style="padding:34px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #ddd9d1"><tr><td bgcolor="#172033" style="padding:26px 34px;background:#172033;border-top:7px solid #f36c21;border-bottom:1px solid #27364d">'.$logo.'</td></tr><tr><td style="padding:34px 34px 36px"><div style="margin-bottom:13px;font-size:11px;letter-spacing:1.7px;font-weight:800;color:#f36c21">'.$h('mail.kicker').'</div><h1 style="margin:0 0 24px;color:#172033;font-size:27px;line-height:1.22">'.$safeSubject.'</h1>'.$content.'<p style="margin:30px 0 0;padding-top:22px;border-top:1px solid #e7e3dc;color:#3c4658;font-size:15px;line-height:1.6">'.$h('mail.regards').'<br><strong>'.$h('mail.team').'</strong></p></td></tr><tr><td style="padding:21px 34px;background:#172033;color:#b9c0cc;font-size:12px;line-height:1.65"><strong style="color:#ffffff">WorkwearCenter.de</strong><br>'.$h('mail.footer_line').'<br><a href="https://workwearcenter.de" style="color:#f7955f;text-decoration:none">workwearcenter.de</a> · <a href="mailto:info@yanik-textildruck.de" style="color:#f7955f;text-decoration:none">info@yanik-textildruck.de</a></td></tr></table><div style="max-width:620px;padding:13px 4px 0;text-align:center;color:#7a7f87;font-size:11px;line-height:1.45">'.$h('mail.auto_note').'</div></td></tr></table></body></html>';
 }
 
 function yw_mail_multipart(string $subject,string $message,string $boundary): string {
-    $plain=preg_replace('/\r?\n/',"\r\n",trim($message))."\r\n\r\nViele Grüße\r\nIhr Team vom WorkwearCenter\r\nworkwearcenter.de";
+    $plain=preg_replace('/\r?\n/',"\r\n",trim($message))."\r\n\r\n".t('mail.regards')."\r\n".t('mail.team')."\r\nworkwearcenter.de";
     $html=yw_mail_html($subject,$message);
     // RFC 5322 erlaubt höchstens 998 Zeichen pro Zeile. Das HTML-Layout und lange
     // Anfragetexte überschreiten das deutlich; Base64 mit 76er-Zeilen ist für alle
@@ -252,7 +255,8 @@ function yw_mail_multipart(string $subject,string $message,string $boundary): st
     return '--'.$boundary."\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n".$encode($plain)."\r\n--".$boundary."\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n".$encode($html)."\r\n--".$boundary."--";
 }
 
-function yw_mail_transport(string $to,string $subject,string $message,?string $replyOverride=null): void {
+function yw_mail_transport(string $to,string $subject,string $message,?string $replyOverride=null,?string $lang=null): void {
+    if($lang!==null && $lang!==yw_lang()){yw_with_lang($lang,fn()=>yw_mail_transport($to,$subject,$message,$replyOverride));return;} // 10.12: Mailrahmen in der Sprache der Empfängerin
     $configIssues=yw_mail_config_issues();
     if($configIssues)throw new RuntimeException('Mailkonfiguration unvollständig: '.$configIssues[0].'.');
     $domain=(string)cfg('base_domain');$from=yw_mail_address('mail_from','noreply@'.$domain);$reply=yw_mail_address('mail_reply_to','info@yanik-textildruck.de');
@@ -293,7 +297,7 @@ function yw_smtp_deliver(string $to,string $subject,string $message,string $from
 }
 
 function yw_deliver_queued_mail(int $id): bool {
-    try{$claim=db()->prepare("UPDATE yw_mail_queue SET status='sending',available_at=DATE_ADD(NOW(),INTERVAL 15 MINUTE) WHERE id=? AND status='pending' AND available_at<=NOW()");$claim->execute([$id]);if(!$claim->rowCount())return false;$q=db()->prepare("SELECT * FROM yw_mail_queue WHERE id=? AND status='sending'");$q->execute([$id]);$row=$q->fetch();if(!$row)return false;yw_mail_transport((string)$row['to_email'],(string)$row['subject'],(string)$row['body'],($row['reply_to']??'')!==''?(string)$row['reply_to']:null);db()->prepare("UPDATE yw_mail_queue SET status='sent',sent_at=NOW(),last_error=NULL WHERE id=? AND status='sending'")->execute([$id]);return true;}
+    try{$claim=db()->prepare("UPDATE yw_mail_queue SET status='sending',available_at=DATE_ADD(NOW(),INTERVAL 15 MINUTE) WHERE id=? AND status='pending' AND available_at<=NOW()");$claim->execute([$id]);if(!$claim->rowCount())return false;$q=db()->prepare("SELECT * FROM yw_mail_queue WHERE id=? AND status='sending'");$q->execute([$id]);$row=$q->fetch();if(!$row)return false;yw_mail_transport((string)$row['to_email'],(string)$row['subject'],(string)$row['body'],($row['reply_to']??'')!==''?(string)$row['reply_to']:null,yw_lang_valid($row['language']??null)?(string)$row['language']:'de');db()->prepare("UPDATE yw_mail_queue SET status='sent',sent_at=NOW(),last_error=NULL WHERE id=? AND status='sending'")->execute([$id]);return true;}
     catch(Throwable $e){$next=(new DateTimeImmutable())->modify('+'.min(60,2**min(6,(int)($row['attempts']??0))).' minutes')->format('Y-m-d H:i:s');try{db()->prepare("UPDATE yw_mail_queue SET attempts=attempts+1,status=IF(attempts>=7,'failed','pending'),available_at=?,last_error=? WHERE id=?")->execute([$next,mb_substr($e->getMessage(),0,500),$id]);}catch(Throwable $ignored){}error_log('WorkwearCenter mail queue: '.$e->getMessage());return false;}
 }
 
@@ -329,44 +333,67 @@ function yw_cleanup_expired_security_rows(): void {
 function send_system_mail(string $to,string $subject,string $message,bool $immediate=false,?string $replyTo=null): bool {
     if(!filter_var($to,FILTER_VALIDATE_EMAIL)||preg_match('/[\r\n]/',$to))return false;$subject=mb_substr(str_replace(["\r","\n"],' ',$subject),0,255);
     if($replyTo!==null && (!filter_var($replyTo,FILTER_VALIDATE_EMAIL)||preg_match('/[\r\n]/',$replyTo))) $replyTo=null;
-    try{$q=db()->prepare('INSERT INTO yw_mail_queue(to_email,subject,body,reply_to) VALUES(?,?,?,?)');$q->execute([$to,$subject,$message,$replyTo]);$id=(int)db()->lastInsertId();return $immediate?yw_deliver_queued_mail($id):true;}
+    try{$q=db()->prepare('INSERT INTO yw_mail_queue(to_email,subject,body,reply_to,language) VALUES(?,?,?,?,?)');$q->execute([$to,$subject,$message,$replyTo,yw_lang()]);$id=(int)db()->lastInsertId();return $immediate?yw_deliver_queued_mail($id):true;}
     catch(Throwable $e){try{yw_mail_transport($to,$subject,$message,$replyTo);return true;}catch(Throwable $mailError){error_log('WorkwearCenter mail failed: '.$mailError->getMessage());return false;}}
 }
 
-function notify_company_managers(int $companyId,string $subject,string $message): void {
+/**
+ * Mail an alle aktiven Verantwortlichen einer Firma. 10.12: Statt Betreff/Text kann ein Closure
+ * übergeben werden – fn(array $empfaenger): [Betreff, Text] –, das je Person in deren Sprache läuft.
+ */
+function notify_company_managers(int $companyId,string|Closure $subject,string $message=''): void {
     try {
-        $stmt=db()->prepare("SELECT email FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE())");
+        $stmt=db()->prepare("SELECT ea.id,ea.name,ea.email,ea.language,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.company_id=? AND ea.role='manager' AND ea.active=1 AND ea.registration_status='approved' AND (ea.employment_start IS NULL OR ea.employment_start<=CURDATE()) AND (ea.employment_end IS NULL OR ea.employment_end>=CURDATE())");
         $stmt->execute([$companyId]);
-        foreach($stmt->fetchAll() as $row) send_system_mail((string)$row['email'],$subject,$message);
+        foreach($stmt->fetchAll() as $row) yw_mail_to_person($row,$subject,$message);
     } catch(Throwable $e) {
         error_log('WorkwearCenter manager notification failed: '.$e->getMessage());
     }
 }
 
-function notify_order_employee(int $orderId,string $subject,string $message): void {
+/** Mail an die Person, die eine Bestellung aufgegeben hat (Closure wie bei notify_company_managers). */
+function notify_order_employee(int $orderId,string|Closure $subject,string $message=''): void {
     try {
-        $stmt=db()->prepare("SELECT ea.email FROM orders o JOIN employee_accounts ea ON ea.company_id=o.company_id AND (ea.id=o.employee_account_id OR (o.employee_account_id IS NULL AND ea.invite_id=o.invite_id)) WHERE o.id=? AND ea.active=1 AND ea.registration_status='approved' AND (ea.employment_start IS NULL OR ea.employment_start<=CURDATE()) AND (ea.employment_end IS NULL OR ea.employment_end>=CURDATE()) ORDER BY (ea.id=o.employee_account_id) DESC,ea.id LIMIT 1");
+        $stmt=db()->prepare("SELECT ea.id,ea.name,ea.email,ea.language,c.shop_languages FROM orders o JOIN companies c ON c.id=o.company_id JOIN employee_accounts ea ON ea.company_id=o.company_id AND (ea.id=o.employee_account_id OR (o.employee_account_id IS NULL AND ea.invite_id=o.invite_id)) WHERE o.id=? AND ea.active=1 AND ea.registration_status='approved' AND (ea.employment_start IS NULL OR ea.employment_start<=CURDATE()) AND (ea.employment_end IS NULL OR ea.employment_end>=CURDATE()) ORDER BY (ea.id=o.employee_account_id) DESC,ea.id LIMIT 1");
         $stmt->execute([$orderId]);
-        $email=$stmt->fetchColumn();
-        if($email) send_system_mail((string)$email,$subject,$message);
+        $row=$stmt->fetch();
+        if($row) yw_mail_to_person($row,$subject,$message);
     } catch(Throwable $e) {
         error_log('WorkwearCenter employee notification failed: '.$e->getMessage());
     }
 }
 
+/**
+ * 10.12: Mail an ein Mitarbeiterkonto in dessen Sprache. $person braucht email und language
+ * (optional shop_languages der Firma). Ein Closure fn(array $person): [Betreff, Text] wird in
+ * dieser Sprache ausgeführt; feste Texte gehen unverändert in der aktuellen Sprache hinaus.
+ */
+function yw_mail_to_person(array $person,string|Closure $subject,string $message='',bool $immediate=false): bool {
+    $email=(string)($person['email']??'');
+    if($email==='') return false;
+    if(!$subject instanceof Closure) return send_system_mail($email,$subject,$message,$immediate);
+    $lang=yw_account_lang($person,array_key_exists('shop_languages',$person)?['shop_languages'=>$person['shop_languages']]:null);
+    return (bool)yw_with_lang($lang,function() use($person,$subject,$email,$immediate){
+        [$s,$m]=$subject($person);
+        return send_system_mail($email,(string)$s,(string)$m,$immediate);
+    });
+}
+
+/** Bestellübersicht für Mails (in der aktuellen Sprache). */
 function yw_order_mail_summary(int $orderId): string {
-    $q=db()->prepare("SELECT o.*,c.legal_name,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name FROM orders o JOIN companies c ON c.id=o.company_id LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.id=? LIMIT 1");
+    $q=db()->prepare("SELECT o.*,c.legal_name,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o JOIN companies c ON c.id=o.company_id LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.id=? LIMIT 1");
     $q->execute([$orderId]);$order=$q->fetch();
-    if(!$order) return 'Bestellung: #'.$orderId;
-    $status=['pending'=>'Freigabe erforderlich','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Zurückgezogen'][(string)$order['status']]??(string)$order['status'];
-    $text="Bestellung: #".$orderId."\nFirma: ".$order['legal_name']."\nMitarbeiter: ".$order['employee_name']."\nStatus: ".$status."\n\nBestellte Artikel:\n";
+    if(!$order) return t('mail.sum.order').': #'.$orderId;
+    $status=t('mail.sum.status_'.(in_array((string)$order['status'],['pending','approved','rejected','cancelled'],true)?(string)$order['status']:'pending'));
+    $employee=(string)$order['employee_name']!==''?(string)$order['employee_name']:t('common.unknown');
+    $text=t('mail.sum.order').": #".$orderId."\n".t('mail.sum.company').": ".$order['legal_name']."\n".t('mail.sum.employee').": ".$employee."\n".t('mail.sum.status').": ".$status."\n\n".t('mail.sum.items').":\n";
     foreach(order_items($orderId) as $item){
-        $text.=(int)$item['quantity'].' × '.$item['product_name'].' · Größe '.$item['size'].' · '.money(yw_order_item_amounts($item)['gross'])."\n";
+        $text.=(int)$item['quantity'].' × '.$item['product_name'].' · '.t('common.size_value',['size'=>$item['size']]).' · '.money(yw_order_item_amounts($item)['gross'])."\n";
     }
-    if((int)($order['shipping_gross_cents']??0)>0)$text.='Versand: '.money((int)$order['shipping_gross_cents'])."\n";
+    if((int)($order['shipping_gross_cents']??0)>0)$text.=t('mail.sum.shipping').': '.money((int)$order['shipping_gross_cents'])."\n";
     $gross=(int)($order['gross_total_cents']??0);if($gross<=0)$gross=(int)$order['total_cents'];
-    $text.="\nGesamt brutto: ".money($gross)."\nFirma übernimmt: ".money((int)($order['company_total_cents']??0));
-    if((int)($order['employee_total_cents']??0)>0)$text.="\nMitarbeiteranteil: ".money((int)$order['employee_total_cents']);
+    $text.="\n".t('mail.sum.total').": ".money($gross)."\n".t('mail.sum.company_pays').": ".money((int)($order['company_total_cents']??0));
+    if((int)($order['employee_total_cents']??0)>0)$text.="\n".t('mail.sum.employee_share').": ".money((int)$order['employee_total_cents']);
     return $text;
 }
 
@@ -447,7 +474,7 @@ function render_head(string $title, ?array $brand = null): void {
         '/datenschutz'=>'Datenschutzhinweise für das WorkwearCenter von Yanik Textildruck.',
         '/zugang'=>'Kunden-Login: Über den Kurznamen direkt zum eigenen Firmenshop im WorkwearCenter.',
     ];
-    $description=$descriptions[$path]??'Geschützter Unternehmensshop für Firmenkleidung von WorkwearCenter.';
+    $description=$descriptions[$path]??(yw_lang_shop_active()?t('meta.description'):'Geschützter Unternehmensshop für Firmenkleidung von WorkwearCenter.');
     $social=$public?'<meta property="og:type" content="website"><meta property="og:locale" content="de_DE"><meta property="og:site_name" content="WorkwearCenter"><meta property="og:title" content="'.e($title).'"><meta property="og:description" content="'.e($description).'"><meta property="og:url" content="'.e($url).'"><meta property="og:image" content="'.e('https://'.yw_public_host().'/assets/media/screens/shop-desktop.webp').'"><meta name="twitter:card" content="summary_large_image">':'';
     // Symbol auf allen Seiten (sonst fragt der Browser /favicon.ico an und erhält eine 404-Seite).
     $favicon='<link rel="icon" type="image/png" href="/assets/media/workwearcenter-icon.png"><link rel="apple-touch-icon" href="/assets/media/workwearcenter-icon.png">';
@@ -472,7 +499,7 @@ function render_head(string $title, ?array $brand = null): void {
         $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
     }
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
-    echo '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/v9.css?v='.e(app_version()).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="/assets/site.css?v='.e(app_version()).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
+    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/v9.css?v='.e(app_version()).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="/assets/site.css?v='.e(app_version()).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
 }
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '">' . e($f[1]) . '</div>'; }
 function render_foot(): void { echo '<script src="/assets/app.js?v='.e(app_version()).'" defer></script></body></html>'; }

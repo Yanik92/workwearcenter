@@ -23,11 +23,13 @@ declare(strict_types=1);
 const YW_EXCHANGE_SCHEMA = 'workwearcenter.exchange.v1';
 
 function yw_exchange_statuses(): array {
-    return ['requested'=>'Beantragt','approved'=>'Freigegeben','received'=>'Ware erhalten','done'=>'Erledigt','rejected'=>'Abgelehnt'];
+    $statuses=[];
+    foreach(['requested','approved','received','done','rejected'] as $key)$statuses[$key]=t('x.status.'.$key);
+    return $statuses;
 }
 
 function yw_exchange_type_label(string $type): string {
-    return $type==='return'?'Rückgabe':'Größentausch';
+    return $type==='return'?t('x.type.return'):t('x.type.exchange');
 }
 
 function yw_exchange_badge(string $status): string {
@@ -113,7 +115,7 @@ function yw_exchange_requests_for_orders(array $orderIds): array {
 function yw_exchange_load(int $id,bool $lock=false): ?array {
     $q=db()->prepare("SELECT r.*,c.slug,c.legal_name,c.shop_name,c.approval_required,o.status order_status,o.created_at order_created_at,o.external_reference,
         i.product_id,i.product_name,i.decoration_snapshot_json,i.unit_net_cents,i.unit_gross_cents,i.vat_rate,i.quantity item_quantity,
-        COALESCE(ea.name,'Unbekannt') employee_name,ea.email employee_email,d.name decided_by_name
+        COALESCE(ea.name,'Unbekannt') employee_name,ea.email employee_email,ea.language employee_language,c.shop_languages,d.name decided_by_name
         FROM yw_exchange_requests r JOIN companies c ON c.id=r.company_id JOIN orders o ON o.id=r.order_id AND o.company_id=r.company_id
         JOIN order_items i ON i.id=r.order_item_id AND i.order_id=r.order_id
         LEFT JOIN employee_accounts ea ON ea.id=r.employee_account_id LEFT JOIN employee_accounts d ON d.id=r.decided_by_account_id
@@ -143,33 +145,33 @@ function yw_exchange_order_panel(array $company,array $account,array $order,arra
     $productIds=array_values(array_unique(array_map(fn($i)=>(int)$i['product_id'],$items)));
     if($productIds){$q=db()->prepare('SELECT id,sizes FROM products WHERE id IN ('.implode(',',array_fill(0,count($productIds),'?')).')');$q->execute($productIds);foreach($q as $p)$sizesByProduct[(int)$p['id']]=json_decode((string)$p['sizes'],true)?:[];}
     $approval=(int)($company['approval_required']??1)===1;
-    $html=yw_exchange_style().'<section class="yw-x" aria-label="Umtausch und Rückgabe"><div class="yw-x-head"><strong>Umtausch &amp; Rückgabe</strong><small>'
-        .($open?'Möglich bis '.e($deadline->format('d.m.Y')).($approval?' · Anträge gehen an deine Verantwortlichen':' · Anträge gehen direkt an die Verwaltung'):'Frist abgelaufen').'</small></div>';
+    $html=yw_exchange_style().'<section class="yw-x" aria-label="'.e(t('x.title')).'"><div class="yw-x-head"><strong>'.e(t('x.title')).'</strong><small>'
+        .e($open?t('x.until',['date'=>yw_date($deadline)]).' · '.($approval?t('x.to_managers'):t('x.to_admin')):t('x.expired')).'</small></div>';
     foreach($items as $item){
         $itemRequests=$requests[(int)$item['id']]??[];
         $reserved=0;foreach($itemRequests as $r)if($r['status']!=='rejected')$reserved+=(int)$r['quantity'];
         $remaining=max(0,(int)$item['quantity']-$reserved);
         if(!$itemRequests && (!$open || $remaining<1))continue;
-        $html.='<div class="yw-x-item"><div class="yw-x-line"><span>'.(int)$item['quantity'].'× '.e($item['product_name']).' · Größe '.e($item['size']).'</span></div>';
+        $html.='<div class="yw-x-item"><div class="yw-x-line"><span>'.(int)$item['quantity'].'× '.e($item['product_name']).' · '.e(t('common.size_value',['size'=>$item['size']])).'</span></div>';
         foreach($itemRequests as $r){
-            $html.='<div class="yw-x-req">'.yw_exchange_badge((string)$r['status']).'<span>'.e(yw_exchange_type_label((string)$r['type'])).' · '.(int)$r['quantity'].' Stück'.($r['type']==='exchange'?' · neue Größe '.e((string)$r['new_size']):'').' · beantragt am '.e(date('d.m.Y',strtotime((string)$r['created_at']))).'</span>'
-                .(!empty($r['decision_note'])?'<span>Hinweis: '.e((string)$r['decision_note']).'</span>':'').'</div>';
+            $html.='<div class="yw-x-req">'.yw_exchange_badge((string)$r['status']).'<span>'.e(yw_exchange_type_label((string)$r['type'])).' · '.e(tn('x.pieces',(int)$r['quantity'])).($r['type']==='exchange'?' · '.e(t('x.new_size',['size'=>(string)$r['new_size']])):'').' · '.e(t('x.requested_on',['date'=>yw_date((string)$r['created_at'])])).'</span>'
+                .(!empty($r['decision_note'])?'<span>'.e(t('mail.note')).': '.e((string)$r['decision_note']).'</span>':'').'</div>';
         }
         if($open && $remaining>0){
             $sizes=array_values(array_filter(array_map('strval',$sizesByProduct[(int)$item['product_id']]??[]),fn($s)=>$s!==(string)$item['size']));
             $qtyField=static function(string $id) use($remaining): string {
-                if($remaining===1)return '<input type="hidden" name="quantity" value="1"><label>Menge<input value="1 Stück" disabled id="'.$id.'"></label>';
-                $o='';for($n=1;$n<=$remaining;$n++)$o.='<option value="'.$n.'">'.$n.' Stück</option>';
-                return '<label for="'.$id.'">Menge<select name="quantity" id="'.$id.'">'.$o.'</select></label>';
+                if($remaining===1)return '<input type="hidden" name="quantity" value="1"><label>'.e(t('common.quantity')).'<input value="'.e(tn('x.pieces',1)).'" disabled id="'.$id.'"></label>';
+                $o='';for($n=1;$n<=$remaining;$n++)$o.='<option value="'.$n.'">'.e(tn('x.pieces',$n)).'</option>';
+                return '<label for="'.$id.'">'.e(t('common.quantity')).'<select name="quantity" id="'.$id.'">'.$o.'</select></label>';
             };
             $base=csrf_field().'<input type="hidden" name="action" value="exchange_request"><input type="hidden" name="order_item_id" value="'.(int)$item['id'].'">';
             $html.='<div class="yw-x-actions">';
             if($sizes){
-                $html.='<details><summary>Größe tauschen</summary><form method="post" class="yw-x-form">'.$base.'<input type="hidden" name="type" value="exchange"><label>Neue Größe<select name="new_size" required>';
-                foreach($sizes as $s)$html.='<option value="'.e($s).'">Größe '.e($s).'</option>';
-                $html.='</select></label>'.$qtyField('xq-e-'.(int)$item['id']).'<label class="full">Grund<textarea name="reason" maxlength="500" minlength="3" required placeholder="z. B. fällt zu klein aus"></textarea></label><button class="cp-btn approve" type="submit">Tausch beantragen</button></form></details>';
+                $html.='<details><summary>'.e(t('x.swap_size')).'</summary><form method="post" class="yw-x-form">'.$base.'<input type="hidden" name="type" value="exchange"><label>'.e(t('x.new_size_label')).'<select name="new_size" required>';
+                foreach($sizes as $s)$html.='<option value="'.e($s).'">'.e(t('common.size_value',['size'=>$s])).'</option>';
+                $html.='</select></label>'.$qtyField('xq-e-'.(int)$item['id']).'<label class="full">'.e(t('x.reason')).'<textarea name="reason" maxlength="500" minlength="3" required placeholder="'.e(t('x.reason_swap_placeholder')).'"></textarea></label><button class="cp-btn approve" type="submit">'.e(t('x.request_swap')).'</button></form></details>';
             }
-            $html.='<details><summary>Zurückgeben</summary><form method="post" class="yw-x-form">'.$base.'<input type="hidden" name="type" value="return">'.$qtyField('xq-r-'.(int)$item['id']).'<label class="full">Grund<textarea name="reason" maxlength="500" minlength="3" required placeholder="z. B. doppelt bestellt"></textarea></label><button class="cp-btn approve" type="submit">Rückgabe beantragen</button></form></details>';
+            $html.='<details><summary>'.e(t('x.return')).'</summary><form method="post" class="yw-x-form">'.$base.'<input type="hidden" name="type" value="return">'.$qtyField('xq-r-'.(int)$item['id']).'<label class="full">'.e(t('x.reason')).'<textarea name="reason" maxlength="500" minlength="3" required placeholder="'.e(t('x.reason_return_placeholder')).'"></textarea></label><button class="cp-btn approve" type="submit">'.e(t('x.request_return')).'</button></form></details>';
             $html.='</div>';
         }
         $html.='</div>';
@@ -194,23 +196,23 @@ function yw_exchange_portal_action(array $company,array $account,string $action,
 /** Legt einen Antrag an. @return array{0:string,1:string} */
 function yw_exchange_create(array $company,array $account,int $itemId,string $type,string $newSize,string $quantity,string $reason): array {
     $reason=trim($reason);
-    if(!in_array($type,['exchange','return'],true))return ['error','Bitte Tausch oder Rückgabe wählen.'];
-    if(mb_strlen($reason)<3||mb_strlen($reason)>500)return ['error','Bitte einen Grund angeben (3 bis 500 Zeichen).'];
-    if(!preg_match('/^[1-9]\d?$/D',$quantity))return ['error','Menge ungültig.'];
+    if(!in_array($type,['exchange','return'],true))return ['error',t('x.err.type')];
+    if(mb_strlen($reason)<3||mb_strlen($reason)>500)return ['error',t('x.err.reason')];
+    if(!preg_match('/^[1-9]\d?$/D',$quantity))return ['error',t('err.qty_invalid')];
     $qty=(int)$quantity;
     try{
         db()->beginTransaction();
         $q=db()->prepare('SELECT * FROM companies WHERE id=? AND active=1 LIMIT 1');$q->execute([(int)$company['id']]);$company=$q->fetch();
-        if(!$company)throw new DomainException('Firmenshop nicht verfügbar.');
+        if(!$company)throw new DomainException(t('err.shop_unavailable'));
         // Position muss zu einer eigenen, freigegebenen Bestellung dieser Firma gehören.
         $q=db()->prepare("SELECT i.*,o.status order_status,o.fulfillment_status,o.production_updated_at,o.decided_at,o.created_at order_created_at,o.employee_account_id FROM order_items i JOIN orders o ON o.id=i.order_id WHERE i.id=? AND o.company_id=? AND o.employee_account_id=? FOR UPDATE");
         $q->execute([$itemId,(int)$company['id'],(int)$account['id']]);$item=$q->fetch();
-        if(!$item)throw new DomainException('Position nicht gefunden.');
+        if(!$item)throw new DomainException(t('x.err.item'));
         $order=['status'=>$item['order_status'],'fulfillment_status'=>$item['fulfillment_status'],'production_updated_at'=>$item['production_updated_at'],'decided_at'=>$item['decided_at'],'created_at'=>$item['order_created_at']];
-        if(!yw_exchange_window_open($company,$order))throw new DomainException('Für diese Bestellung ist kein Umtausch und keine Rückgabe (mehr) möglich.');
+        if(!yw_exchange_window_open($company,$order))throw new DomainException(t('x.err.window'));
         $q=db()->prepare("SELECT COALESCE(SUM(quantity),0) FROM yw_exchange_requests WHERE order_item_id=? AND status<>'rejected'");$q->execute([$itemId]);
         $prior=(int)$q->fetchColumn();
-        if($qty>(int)$item['quantity']-$prior)throw new DomainException('Für diese Menge besteht bereits ein Antrag.');
+        if($qty>(int)$item['quantity']-$prior)throw new DomainException(t('x.err.already'));
         // 10.11: Gutschrift aus dem Positionswert (Rundung je Position); Altbestellungen: Stückwert.
         $lineCompany=yw_order_item_amounts($item)['company'];$itemQty=max(1,(int)$item['quantity']);
         $unit=intdiv($lineCompany,$itemQty);
@@ -220,7 +222,7 @@ function yw_exchange_create(array $company,array $account,int $itemId,string $ty
             $q=db()->prepare('SELECT p.*,cp.price_override_cents FROM products p LEFT JOIN company_products cp ON cp.product_id=p.id AND cp.company_id=? WHERE p.id=? LIMIT 1');
             $q->execute([(int)$company['id'],(int)$item['product_id']]);$product=$q->fetch();
             $sizes=$product?array_map('strval',json_decode((string)$product['sizes'],true)?:[]):[];
-            if(!in_array($newSize,$sizes,true)||$newSize===(string)$item['size'])throw new DomainException('Bitte eine andere, verfügbare Größe wählen.');
+            if(!in_array($newSize,$sizes,true)||$newSize===(string)$item['size'])throw new DomainException(t('x.err.size'));
             $newSizeValue=$newSize;
             $delta=(yw_exchange_unit_company_cents($product,$company,$newSize)-yw_exchange_unit_company_cents($product,$company,(string)$item['size']))*$qty;
             if($delta>0){
@@ -242,12 +244,12 @@ function yw_exchange_create(array $company,array $account,int $itemId,string $ty
     }catch(Throwable $e){
         if(db()->inTransaction())db()->rollBack();
         if(!$e instanceof DomainException)error_log('WorkwearCenter exchange create: '.$e->getMessage());
-        return ['error',$e instanceof DomainException?$e->getMessage():'Antrag konnte nicht gespeichert werden.'];
+        return ['error',$e instanceof DomainException?$e->getMessage():t('x.err.failed')];
     }
     audit_log('exchange.requested','order',(int)$item['order_id'],['company_id'=>(int)$company['id'],'exchange_id'=>$id,'type'=>$type,'status'=>$status]);
     if($status==='approved')yw_exchange_handover_enqueue($id);
     yw_exchange_notify($id,'created');
-    return ['success',yw_exchange_type_label($type).' beantragt. '.($status==='requested'?'Deine Verantwortlichen entscheiden darüber.':'Die Verwaltung meldet sich mit den nächsten Schritten.')];
+    return ['success',t('x.requested_flash',['type'=>yw_exchange_type_label($type)]).' '.($status==='requested'?t('x.flash_managers'):t('x.flash_admin'))];
 }
 
 /* ---------- Verantwortliche ---------- */
@@ -258,13 +260,13 @@ function yw_exchange_manager_panel(array $company,array $account): string {
     $q->execute([(int)$company['id']]);$rows=$q->fetchAll();
     if(!$rows)return '';
     $others=yw_other_manager_count((int)$company['id'],(int)$account['id']);
-    $html=yw_exchange_style().'<section class="yw-x-mgr" aria-label="Umtausch und Rückgabe"><div class="cp-manager-alert"><strong>'.count($rows).' Antrag'.(count($rows)===1?'':'e').' auf Umtausch oder Rückgabe</strong> warte'.(count($rows)===1?'t':'n').' auf deine Entscheidung.</div>';
+    $html=yw_exchange_style().'<section class="yw-x-mgr" aria-label="'.e(t('x.title')).'"><div class="cp-manager-alert">'.tn('x.mgr_alert',count($rows),['count'=>'<strong>'.count($rows).'</strong>']).'</div>';
     foreach($rows as $r){
-        $html.='<article class="yw-x"><div class="yw-x-head"><strong>'.e(yw_exchange_type_label((string)$r['type'])).' · Bestellung #'.(int)$r['order_id'].' · '.e($r['employee_name']).'</strong><small>'.e(date('d.m.Y H:i',strtotime((string)$r['created_at']))).' Uhr</small></div>';
-        $html.='<div class="yw-x-line"><span>'.(int)$r['quantity'].'× '.e($r['product_name']).' · Größe '.e($r['old_size']).($r['type']==='exchange'?' → <strong>'.e((string)$r['new_size']).'</strong>':'').'</span><span>'.((int)$r['budget_delta_cents']!==0?'Budget '.((int)$r['budget_delta_cents']>0?'+':'').money((int)$r['budget_delta_cents']).($r['type']==='return'?' nach Abschluss':''):'budgetneutral').'</span></div>';
-        $html.='<div class="yw-x-req"><span>Grund: '.e((string)$r['reason']).'</span></div>';
-        if((int)$r['employee_account_id']===(int)$account['id'] && $others>0){$html.='<div class="yw-x-req"><span>Eigener Antrag – entscheidet eine andere verantwortliche Person.</span></div></article>';continue;}
-        $html.='<form method="post" class="yw-x-decide">'.csrf_field().'<input type="hidden" name="action" value="exchange_decision"><input type="hidden" name="exchange_id" value="'.(int)$r['id'].'"><label>Hinweis <small>bei Ablehnung erforderlich</small><textarea name="decision_note" maxlength="1000"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">Ablehnen</button><button class="cp-btn approve" type="submit" name="decision" value="approved">Freigeben</button></form></article>';
+        $html.='<article class="yw-x"><div class="yw-x-head"><strong>'.e(yw_exchange_type_label((string)$r['type'])).' · '.e(t('orders.order_no',['id'=>(int)$r['order_id']])).' · '.e($r['employee_name']).'</strong><small>'.e(yw_date((string)$r['created_at'],'datetime')).'</small></div>';
+        $html.='<div class="yw-x-line"><span>'.(int)$r['quantity'].'× '.e($r['product_name']).' · '.e(t('common.size_value',['size'=>$r['old_size']])).($r['type']==='exchange'?' → <strong>'.e((string)$r['new_size']).'</strong>':'').'</span><span>'.e((int)$r['budget_delta_cents']!==0?t('x.budget',['amount'=>((int)$r['budget_delta_cents']>0?'+':'').money((int)$r['budget_delta_cents'])]).($r['type']==='return'?' '.t('x.after_completion'):''):t('x.budget_neutral')).'</span></div>';
+        $html.='<div class="yw-x-req"><span>'.e(t('x.reason')).': '.e((string)$r['reason']).'</span></div>';
+        if((int)$r['employee_account_id']===(int)$account['id'] && $others>0){$html.='<div class="yw-x-req"><span>'.e(t('x.own_request')).'</span></div></article>';continue;}
+        $html.='<form method="post" class="yw-x-decide">'.csrf_field().'<input type="hidden" name="action" value="exchange_decision"><input type="hidden" name="exchange_id" value="'.(int)$r['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button><button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button></form></article>';
     }
     return $html.'</section>';
 }
@@ -272,20 +274,20 @@ function yw_exchange_manager_panel(array $company,array $account): string {
 /** @return array{0:string,1:string} */
 function yw_exchange_manager_decide(array $company,array $account,int $id,string $decision,string $note): array {
     $note=trim($note);
-    if(!in_array($decision,['approved','rejected'],true))return ['error','Ungültige Entscheidung.'];
-    if(mb_strlen($note)>1000||($decision==='rejected'&&$note===''))return ['error',$decision==='rejected'?'Bitte einen kurzen Ablehnungsgrund angeben.':'Der Hinweis darf höchstens 1.000 Zeichen enthalten.'];
+    if(!in_array($decision,['approved','rejected'],true))return ['error',t('err.decision_invalid')];
+    if(mb_strlen($note)>1000||($decision==='rejected'&&$note===''))return ['error',$decision==='rejected'?t('err.reason_required'):t('err.note_too_long')];
     $q=db()->prepare('SELECT employee_account_id FROM yw_exchange_requests WHERE id=? AND company_id=? LIMIT 1');$q->execute([$id,(int)$company['id']]);$owner=$q->fetchColumn();
-    if($owner===false)return ['error','Antrag nicht gefunden.'];
+    if($owner===false)return ['error',t('x.err.not_found')];
     $self=(int)$owner===(int)$account['id'];
-    if($self && $decision==='approved' && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)return ['error','Eigene Anträge gibt eine andere verantwortliche Person frei (Vier-Augen-Prinzip).'];
+    if($self && $decision==='approved' && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)return ['error',t('x.err.four_eyes')];
     $u=db()->prepare("UPDATE yw_exchange_requests SET status=?,decision_note=?,decided_by_account_id=?,decided_at=NOW() WHERE id=? AND company_id=? AND status='requested'");
     $u->execute([$decision,$note!==''?$note:null,(int)$account['id'],$id,(int)$company['id']]);
-    if(!$u->rowCount())return ['error','Der Antrag wurde bereits bearbeitet.'];
+    if(!$u->rowCount())return ['error',t('x.err.decided')];
     $orderId=(int)db()->query('SELECT order_id FROM yw_exchange_requests WHERE id='.(int)$id)->fetchColumn();
     audit_log('exchange.'.$decision,'order',$orderId,['company_id'=>(int)$company['id'],'exchange_id'=>$id]+($self?['self_decision'=>true]:[]));
     if($decision==='approved')yw_exchange_handover_enqueue($id);
     yw_exchange_notify($id,$decision);
-    return ['success',$decision==='approved'?'Antrag freigegeben. Die Verwaltung übernimmt.':'Antrag abgelehnt.'];
+    return ['success',$decision==='approved'?t('x.flash_approved'):t('x.flash_rejected')];
 }
 
 /* ---------- Benachrichtigungen ---------- */
@@ -293,26 +295,29 @@ function yw_exchange_manager_decide(array $company,array $account,int $id,string
 function yw_exchange_notify(int $id,string $event): void {
     try{
         $r=yw_exchange_load($id);if(!$r)return;
-        $type=yw_exchange_type_label((string)$r['type']);
-        $line=(int)$r['quantity'].' × '.$r['product_name'].' · Größe '.$r['old_size'].($r['type']==='exchange'?' → '.$r['new_size']:'');
-        $facts="Antrag: ".$type." #".$id."\nBestellung: ".yw_order_number((int)$r['order_id'])."\nMitarbeiter: ".$r['employee_name']."\nPosition: ".$line."\nGrund: ".$r['reason']
-            .((int)$r['budget_delta_cents']!==0?"\nBudget: ".((int)$r['budget_delta_cents']>0?'+':'').money((int)$r['budget_delta_cents']).($r['type']==='return'?' (Gutschrift nach Abschluss)':''):'');
-        $status=yw_exchange_statuses()[(string)$r['status']]??$r['status'];
-        $shopLink="\n\nBestellungen ansehen: ".workwearcenter_url((string)$r['slug'].'/bestellungen');
+        // 10.12: Texte je Empfänger in dessen Sprache; Verwaltung bleibt deutsch.
+        $facts=function() use($r,$id): string {
+            $line=(int)$r['quantity'].' × '.$r['product_name'].' · '.t('common.size_value',['size'=>$r['old_size']]).($r['type']==='exchange'?' → '.$r['new_size']:'');
+            return t('x.mail.request').": ".yw_exchange_type_label((string)$r['type'])." #".$id."\n".t('mail.sum.order').": ".yw_order_number((int)$r['order_id'])."\n".t('mail.sum.employee').": ".$r['employee_name']."\n".t('x.mail.item').": ".$line."\n".t('x.reason').": ".$r['reason']
+                .((int)$r['budget_delta_cents']!==0?"\n".t('x.mail.budget').": ".((int)$r['budget_delta_cents']>0?'+':'').money((int)$r['budget_delta_cents']).($r['type']==='return'?' ('.t('x.mail.credit_after').')':''):'');
+        };
+        $status=fn(): string => yw_exchange_statuses()[(string)$r['status']]??(string)$r['status'];
+        $note=fn(): string => !empty($r['decision_note'])?"\n".t('mail.note').": ".$r['decision_note']:'';
+        $shopLink=fn(): string => "\n\n".t('x.mail.view_orders').": ".workwearcenter_url((string)$r['slug'].'/bestellungen');
         $adminLink="\n\nUmtausch & Retouren: ".workwearcenter_url('admin?tab=exchanges');
-        $note=!empty($r['decision_note'])?"\nHinweis: ".$r['decision_note']:'';
-        $toEmployee=function(string $subject,string $text) use($r){if(!empty($r['employee_email']))send_system_mail((string)$r['employee_email'],$subject,$text);};
-        $toAdmins=function(string $subject,string $text){foreach(db()->query('SELECT email FROM admins WHERE active=1') as $a)send_system_mail((string)$a['email'],$subject,$text);};
-        $subject=$type.' #'.$id.' · '.$status;
+        $employee=['name'=>$r['employee_name'],'email'=>(string)($r['employee_email']??''),'language'=>$r['employee_language']??null,'shop_languages'=>$r['shop_languages']??null];
+        $toEmployee=function(Closure $build) use($employee){if($employee['email']!=='')yw_mail_to_person($employee,$build);};
+        $toAdmins=function(string $subject,string $text){yw_with_lang('de',function() use($subject,$text){foreach(db()->query('SELECT email FROM admins WHERE active=1') as $a)send_system_mail((string)$a['email'],$subject,$text);});};
+        $subject=fn(): string => yw_exchange_type_label((string)$r['type']).' #'.$id.' · '.$status();
         if($event==='created'){
-            $toEmployee($type.' beantragt',"Hallo ".$r['employee_name'].",\n\ndein Antrag ist eingegangen.\n\n".$facts."\nStatus: ".$status.$shopLink);
-            if($r['status']==='requested')notify_company_managers((int)$r['company_id'],$type.' zur Freigabe: '.yw_order_number((int)$r['order_id']),"Ein Antrag auf ".$type." wartet auf deine Entscheidung.\n\n".$facts."\n\nAntrag prüfen: ".workwearcenter_url((string)$r['slug'].'/freigaben'));
-            else $toAdmins('Neuer Antrag: '.$type.' #'.$id,"Ein neuer Antrag ist ohne interne Freigabe eingegangen.\n\nFirma: ".$r['legal_name']."\n".$facts.$adminLink);
+            $toEmployee(fn(array $p)=>[t('x.mail.created_subject',['type'=>yw_exchange_type_label((string)$r['type'])]),t('mail.hello',['name'=>$p['name']])."\n\n".t('x.mail.received')."\n\n".$facts()."\n".t('mail.sum.status').": ".$status().$shopLink()]);
+            if($r['status']==='requested')notify_company_managers((int)$r['company_id'],fn(array $m)=>[t('x.mail.approval_subject',['type'=>yw_exchange_type_label((string)$r['type']),'order'=>yw_order_number((int)$r['order_id'])]),t('x.mail.approval_body',['type'=>yw_exchange_type_label((string)$r['type'])])."\n\n".$facts()."\n\n".t('x.mail.review').": ".workwearcenter_url((string)$r['slug'].'/freigaben')]);
+            else yw_with_lang('de',fn()=>$toAdmins('Neuer Antrag: '.yw_exchange_type_label((string)$r['type']).' #'.$id,"Ein neuer Antrag ist ohne interne Freigabe eingegangen.\n\nFirma: ".$r['legal_name']."\n".$facts().$adminLink));
             return;
         }
-        $toEmployee($subject,"Hallo ".$r['employee_name'].",\n\nneuer Stand deines Antrags: ".$status.".".$note."\n\n".$facts.$shopLink);
-        if($event==='approved' && $r['decided_by_account_id'])$toAdmins('Freigegeben: '.$type.' #'.$id,"Ein Antrag wurde von ".$r['decided_by_name']." freigegeben und kann bearbeitet werden.\n\nFirma: ".$r['legal_name']."\n".$facts.$adminLink);
-        if(in_array($event,['admin_approved','done','admin_rejected'],true))notify_company_managers((int)$r['company_id'],$subject,"Neuer Stand eines Antrags: ".$status.".".$note."\n\n".$facts);
+        $toEmployee(fn(array $p)=>[$subject(),t('mail.hello',['name'=>$p['name']])."\n\n".t('x.mail.new_state',['status'=>$status()]).$note()."\n\n".$facts().$shopLink()]);
+        if($event==='approved' && $r['decided_by_account_id'])yw_with_lang('de',fn()=>$toAdmins('Freigegeben: '.yw_exchange_type_label((string)$r['type']).' #'.$id,"Ein Antrag wurde von ".$r['decided_by_name']." freigegeben und kann bearbeitet werden.\n\nFirma: ".$r['legal_name']."\n".$facts().$adminLink));
+        if(in_array($event,['admin_approved','done','admin_rejected'],true))notify_company_managers((int)$r['company_id'],fn(array $m)=>[$subject(),t('x.mail.manager_state',['status'=>$status()]).$note()."\n\n".$facts()]);
     }catch(Throwable $e){error_log('WorkwearCenter exchange mail: '.$e->getMessage());}
 }
 

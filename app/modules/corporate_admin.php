@@ -90,7 +90,7 @@ function yw_admin_action(): void {
         }
         db()->commit();
         audit_log($action,'company',$companyId,['company_id'=>$companyId]);
-        if($action==='yw_production' && $productionStatusChanged) notify_order_employee($id,'Status deiner Bestellung #'.$id,"Der Bearbeitungsstatus deiner Bestellung wurde geändert: ".(yw_production_statuses()[$status]??$status)."\n\nBestellstatus ansehen: ".workwearcenter_url((string)$company['slug'].'/bestellungen'));
+        if($action==='yw_production' && $productionStatusChanged) yw_notify_order_status($id,$status,(string)$company['slug']); // 10.12: in der Sprache der Person
         flash('success','Gespeichert.');
     } catch(Throwable $e){
         if(db()->inTransaction()) db()->rollBack();
