@@ -369,17 +369,23 @@ function yw_smtp_deliver(string $to,string $subject,string $message,string $from
 
 function yw_deliver_queued_mail(int $id): bool {
     try{$claim=db()->prepare("UPDATE yw_mail_queue SET status='sending',available_at=DATE_ADD(NOW(),INTERVAL 15 MINUTE) WHERE id=? AND status='pending' AND available_at<=NOW()");$claim->execute([$id]);if(!$claim->rowCount())return false;$q=db()->prepare("SELECT * FROM yw_mail_queue WHERE id=? AND status='sending'");$q->execute([$id]);$row=$q->fetch();if(!$row)return false;yw_mail_transport((string)$row['to_email'],(string)$row['subject'],(string)$row['body'],($row['reply_to']??'')!==''?(string)$row['reply_to']:null,yw_lang_valid($row['language']??null)?(string)$row['language']:'de');db()->prepare("UPDATE yw_mail_queue SET status='sent',sent_at=NOW(),last_error=NULL WHERE id=? AND status='sending'")->execute([$id]);return true;}
-    catch(Throwable $e){$next=(new DateTimeImmutable())->modify('+'.min(60,2**min(6,(int)($row['attempts']??0))).' minutes')->format('Y-m-d H:i:s');try{db()->prepare("UPDATE yw_mail_queue SET attempts=attempts+1,status=IF(attempts>=7,'failed','pending'),available_at=?,last_error=? WHERE id=?")->execute([$next,mb_substr($e->getMessage(),0,500),$id]);}catch(Throwable $ignored){}error_log('WorkwearCenter mail queue: '.$e->getMessage());return false;}
+    catch(Throwable $e){$next=(new DateTimeImmutable())->modify('+'.min(60,2**min(6,(int)($row['attempts']??0))).' minutes')->format('Y-m-d H:i:s');try{db()->prepare("UPDATE yw_mail_queue SET attempts=attempts+1,status=IF(attempts>=7,'failed','pending'),available_at=?,last_error=? WHERE id=?")->execute([$next,mb_substr($e->getMessage(),0,500),$id]);}catch(Throwable $ignored){}error_log('WorkwearCenter mail queue: '.$e->getMessage());
+        // Mailserver gestört: Stapel abbrechen und Seitenaufrufe 5 Minuten nicht mit Zustellversuchen (je bis 15 s) belasten.
+        $GLOBALS['yw_mail_failed']=true;try{if(function_exists('set_site_setting'))set_site_setting('mail_pause_until',(string)(time()+300));}catch(Throwable $ignored){}
+        return false;}
 }
 
 function yw_process_mail_queue(int $limit=3): void {
     $limit=max(1,min(100,$limit));
+    // Kleine Stapel (nach Seitenaufrufen) pausieren nach einem Zustellfehler; der Cronjob versucht es weiter.
+    if($limit<10 && function_exists('current_site_setting') && (int)current_site_setting('mail_pause_until','0')>time()) return;
     $locked=(int)db()->query("SELECT GET_LOCK('yanik_workwear_mail_worker',0)")->fetchColumn()===1;
     if(!$locked) return;
     try{
         db()->exec("UPDATE yw_mail_queue SET status='pending' WHERE status='sending' AND available_at<=NOW()");
         $ids=db()->query("SELECT id FROM yw_mail_queue WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
-        foreach($ids as $id)yw_deliver_queued_mail((int)$id);
+        $GLOBALS['yw_mail_failed']=false;
+        foreach($ids as $id){yw_deliver_queued_mail((int)$id);if(!empty($GLOBALS['yw_mail_failed']))break;}
     }finally{
         try{db()->query("SELECT RELEASE_LOCK('yanik_workwear_mail_worker')");}catch(Throwable $ignored){}
     }

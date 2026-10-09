@@ -351,6 +351,8 @@ function yw_handover_deliver(int $id): bool {
     $message=$error!==''?$error:('HTTP '.$status.($response!==''?': '.preg_replace('/\s+/',' ',strip_tags($response)):''));
     db()->prepare('UPDATE yw_handover SET status=?,attempts=?,available_at=?,last_http_status=?,last_error=? WHERE id=?')
         ->execute([$finalFailure?'failed':'pending',$attempts,$next,$status?:null,mb_substr($message,0,500),$id]);
+    // Gegenstelle gestört: Stapel abbrechen, Seitenaufrufe 5 Minuten nicht mit Versuchen (je bis 10 s) belasten.
+    $GLOBALS['yw_handover_failed']=true;try{set_site_setting('handover_pause_until',(string)(time()+300));}catch(Throwable $ignored){}
     if($finalFailure)yw_handover_alert_admins((int)$row['order_id'],$message);
     return false;
 }
@@ -366,13 +368,15 @@ function yw_handover_alert_admins(int $orderId,string $message): void {
 function yw_process_handover_queue(int $limit=5): int {
     if(!yw_handover_push_enabled() || yw_handover_config_issues())return 0;
     $limit=max(1,min(100,$limit));
+    if($limit<5 && (int)current_site_setting('handover_pause_until','0')>time())return 0; // nach Fehler: nur der Cronjob versucht es
     $locked=(int)db()->query("SELECT GET_LOCK('yanik_workwear_handover_worker',0)")->fetchColumn()===1;
     if(!$locked)return 0;
     $sent=0;
     try{
         db()->exec("UPDATE yw_handover SET status='pending' WHERE status='sending' AND available_at<=NOW()");
         $ids=db()->query("SELECT id FROM yw_handover WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
-        foreach($ids as $id)if(yw_handover_deliver((int)$id))$sent++;
+        $GLOBALS['yw_handover_failed']=false;
+        foreach($ids as $id){if(yw_handover_deliver((int)$id))$sent++;if(!empty($GLOBALS['yw_handover_failed']))break;}
     }finally{
         try{db()->query("SELECT RELEASE_LOCK('yanik_workwear_handover_worker')");}catch(Throwable $ignored){}
     }
