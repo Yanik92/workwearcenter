@@ -97,7 +97,8 @@ function yw_admin_action(): void {
         if(!$e instanceof DomainException && !$e instanceof InvalidArgumentException) error_log('Corporate action: '.$e->getMessage());
         flash('error',($e instanceof DomainException || $e instanceof InvalidArgumentException)?$e->getMessage():'Speichern fehlgeschlagen.');
     }
-    redirect('/admin?tab='.($action==='yw_production'?'production':'corporate').'&company_id='.$companyId);
+    // Früher tab=corporate: der Reiter leitet nur noch weiter – nach Ausgabe des Seitenkopfs scheitert das (leere Seite).
+    redirect($action==='yw_production'?'/admin?tab=production&company_id='.$companyId:yw_customer_return_url($companyId,'regeln'));
 }
 
 function yw_admin_corporate(): void {

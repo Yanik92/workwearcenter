@@ -28,6 +28,22 @@ function yw_customer_url(int $companyId,string $tab='uebersicht'): string {
     return '/admin?tab=companies&company='.$companyId.($tab==='uebersicht'?'':'&bereich='.$tab);
 }
 
+/**
+ * Ziel nach dem Speichern in der Kundenakte: derselbe Reiter, von dem das Formular kam
+ * (Referer derselben Firma), sonst der übergebene Standardreiter.
+ */
+function yw_customer_return_url(int $companyId,string $fallbackTab='uebersicht'): string {
+    $ref=(string)($_SERVER['HTTP_REFERER']??'');
+    if($ref!=='' && (string)parse_url($ref,PHP_URL_PATH)==='/admin'){
+        parse_str((string)parse_url($ref,PHP_URL_QUERY),$q);
+        if(($q['tab']??'')==='companies' && (int)($q['company']??0)===$companyId){
+            $tab=(string)($q['bereich']??'uebersicht');
+            if(array_key_exists($tab,yw_customer_tabs()))return yw_customer_url($companyId,$tab);
+        }
+    }
+    return yw_customer_url($companyId,array_key_exists($fallbackTab,yw_customer_tabs())?$fallbackTab:'uebersicht');
+}
+
 /** Reiterleiste. */
 function yw_customer_tabbar(int $companyId,string $active): string {
     $html='<nav class="customer-tabs" aria-label="Bereiche der Kundenakte">';

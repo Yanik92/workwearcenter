@@ -82,6 +82,7 @@ function admin_page(): void {
     $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges','lexware'];
     $tab=(string)($_GET['tab'] ?? 'dashboard');
     if(!in_array($tab,$allowedTabs,true))$tab='dashboard';
+    if($tab==='corporate') yw_admin_corporate(); // alte Links: Weiterleitung vor jeder Ausgabe
 
     $companies=[];$products=[];$orders=[];$inquiries=[];$auditLogs=[];
     $needsCompanies=in_array($tab,['dashboard','companies'],true);
@@ -199,7 +200,7 @@ function handle_admin_action(): never {
             audit_log('employee.access_'.$decision,'employee',$accountId,['company_id'=>(int)$account['company_id']]);
             flash('success',$decision==='approved'?'Mitarbeiter wurde freigegeben.':'Registrierung wurde abgelehnt.');
             $returnCompany=(int)($_POST['return_company']??0);
-            redirect($returnCompany?'/admin?tab=companies&company='.$returnCompany:'/admin');
+            redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter'):'/admin');
         }
 
         if ($action==='bulk_fulfillment') {
@@ -500,7 +501,7 @@ function handle_admin_action(): never {
             catch(Throwable $e){if($logo!==$oldLogo)delete_company_logo($logo);throw $e;}
             if($logo!==$oldLogo)delete_company_logo($oldLogo);
             audit_log('company.brand_updated','company',$id,['company_id'=>$id]);
-            unset($_SESSION['shop_access'][$id],$_SESSION['approval_access'][$id]); flash('success','Design wurde gespeichert.'); redirect('/admin?tab=companies&company='.$id);
+            unset($_SESSION['shop_access'][$id],$_SESSION['approval_access'][$id]); flash('success','Design wurde gespeichert.'); redirect(yw_customer_return_url($id,'kollektion'));
         }
         if ($action==='update_employee_account') {
             $accountId=(int)($_POST['account_id']??0);
@@ -530,7 +531,7 @@ function handle_admin_action(): never {
             audit_log('employee.account_updated','employee',$accountId,['company_id'=>$companyId,'role'=>$role,'status'=>$registrationStatus,'active'=>$active]);
 
             flash('success','Mitarbeiterrolle wurde gespeichert.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
 
         if ($action==='update_shop_rules') {
@@ -558,7 +559,7 @@ function handle_admin_action(): never {
             audit_log('company.rules_updated','company',$id,['company_id'=>$id]);
 
             flash('success','Shopregeln und Versandkosten wurden gespeichert.');
-            redirect('/admin?tab=companies&company='.$id);
+            redirect(yw_customer_return_url($id,'regeln'));
         }
 
         if ($action==='update_company_product_customization') {
@@ -658,7 +659,7 @@ function handle_admin_action(): never {
             audit_log('company_product.updated','product',$productId,['company_id'=>$companyId]);
 
             flash('success','Shop-Produkt „'.($customName!==''?$customName:$row['base_name']).'“ wurde individualisiert.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'kollektion'));
         }
 
         if ($action==='save_decoration_motif') {
@@ -696,7 +697,7 @@ function handle_admin_action(): never {
                 $stmt->execute([$companyId,...$values]);$savedId=(int)db()->lastInsertId();$auditAction='decoration_motif.created';
             }
             audit_log($auditAction,'decoration_motif',$savedId,['company_id'=>$companyId,'stock_qty'=>(int)$stockRaw]);
-            flash('success','Veredelungsmotiv wurde gespeichert.');redirect('/admin?tab=companies&company='.$companyId);
+            flash('success','Veredelungsmotiv wurde gespeichert.');redirect(yw_customer_return_url($companyId,'kollektion'));
         }
 
         if ($action==='save_print_zones') { yw_save_print_zones_action(); }
@@ -751,11 +752,11 @@ function handle_admin_action(): never {
             foreach(array_unique($previewsToDelete) as $preview)delete_company_product_preview($preview);
             audit_log('company.collection_updated','company',$id,['company_id'=>$id,'product_count'=>count($productIds)]);
             flash('success','Firmenkollektion wurde gespeichert. Bestehende Individualisierungen wurden beibehalten.');
-            redirect('/admin?tab=companies&company='.$id);
+            redirect(yw_customer_return_url($id,'kollektion'));
         }
         if ($action==='add_invite') {
             $name=trim((string)($_POST['employee_name']??'')); if(!$name||mb_strlen($name)>160)throw new RuntimeException('Bitte einen Mitarbeiternamen mit höchstens 160 Zeichen eingeben.');$companyId=(int)($_POST['company_id']??0);$companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$companyId]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.'); $stmt=db()->prepare('INSERT INTO invites(company_id,employee_name,token) VALUES(?,?,?)'); $stmt->execute([$companyId,$name,random_token()]);
-            audit_log('invite.created','invite',(int)db()->lastInsertId(),['company_id'=>$companyId]);flash('success','Mitarbeiterzugang wurde erstellt.'); redirect('/admin?tab=companies&company='.$companyId);
+            audit_log('invite.created','invite',(int)db()->lastInsertId(),['company_id'=>$companyId]);flash('success','Mitarbeiterzugang wurde erstellt.'); redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
         if ($action==='fulfillment') {
             $status=(string)($_POST['status']??'');
@@ -807,7 +808,7 @@ function handle_admin_action(): never {
             yw_send_password_link($accountId,$name,$email,(string)$company['slug'],true,true);
             audit_log('employee.created_by_admin','employee',$accountId,['company_id'=>$companyId,'role'=>$role]);
             flash('success',($role==='manager'?'Verantwortlicher':'Mitarbeiter').' wurde angelegt. Der Link zum Festlegen des Passworts wurde an '.$email.' gesendet (60 Minuten gültig).');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
         if ($action==='toggle_company') {
             $companyId=(int)($_POST['company_id']??0);
@@ -816,13 +817,13 @@ function handle_admin_action(): never {
             $q=db()->prepare('SELECT active FROM companies WHERE id=?');$q->execute([$companyId]);$nowActive=(int)$q->fetchColumn()===1;
             audit_log('company.status_toggled','company',$companyId,['company_id'=>$companyId,'active'=>$nowActive]);
             flash('success',$nowActive?'Firmen-Shop ist wieder aktiv.':'Firmen-Shop wurde deaktiviert. Anmeldung, Registrierung und Bestellungen sind gesperrt; alle Daten bleiben erhalten.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId));
         }
         if ($action==='employee_anonymize') {
             $companyId=(int)($_POST['company_id']??0);$accountId=(int)($_POST['account_id']??0);
             try{yw_anonymize_employee($companyId,$accountId);}catch(DomainException $e){throw new RuntimeException($e->getMessage());}
             flash('success','Personenbezogene Daten wurden entfernt. Bestellungen bleiben für die Buchhaltung erhalten.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
         if ($action==='delete_inquiry') {
             $id=(int)($_POST['inquiry_id']??0);
@@ -840,8 +841,9 @@ function handle_admin_action(): never {
         if($exception instanceof PDOException){error_log('WorkwearCenter admin database action failed: '.$exception->getMessage());$message='Speichern fehlgeschlagen. Bitte Eingaben prüfen und erneut versuchen.';}
         else $message=$exception->getMessage();
         flash('error',$message);
-        // Ohne return_tab zurück auf die Seite, von der das Formular kam (statt immer auf „Aufträge“).
-        if(!isset($_POST['return_tab'])){
+        // Zurück auf die Seite, von der das Formular kam (z. B. derselbe Reiter der Kundenakte);
+        // return_tab nur, wenn kein Referer der Verwaltung vorliegt.
+        {
             $ref=(string)($_SERVER['HTTP_REFERER']??'');$refHost=strtolower((string)parse_url($ref,PHP_URL_HOST));$refPath=(string)parse_url($ref,PHP_URL_PATH);
             $ownHost=strtolower((string)preg_replace('/:\d+$/','',(string)($_SERVER['HTTP_HOST']??'')));
             if($refHost!==''&&$refHost===$ownHost&&$refPath==='/admin'){$query=(string)parse_url($ref,PHP_URL_QUERY);redirect('/admin'.($query!==''?'?'.$query:''));}
