@@ -262,7 +262,7 @@ Wird ein Antrag auf **Größentausch** freigegeben (durch Verantwortliche oder �
 
 Das Zielformat der Auftragszentrale für Tauschaufträge ist noch nicht festgelegt. Sobald die Auftragszentrale ein Ereignis dafür anbietet, wird hier eine Übersetzung analog zu `order.upsert` ergänzt; bis dahin bleibt es beim manuellen Weg, damit kein Tausch verloren geht oder als Neubestellung missverstanden wird.
 
-**Beispiel (echter Datensatz, gekürzt um nichts)**
+**Beispiel (echter Datensatz aus dem Testlauf)**
 
 ```json
 {

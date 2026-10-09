@@ -201,7 +201,7 @@ function yw_mail_decision_page(string $slug,string $token): void {
     echo '<main class="yw-md"><div class="yw-md-logo">';
     $logo=yw_company_logo_path($company);
     echo $logo!==''?'<img src="/'.e($logo).'" alt="'.e($company['legal_name']).'">':'<strong>'.e($company['legal_name']).'</strong>';
-    echo '</div><section class="yw-md-card"><h1>Bestellung #'.$orderId.' entscheiden</h1><p>'.e($order['employee_name']).' · '.e(date('d.m.Y H:i',strtotime((string)$order['created_at']))).' Uhr · angemeldet als Verantwortliche/r <strong>'.e($account['name']).'</strong></p>';
+    echo '</div><section class="yw-md-card"><h1>Bestellung #'.$orderId.' entscheiden</h1><p>'.e($order['employee_name']).' · '.e(date('d.m.Y H:i',strtotime((string)$order['created_at']))).' Uhr · du entscheidest als <strong>'.e($account['name']).'</strong></p>';
     if($error!=='')echo '<div class="flash error">'.e($error).'</div>';
     echo '<ul class="yw-md-items">';
     foreach(order_items($orderId) as $item){$unit=(int)($item['unit_gross_cents']??0);if($unit<=0)$unit=(int)$item['unit_price_cents'];echo '<li><span>'.(int)$item['quantity'].'× '.e($item['product_name']).' · Größe '.e($item['size']).'</span><strong>'.money($unit*(int)$item['quantity']).'</strong></li>';}
