@@ -593,8 +593,11 @@ function yw_shop_short_line(array $p): string {
         $line=decoration_position_label((string)($d['position']??'')).' · '.decoration_method_label((string)($d['method']??''));
         return count($decorations)>1?$line.' · +'.(count($decorations)-1):$line;
     }
+    // Gespeichert ist der Schlüssel (none/print/embroidery/mixed) – nie roh anzeigen.
     $type=trim((string)($p['decoration_type']??''));
-    return $type!==''?$type:'';
+    if($type===''||$type==='none')return '';
+    if($type==='mixed')return decoration_method_label('print').' & '.decoration_method_label('embroidery');
+    return decoration_method_label($type);
 }
 
 /** Ein Preis für Karte/Detail: Eigenanteil oder Hinweis, dass die Firma zahlt. */
