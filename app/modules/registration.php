@@ -71,7 +71,7 @@ function employee_register_page_by_slug(string $slug): void {
     yw_shop_auth_page($company,t('reg.page_title',['shop'=>$company['shop_name']]),$intro,$card);
 }
 
-function yw_registration_decision(array $company,array $actor): never {
+function yw_registration_decision(array $company,array $actor,string $back='/mitarbeiter'): never {
     verify_csrf();
     $target=null;$decision='';$changed=0;
     try {
@@ -95,7 +95,7 @@ function yw_registration_decision(array $company,array $actor): never {
         if(db()->inTransaction()) db()->rollBack();
         flash('error',t('people.registration_failed'));
     }
-    redirect('/'.$company['slug'].'/mitarbeiter');
+    redirect('/'.$company['slug'].($back==='/mitarbeiter'?'/mitarbeiter':''));
 }
 
 function company_portal_people(array $company,array $account): void {

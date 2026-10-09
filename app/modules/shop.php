@@ -878,7 +878,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
         verify_csrf();
         $action=(string)($_POST['action']??'');
 
-        if($manager && $action==='registration_decision' && $section==='mitarbeiter') yw_registration_decision($company,$account);
+        if($manager && $action==='registration_decision' && in_array($section,['mitarbeiter','overview'],true)) yw_registration_decision($company,$account,$section==='overview'?'':'/mitarbeiter');
         if($manager && in_array($action,['customer_employee_add','customer_employee_save','customer_employee_import','customer_employee_link','customer_employee_anonymize'],true) && $section==='mitarbeiter') yw_customer_employee_action($company,$account,$action);
         if($action==='order' && $section==='produkte'){
             place_account_order($company,$account);
@@ -1010,6 +1010,17 @@ function company_portal_overview(array $company,array $account): void {
             echo '</ul><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/freigaben">'.e(t('overview.review_now')).'</a></div>';
         }else echo '<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/freigaben">'.e(t('overview.view_orders')).'</a></div>';
         echo '</section>';
+        // Offene Registrierungen direkt auf der Startseite entscheiden
+        $q=db()->prepare("SELECT id,name,email,created_at FROM employee_accounts WHERE company_id=? AND registration_status='pending' AND role='employee' ORDER BY id ASC");
+        $q->execute([(int)$company['id']]);$registrations=$q->fetchAll();
+        if($registrations){
+            echo '<section class="cp-card cp-registrations-card"><div class="cp-card-head"><div><h2>'.e(t('overview.registrations_title')).'</h2><p>'.e(tn('overview.registrations_waiting',count($registrations))).'</p></div><span class="cp-count">'.count($registrations).'</span></div><ul class="cp-registration-list">';
+            foreach(array_slice($registrations,0,6) as $r){
+                $form=fn(string $decision,string $class,string $label)=>'<form method="post">'.csrf_field().'<input type="hidden" name="action" value="registration_decision"><input type="hidden" name="account_id" value="'.(int)$r['id'].'"><input type="hidden" name="decision" value="'.$decision.'"><button class="cp-btn '.$class.'" type="submit">'.e($label).'</button></form>';
+                echo '<li><div><strong>'.e((string)$r['name']).'</strong><span>'.e((string)$r['email']).' · '.e(yw_date((string)$r['created_at'],'short')).'</span></div><div class="cp-action-row">'.$form('rejected','reject',t('approvals.reject')).$form('approved','approve',t('people.approve_access')).'</div></li>';
+            }
+            echo '</ul>'.(count($registrations)>6?'<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/mitarbeiter">'.e(t('overview.registrations_all')).'</a></div>':'').'</section>';
+        }
     }elseif($last){
         echo '<section class="cp-card cp-shop-card"><h2>'.e(t('overview.collection_title')).'</h2><p>'.e(t('overview.collection_text')).'</p><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte">'.e(t('overview.to_collection')).' '.yw_shop_icon('arrow').'</a></div></section>';
     }
