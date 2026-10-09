@@ -369,3 +369,16 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 ## Nachtrag 10.12.3 – Kundenakte bleibt im Reiter
 - Nach dem Speichern in der Kundenakte (z. B. „Kollektion speichern“ unter „Kollektion & Design“) landete man auf der Übersicht der Firma, bei einem Fehler sogar in der Kundenliste. Jetzt bleibt die Seite im selben Reiter, auch wenn eine Meldung erscheint.
 - Umsetzung: Jedes Formular der Kundenakte merkt sich den Reiter (`return_to`). Übernommen wird nur ein Ziel innerhalb der Verwaltung und für dieselbe Firma.
+
+## Nachtrag 10.12.4 – Druckzonen automatisch, Komplett-Test
+- **Druckzonen werden automatisch erkannt.** Beim ersten Aufruf eines Produkts misst das System die Umrisse des Produktfotos (Vorder-, Rück- und Ärmelansicht) und setzt Brust links/rechts, Ärmel, Nacken, Rücken oben und Rücken groß passend zur Art des Artikels (Oberteil, Hose, Kopfbedeckung, Tasche/Handtuch). Ein Nachpflegen nach dem Einpflegen ist nicht mehr nötig.
+- Wechselt das Foto, werden die Zonen neu berechnet. Von Hand angepasste Zonen bleiben unangetastet; im Zonen-Editor stellt „Wieder automatisch erkennen“ den Automatikstand her.
+- Unter „Produkte“ setzt „Druckzonen automatisch erkennen“ alle automatischen Zonen auf einmal; der Cronjob erledigt bis zu 100 Produkte pro Lauf. Ohne erkennbares Foto werden die Zonen eines Geschwisterartikels (andere Farbe) übernommen.
+- **Katalogbilder:** Dateien mit `_back` werden automatisch zur Rückansicht, mit `_side` zur Ärmelansicht (z. B. `JN840_navy_back.jpg`).
+- **Komplett-Test aller Funktionen** (Shop, Bestellung, Freigabe, Umtausch, Exporte, alle Sprachen, Handyansicht). Behoben:
+  - Kundenakte, „Regeln & Budget“: Speichern von Budget, PIN, Mengenlimits und Ausstattungsprofilen endete auf einer leeren Seite.
+  - Lieferantenkatalog: Die Preisvorschau ließ Übergrößen-Aufpreise weg und rundete brutto falsch.
+  - Firmenshop: „Warenwert netto“ enthielt den Versand und war größer als brutto; unter Artikeln ohne Veredelung stand „none“.
+  - Neuer Kunde: Die Prüfung des Shop-Kurznamens im Browser wirkte nicht (auch beim Lexware-Kontaktfeld).
+  - Firmenkunden-Cockpit zählte offene Registrierungen als aktive Konten.
+  - „Vorschau beenden“ führt zurück in die Kundenakte statt in die Kundenliste.
