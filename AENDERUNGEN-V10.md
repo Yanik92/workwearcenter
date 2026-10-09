@@ -317,3 +317,33 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 **Verwaltung**
 - Verlauf und Aktivitätsprotokoll in Klartext (wer hat was getan), gelöschte Konten ohne Namen und E-Mail.
 - Neuer Menüpunkt „Umtausch & Retouren“ (Tagesgeschäft) und „Lexware Office“ (System).
+
+## Nachtrag 10.12.0 – Firmenshop in sechs Sprachen
+
+**Wichtig: Nach dem Hochladen `/update.php` als Administrator ausführen.** Das Update legt drei neue Spalten an (Sprache am Mitarbeiterkonto, angebotene Sprachen je Firma, Sprache je Mail in der Warteschlange). Bis es gelaufen ist, zeigt der Shop „Update erforderlich“. Ein zweiter Aufruf ändert nichts mehr. Vorher wie immer Webspace und Datenbank sichern.
+
+**Mehrsprachiger Firmenshop**
+- Mitarbeitende und Verantwortliche können den Firmenshop jetzt auf **Deutsch, Englisch, Polnisch, Türkisch, Russisch und Rumänisch** nutzen. Angesprochen wird überall per „du“ (bzw. der in der Sprache übliche lockere Ton am Arbeitsplatz). Budget, Freigabe, Eigenanteil und Größentausch heißen in jeder Sprache durchgehend gleich.
+- Übersetzt ist alles, was Mitarbeitende und Verantwortliche sehen: Anmeldung, Registrierung, Passwort und Anmeldelink, Übersicht, Produkte mit Detailansicht und „Deine Auswahl“, Bestellungen, Umtausch & Rückgabe, Freigaben (auch die Bestätigungsseite aus der Freigabe-Mail), Mitarbeiterverwaltung, Auswertung, Lohnabzug und Profil.
+- **Sprachwahl:** oben rechts im Shop (am Handy neben dem Menü-Knopf) und auf der Anmelde- und Registrierungsseite. Die Wahl wird am Konto gespeichert und gilt auch auf anderen Geräten. Vor der Anmeldung merkt sich der Browser die Wahl; beim ersten Besuch richtet sich der Shop nach der Spracheinstellung des Browsers (sonst Deutsch). Im Profil lässt sich die Sprache ebenfalls ändern.
+- Beträge und Daten erscheinen im Format der Sprache (z. B. „1 234,56 €“ auf Polnisch, „€1,234.56“ auf Englisch). Abgerechnet wird immer in Euro.
+- **E-Mails in der Sprache der Person:** Bestellbestätigung, Entscheidung (freigegeben/abgelehnt), Statusänderungen und Versand, Stornierung, Freigabe-Mail an Verantwortliche, Zugang freigegeben/abgelehnt, Passwort-Link, Anmeldelink, neues Budgetjahr sowie alle Umtausch-Mails. Jede Person bekommt die Mail in ihrer eigenen Sprache – auch wenn eine andere Person die Aktion ausgelöst hat (Beispiel: Verantwortliche auf Türkisch gibt frei → Mitarbeiter bekommt die Mail auf Polnisch).
+- **Sprachen je Firma:** In der Kundenakte unter „Umtausch, Jahreswechsel, Sammelbestellung & Sprachen“ legen Sie fest, welche Sprachen der Shop dieser Firma anbietet (Standard: alle). Deutsch ist immer dabei. Bietet eine Firma nur Deutsch an, erscheint keine Sprachwahl.
+- **Unverändert Deutsch:** öffentliche Website, Mustershop, Probeshop, Verwaltung, Mails an die Verwaltung und die CSV-Exporte (Spaltenüberschriften bleiben deutsch, damit Excel-Vorlagen weiter passen).
+- **Produktnamen und -beschreibungen** werden nicht übersetzt; sie erscheinen so, wie sie gepflegt sind.
+
+**Kleine Verbesserungen**
+- „Deine Auswahl“ zeigt je Position jetzt den Netto-Stückpreis und den Positionsbetrag (vorher „je 10,00 € brutto“ neben 29,99 € – das passte nicht zusammen).
+- Die Detailansicht zeigt „Vorschau mit deinem Firmenlogo“ nur noch, wenn wirklich ein Logo auf dem Artikel liegt.
+- Mustershop und Probeshop begrüßen je nach Tageszeit („Guten Morgen“, „Hallo“, „Guten Abend“) statt immer „Guten Morgen, Max.“
+- Neue Bilder vom Firmenshop auf der Startseite (Computer und Handy), mit einer erfundenen Beispielfirma „Musterbau GmbH“ – keine echten Kundendaten.
+
+**Getestet**
+- Automatische Prüfungen: alle Sprachen haben dieselben Texte und Platzhalter, Mehrzahl-Formen (Polnisch, Russisch, Rumänisch), Zahlen- und Datumsformat, Sprachwahl nur innerhalb desselben Shops (keine Weiterleitung auf fremde Seiten).
+- Im Browser: Sprachwahl vor und nach der Anmeldung, Bestellung auf Polnisch mit Eigenanteil und Versand (Betrag im Browser = gespeicherter Betrag), Mails auf Polnisch/Türkisch/Russisch, Freigabe-Link auf Türkisch, Sprachauswahl je Firma. Desktop und Handy in allen sechs Sprachen ohne abgeschnittene oder überlaufende Texte.
+- Alle bisherigen Integrationstests (Bestellungen, Design, Lexware, Probeshop, Oberfläche) laufen weiterhin fehlerfrei.
+
+**Bewusst offen**
+- Die Übersetzungen sind sorgfältig erstellt, aber nicht von Muttersprachlern gegengelesen. Bitte vor dem Einsatz bei einer Firma von einer Person prüfen lassen, die die Sprache spricht (Texte stehen gesammelt in `app/lang/<sprache>.php`).
+- Website, Verwaltung und Exporte bleiben deutsch (siehe oben).
+

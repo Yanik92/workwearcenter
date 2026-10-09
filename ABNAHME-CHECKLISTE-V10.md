@@ -1,4 +1,4 @@
-# Abnahme-Checkliste WorkwearCenter 10.11.0
+# Abnahme-Checkliste WorkwearCenter 10.12.0
 
 Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danach öffentlich freischalten.
 
@@ -103,6 +103,27 @@ Website und Vertrieb
 - [ ] Verwaltung → Anfragen: Probeshop verlängern und löschen funktioniert.
 - [ ] Startseite: Vertrauensbereich (Kundenlogos, Kundenstimme, Ansprechpartner) gepflegt oder bewusst leer.
 - [ ] Kundenakte → QR-Code-Aushang gedruckt, QR-Code mit dem Handy getestet.
+
+## Neu in 10.12
+
+Sprachen im Firmenshop (am Computer und am Handy prüfen)
+- [ ] `update.php` ausgeführt; Systemstatus ohne Warnung.
+- [ ] Anmeldeseite einer Testfirma: Sprachwahl über der Anmeldekarte; Wechsel auf Polnisch und Türkisch funktioniert, die Seite bleibt dieselbe.
+- [ ] Browser auf Englisch (oder Handy mit englischer Systemsprache) öffnet den Shop beim ersten Besuch auf Englisch.
+- [ ] Nach der Anmeldung: Sprachwahl oben rechts bzw. am Handy neben „Menü“; gewählte Sprache bleibt nach Ab- und Wiederanmelden (auch auf einem anderen Gerät) erhalten.
+- [ ] Profil: Sprache ändern und speichern.
+- [ ] Testbestellung auf Polnisch bei einer Firma mit Eigenanteil und Versand: Betrag in „Twój wybór“ = Betrag in „Moje zamówienia“ = Betrag auf der Auftragsseite in der Verwaltung.
+- [ ] Bestellbestätigung kommt auf Polnisch; Freigabe-Mail an eine Verantwortliche mit eingestellter türkischer Sprache kommt auf Türkisch, die Bestätigungsseite aus der Mail ist türkisch.
+- [ ] Passwort-Link und Anmeldelink kommen in der Sprache der Person.
+- [ ] Kundenakte → „Umtausch, Jahreswechsel, Sammelbestellung & Sprachen“: nur Deutsch und Polnisch anhaken → Shop bietet nur diese beiden an; nur Deutsch → keine Sprachwahl.
+- [ ] Website, Mustershop, Verwaltung und CSV-Exporte bleiben deutsch.
+- [ ] Übersetzungen der Sprachen, die eingesetzt werden sollen, von einer Person mit Muttersprache gegengelesen.
+
+Kleine Verbesserungen
+- [ ] „Deine Auswahl“: je Position Netto-Stückpreis und Positionsbetrag stimmen mit der Summe überein.
+- [ ] Artikel ohne Logo: kein Hinweis „Vorschau mit deinem Firmenlogo“.
+- [ ] Mustershop: Begrüßung passt zur Tageszeit.
+- [ ] Startseite: neue Shop-Bilder (Musterbau GmbH) am Computer und am Handy.
 
 ## Mail und Betrieb
 
