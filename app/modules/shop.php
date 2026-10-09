@@ -838,8 +838,8 @@ function yw_shop_auth_page(array $company,string $title,array $intro,string $car
     echo '<div class="cp-login-identity'.($hasLogo?' has-logo':'').'">'.yw_shop_brand_mark($company,'cp-login').($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'</div>';
     echo '<div class="cp-login-copy"><span class="cp-login-kicker">'.e($intro[0]??t('shop.staff_shop')).'</span><h1>'.e($intro[1]??'').'</h1><p>'.e($intro[2]??'').'</p></div>';
     echo '<p class="cp-login-powered">'.e(t('auth.powered')).'</p></section>';
-    // 10.12: Sprachwahl über der Karte (auch vor der Anmeldung)
-    echo '<section class="cp-login-form">'.yw_lang_switcher($company,'cp-login-lang').'<div class="cp-login-card">'.$cardHtml.'</div><p class="cp-login-legal"><a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></p></section></main>';
+    // 10.12: Sprachwahl über der Karte; im DOM nach dem Formular (Tastatur), per CSS-order oben
+    echo '<section class="cp-login-form"><div class="cp-login-card">'.$cardHtml.'</div>'.yw_lang_switcher($company,'cp-login-lang').'<p class="cp-login-legal"><a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></p></section></main>';
     render_foot();
 }
 

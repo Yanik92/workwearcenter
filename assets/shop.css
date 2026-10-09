@@ -421,7 +421,7 @@ details.cp-card[open] summary{margin-bottom:14px}
 .yw-lang form button[aria-current]{background:color-mix(in srgb,var(--cp-accent) 12%,#fff);color:var(--cp-accent-ink);font-weight:800}
 .yw-lang form button[aria-current]:after{content:" ✓"}
 .cp-side-lang{display:none}
-.cp-login-lang{align-self:center;width:min(100%,440px);display:flex;justify-content:flex-end}
+.cp-login-lang{order:-1;align-self:center;width:min(100%,440px);display:flex;justify-content:flex-end}
 .cp-login-lang>summary{background:transparent}
 @media(max-width:860px){
   .cp-side-head{gap:8px}
