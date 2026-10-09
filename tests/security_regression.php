@@ -135,4 +135,27 @@ test_ok(!str_contains(strtolower($prefixed),'javascript')&&str_contains($prefixe
 test_ok(yw_katalog_product_sku('jn840','Navy Blue')==='JN840-NAVYBLUE','Katalog: SKU je Farbe');
 test_ok(yw_katalog_base_sku('JN840-NAVYBLUE','navy blue')==='JN840' && yw_katalog_base_sku('JN840','navy')==='JN840','Katalog: Grund-SKU wird erkannt (alt und neu)');
 
+// 10.11: Probeshop, Verlauf in Klartext, QR-Aushang
+require_once dirname(__DIR__).'/app/modules/probeshop.php';
+test_ok(yw_probeshop_token_ok(str_repeat('ab',32)) && !yw_probeshop_token_ok(str_repeat('a',63)) && !yw_probeshop_token_ok(str_repeat('A',64)) && !yw_probeshop_token_ok(str_repeat('a',64)."\n"),'Probeshop: nur 64 Hex-Zeichen sind ein gültiger Token');
+test_ok(strlen(random_token())===64 && yw_probeshop_token_ok(random_token()),'Probeshop: erzeugte Tokens sind 256 Bit Zufall');
+test_ok(yw_probeshop_logo_path_ok('uploads/probeshop/'.str_repeat('0f',16).'.svg'),'Probeshop: Logo mit Zufallsnamen wird akzeptiert');
+test_ok(!yw_probeshop_logo_path_ok('uploads/probeshop/../config.php') && !yw_probeshop_logo_path_ok('uploads/probeshop/'.str_repeat('0f',16).'.php') && !yw_probeshop_logo_path_ok('uploads/probeshop/logo.png') && !yw_probeshop_logo_path_ok('uploads/motifs/'.str_repeat('0f',16).'.png'),'Probeshop: fremde, ratbare oder ausführbare Pfade werden abgelehnt');
+test_ok(yw_color_luminance('#fff')===1.0 && yw_color_luminance('#000000')===0.0 && yw_color_luminance('rot')===null,'Farbhelligkeit wird berechnet');
+test_ok(yw_svg_average_luminance('<svg><path d="M0 0"/></svg>')===0.0 && yw_svg_average_luminance('<svg><path fill="#ffffff"/><text style="fill:#fff">A</text></svg>')===1.0,'SVG-Helligkeit: ohne Farbe schwarz, weiße Füllung hell');
+test_ok(yw_probeshop_tone_for_luminance(0.1)==='light' && yw_probeshop_tone_for_luminance(0.9)==='dark' && yw_probeshop_tone_for_luminance(null)==='dark','Probeshop: dunkles Logo auf heller Kleidung, helles auf dunkler');
+test_ok(yw_slug_reserved('probeshop'),'Kurzname „probeshop“ ist reserviert');
+$zones=yw_zones_sanitize(['front'=>['chest_left'=>['x'=>62,'y'=>30,'w'=>17]]]);
+test_ok((yw_zone_for($zones,'chest_left',['front'])['zone']['w']??0)==17.0,'Probeshop nutzt die Druckzonen-Logik der Logo-Vorschau');
+test_ok(str_contains(yw_privacy_template(),'Probeshop für Interessenten') && str_contains(yw_privacy_template(),'30 Tagen'),'Datenschutz-Vorlage beschreibt den Probeshop');
+test_ok(yw_account_anonymized('geloescht-3-ab@anonymisiert.invalid') && yw_account_anonymized('x@firma.de','2026-01-01 10:00:00') && !yw_account_anonymized('x@firma.de',null),'gelöschte Konten werden erkannt');
+test_ok(yw_history_status_label('pending')==='Freigabe offen' && yw_history_status_label('production')==='In Produktion' && yw_history_status_label('cancelled')==='Storniert','Verlauf: Statuswerte in Klartext');
+test_ok(yw_actor_label('employee')==='Mitarbeiter/in' && yw_actor_label('admin')==='Verwaltung' && yw_actor_label('api:auftragszentrale')==='Schnittstelle auftragszentrale' && yw_actor_label('guest',null,['via'=>'api:fanbande'])==='Schnittstelle fanbande' && yw_actor_label('guest')==='System','Verlauf: Akteure in Klartext');
+test_ok(yw_actor_label('employee',5,[],['employee'=>[5=>'Konto gelöscht (DSGVO)']])==='Mitarbeiter/in · Konto gelöscht (DSGVO)','Verlauf: gelöschtes Konto ohne Namen/Mail');
+test_ok(yw_history_details(['decision'=>'rejected','self_decision'=>true])==='→ Abgelehnt (eigene Bestellung)' && yw_history_details(['previous_status'=>'approved','reason'=>'Größe'])==='vorher: Freigegeben · Grund: Größe','Verlauf: Zusatzangaben übersetzt');
+test_ok(yw_entity_label('order',12)==='Auftrag WWC-000012' && yw_entity_label('employee',3)==='Mitarbeiterkonto #3' && yw_entity_label(null,null)==='–','Protokoll: Objekte in Klartext');
+$pinSteps=yw_poster_steps(['registration_mode'=>'pin_approval'],'registrieren');$openSteps=yw_poster_steps(['registration_mode'=>'open'],'registrieren');
+test_ok(count($pinSteps)===4 && str_contains(implode(' ',$pinSteps),'Firmen-PIN') && count($openSteps)===3 && !str_contains(implode(' ',$openSteps),'PIN'),'QR-Aushang: Schritte passen zu den Registrierungsregeln');
+test_ok(str_contains(implode(' ',yw_poster_steps(['registration_mode'=>'approval'],'login')),'anmelden'),'QR-Aushang: Schritte für den Login-Link');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
