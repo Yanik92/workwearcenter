@@ -79,6 +79,7 @@ try {
     try { $pdo->exec("SET time_zone = '".(new DateTimeImmutable('now'))->format('P')."'"); }
     catch (Throwable $ignored) {}
 } catch (Throwable $exception) {
+    error_log('WorkwearCenter DB-Verbindung: '.$exception->getMessage());
     http_response_code(500);
     exit('Datenbankverbindung fehlgeschlagen. Bitte config.php prüfen.');
 }
