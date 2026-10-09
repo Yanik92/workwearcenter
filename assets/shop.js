@@ -291,7 +291,7 @@
 
     var map = {
       '[data-selection-count]': String(count),
-      '[data-summary-net]': euro(net + shippingNet),
+      '[data-summary-net]': euro(net), // Warenwert ohne Versand (wie „Warenwert brutto“)
       '[data-summary-gross]': euro(gross),
       '[data-summary-shipping]': euro(shippingGross),
       '[data-summary-employee]': euro(employee),
