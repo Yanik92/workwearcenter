@@ -234,3 +234,73 @@ Jede Veredelung (`decorations[]`) kann zusätzlich enthalten:
 | `size` | Größenstufe `s` (klein), `m` (normal), `l` (groß) relativ zur Druckzone |
 
 Alle bisherigen Felder bleiben unverändert.
+
+## Ergänzung ab 10.11.0: Sammelbestellung und Größentausch
+
+### Sammelbestellung (Bestellfenster)
+
+Pro Firma lässt sich in der Kundenakte (Regeln & Budget → „Umtausch, Jahreswechsel & Sammelbestellung“) eine Sammelbestellung einstellen: monatlich zu einem Stichtag (1.–28.) oder alle 14 Tage ab einem Starttermin. Freigegebene Bestellungen erhalten dann wie bisher sofort ihren Übergabedatensatz (`order.approved`), werden aber erst **ab dem Stichtag 00:00 Uhr** gesendet bzw. abgerufen (`available_at`). Am Datensatz selbst ändert sich nichts.
+
+- Push: Die Warteschlange sendet zurückgehaltene Aufträge beim ersten Cronlauf nach dem Stichtag.
+- Pull: `GET /api/v1/auftraege?status=offen` liefert zurückgehaltene Aufträge erst ab dem Stichtag. `status=offen|alle|quittiert` liefern außerdem nur noch Bestellaufträge (`event = order.approved`), keine Tauschaufträge.
+- Wird die Sammelbestellung geändert oder abgeschaltet, werden noch zurückgehaltene Aufträge neu terminiert bzw. sofort freigegeben.
+
+### Größentausch: Datensatz `workwearcenter.exchange.v1`
+
+Wird ein Antrag auf **Größentausch** freigegeben (durch Verantwortliche oder – ohne interne Freigabe – direkt), legt WorkwearCenter einen eigenen Übergabedatensatz an:
+
+- Tabelle `yw_handover`, `event = exchange.approved:<Antrags-ID>` (je Antrag eindeutig; der Zusatz `:<ID>` wird beim Senden entfernt, `X-WWC-Event` lautet `exchange.approved`).
+- `order_id` = ursprüngliche Bestellung.
+- **Rückgaben** erzeugen keinen Übergabedatensatz (keine Produktion nötig); sie werden in der Verwaltung unter „Umtausch & Retouren“ bearbeitet.
+
+**Versand je Format**
+
+| `handover_format` | Verhalten |
+|---|---|
+| `workwearcenter` (eigenes Schema v1) | wird wie ein Auftrag per Push gesendet (gleiche Signatur `X-WWC-*`, `X-WWC-Event: exchange.approved`). Der Empfänger muss das `schema` prüfen und unbekannte Schemata mit 2xx annehmen oder mit 4xx ablehnen. |
+| `auftragszentrale` | wird **nicht automatisch gesendet**. Der Datensatz hat den Status `manual` („Manuell übertragen“). Die Verwaltung überträgt den Tausch von Hand in die Auftragszentrale und markiert ihn unter „Umtausch & Retouren“ als übertragen (optional mit Auftragsnummer, landet in `external_reference`). |
+
+Das Zielformat der Auftragszentrale für Tauschaufträge ist noch nicht festgelegt. Sobald die Auftragszentrale ein Ereignis dafür anbietet, wird hier eine Übersetzung analog zu `order.upsert` ergänzt; bis dahin bleibt es beim manuellen Weg, damit kein Tausch verloren geht oder als Neubestellung missverstanden wird.
+
+**Beispiel (echter Datensatz, gekürzt um nichts)**
+
+```json
+{
+  "schema": "workwearcenter.exchange.v1",
+  "event": "exchange.approved",
+  "delivery_id": "4d588b11590d361a835ad861d038af8a",
+  "generated_at": "2026-10-09T15:18:39+02:00",
+  "source": { "system": "WorkwearCenter", "version": "10.11.0", "url": "https://workwearcenter.de" },
+  "exchange": {
+    "id": 7,
+    "number": "WWC-000015-T7",
+    "type": "exchange",
+    "status": "approved",
+    "reason": "fällt zu klein aus",
+    "requested_at": "2026-10-09T15:18:39+02:00",
+    "approved_at": "2026-10-09T15:18:39+02:00",
+    "approved_by": { "id": 12, "name": "Vize" },
+    "quantity": 1,
+    "old_size": "M",
+    "new_size": "L",
+    "budget_delta_cents": 0
+  },
+  "order": { "id": 15, "number": "WWC-000015", "external_reference": null, "line": 1 },
+  "customer": { "company_id": 5, "slug": "firma-a", "legal_name": "Firma-A GmbH", "shop_name": "Firma-A Shop" },
+  "employee": { "id": 13, "name": "Mia", "email": "mia@a.de", "department": "Bau", "cost_center": "KST1", "location": "", "employee_number": "" },
+  "delivery": { "mode": "delivery", "company": "Firma-A GmbH", "address_lines": ["Musterstr. 1", "33154 Salzkotten"] },
+  "item": {
+    "line": 1, "product_id": 3, "sku": "E2E-POLO", "name": "Polo E2E", "description": "Test", "color": "Navy",
+    "size": "L", "original_size": "M", "quantity": 1, "vat_rate": 19,
+    "unit_net_cents": 2000, "unit_gross_cents": 2380, "line_net_cents": 2000, "line_gross_cents": 2380,
+    "employee_share_cents": 0, "company_share_cents": 2380,
+    "decorations": [], "base_decoration": { "type": "", "details": "" }
+  }
+}
+```
+
+Feldhinweise:
+- `exchange.number`: `WWC-<Bestellnummer>-T<Antrags-ID>`, eindeutig je Tausch.
+- `item`: die ursprüngliche Position (Artikel, Veredelungen, Preise) – `size` ist die **neue** Größe, `original_size` die bisherige, `quantity` die getauschte Menge. Preise/Anteile in `item` beziehen sich auf die ursprüngliche Position; ab `line_*` gelten sie für die ganze ursprüngliche Zeile.
+- `exchange.budget_delta_cents`: Preisdifferenz für das Mitarbeiterbudget (0 = gleicher Preis; positiv = Mehrkosten, z. B. Übergröße). Rein informativ – die Verrechnung erfolgt im WorkwearCenter.
+- Erwartete Abwicklung: Ware in `original_size` zurücknehmen, gleiche Ware in `size` mit identischer Veredelung produzieren und an `delivery` liefern.
