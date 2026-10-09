@@ -423,7 +423,7 @@ return [
     'x.mail.view_orders' => 'Siparişleri gör',
     'x.mail.created_subject' => '{type} talep edildi',
     'x.mail.received' => 'talebin bize ulaştı.',
-    'x.mail.approval_subject' => 'Onay için {type}: {order}',
+    'x.mail.approval_subject' => '{type} talebi onay bekliyor: {order}',
     'x.mail.approval_body' => 'Bir talep ({type}) kararını bekliyor.',
     'x.mail.review' => 'Talebi incele',
     'x.mail.new_state' => 'talebinin yeni durumu: {status}.',
