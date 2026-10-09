@@ -173,46 +173,82 @@ function yw_preview_banner(array $company): string {
 
 /* ---------- Datensicherung ---------- */
 
-function yw_backup_sql(): string {
-    $pdo=db();$out="-- WorkwearCenter Datensicherung ".date('Y-m-d H:i:s')."\nSET FOREIGN_KEY_CHECKS=0;\nSET NAMES utf8mb4;\n\n";
+/**
+ * Schreibt den SQL-Dump Zeile für Zeile in $fh. Großkunden: ungepufferte Abfrage und Datei statt String,
+ * damit weder eine ganze Tabelle noch der ganze Dump im PHP-Speicher liegt; der Snapshot hält Aufträge und Positionen konsistent.
+ * @param resource $fh
+ */
+function yw_backup_write($fh): void {
+    $pdo=db();
+    $put=static function(string $s) use($fh): void {if(fwrite($fh,$s)!==strlen($s))throw new RuntimeException('Sicherungsdatei konnte nicht geschrieben werden (Speicherplatz voll?).');};
+    // TIMESTAMP-Spalten werden in der Zeitzone dieser Verbindung ausgegeben – beim Einspielen dieselbe setzen, sonst verschieben sie sich um den Berlin-Offset.
+    $tz=(string)$pdo->query('SELECT @@session.time_zone')->fetchColumn();
+    $put("-- WorkwearCenter Datensicherung ".date('Y-m-d H:i:s')."\nSET FOREIGN_KEY_CHECKS=0;\nSET NAMES utf8mb4;\nSET time_zone=".$pdo->quote($tz).";\n\n");
     $tables=$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
-    foreach($tables as $t){
-        $create=$pdo->query('SHOW CREATE TABLE `'.$t.'`')->fetch(PDO::FETCH_NUM);
-        $out.="DROP TABLE IF EXISTS `$t`;\n".$create[1].";\n\n";
-        $rows=$pdo->query('SELECT * FROM `'.$t.'`');$batch=[];
-        foreach($rows as $row){
-            $vals=[];foreach($row as $v)$vals[]=$v===null?'NULL':$pdo->quote((string)$v);
-            $batch[]='('.implode(',',$vals).')';
-            if(count($batch)>=200){$out.="INSERT INTO `$t` VALUES\n".implode(",\n",$batch).";\n";$batch=[];}
+    $buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);$rows=null;
+    $pdo->exec('START TRANSACTION WITH CONSISTENT SNAPSHOT');
+    try{
+        foreach($tables as $t){
+            $create=$pdo->query('SHOW CREATE TABLE `'.$t.'`')->fetch(PDO::FETCH_NUM);
+            $put("DROP TABLE IF EXISTS `$t`;\n".$create[1].";\n\n");
+            $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,false);
+            $rows=$pdo->query('SELECT * FROM `'.$t.'`',PDO::FETCH_NUM);$batch=[];
+            foreach($rows as $row){
+                $vals=[];foreach($row as $v)$vals[]=$v===null?'NULL':$pdo->quote((string)$v);
+                $batch[]='('.implode(',',$vals).')';
+                if(count($batch)>=200){$put("INSERT INTO `$t` VALUES\n".implode(",\n",$batch).";\n");$batch=[];}
+            }
+            $rows->closeCursor();$rows=null;
+            $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);
+            if($batch)$put("INSERT INTO `$t` VALUES\n".implode(",\n",$batch).";\n");
+            $put("\n");
         }
-        if($batch)$out.="INSERT INTO `$t` VALUES\n".implode(",\n",$batch).";\n";
-        $out.="\n";
+        $put("SET FOREIGN_KEY_CHECKS=1;\n");
+    }finally{
+        if($rows instanceof PDOStatement)$rows->closeCursor();
+        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);
+        try{$pdo->exec('COMMIT');}catch(Throwable $ignored){}
     }
-    return $out."SET FOREIGN_KEY_CHECKS=1;\n";
+}
+
+function yw_backup_sql(): string {
+    $fh=fopen('php://temp','w+b');yw_backup_write($fh);rewind($fh);$sql=(string)stream_get_contents($fh);fclose($fh);return $sql;
 }
 
 function yw_backup_download(): never {
     require_admin(); yw_block_cross_site_get();
-    @set_time_limit(300);
-    $sql=yw_backup_sql();
+    @set_time_limit(900);
     $name='workwearcenter-sicherung-'.date('Y-m-d-Hi');
     $root=dirname(__DIR__,2);
-    if(class_exists('ZipArchive')){
-        $tmp=tempnam(sys_get_temp_dir(),'wwc');$zip=new ZipArchive();
-        if($zip->open($tmp,ZipArchive::OVERWRITE)===true){
-            $zip->addFromString('datenbank.sql',$sql);
-            $zip->addFromString('LIESMICH.txt',"WorkwearCenter-Sicherung vom ".date('d.m.Y H:i')."\n\nWiederherstellen:\n1. datenbank.sql in phpMyAdmin importieren (vorher die Datenbank leeren).\n2. Ordner uploads/ auf den Webspace kopieren.\n3. config.php bleibt wie sie ist.\n");
-            $dir=$root.'/uploads';
-            if(is_dir($dir)){$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir,FilesystemIterator::SKIP_DOTS));foreach($it as $f){if(!$f->isFile())continue;$rel='uploads/'.substr($f->getPathname(),strlen($dir)+1);if(preg_match('/\.(php\d?|phtml|phar)$/i',$rel))continue;$zip->addFile($f->getPathname(),$rel);}}
-            $zip->close();
-            set_site_setting('last_backup_at',date('Y-m-d H:i:s'));audit_log('system.backup_downloaded','system',null,['bytes'=>filesize($tmp)]);
-            header('Content-Type: application/zip');header('Content-Disposition: attachment; filename="'.$name.'.zip"');header('Content-Length: '.filesize($tmp));header('Cache-Control: no-store');
-            readfile($tmp);@unlink($tmp);exit;
+    // Dump erst in eine temporäre Datei, dann (falls vorhanden) per ZipArchive aus der Datei packen.
+    $sqlFile=(string)tempnam(sys_get_temp_dir(),'wwcsql');$tmp='';
+    $cleanup=static function() use(&$sqlFile,&$tmp): void {if($sqlFile!=='')@unlink($sqlFile);if($tmp!=='')@unlink($tmp);};
+    try{
+        $fh=$sqlFile!==''?fopen($sqlFile,'wb'):false;
+        if(!$fh)throw new RuntimeException('Temporäre Sicherungsdatei konnte nicht angelegt werden.');
+        try{yw_backup_write($fh);}finally{fclose($fh);}
+        $file=$sqlFile;$type='application/sql; charset=UTF-8';$ext='.sql';
+        if(class_exists('ZipArchive')){
+            $tmp=(string)tempnam(sys_get_temp_dir(),'wwc');$zip=new ZipArchive();
+            if($tmp!=='' && $zip->open($tmp,ZipArchive::OVERWRITE)===true){
+                $zip->addFile($sqlFile,'datenbank.sql');
+                $zip->addFromString('LIESMICH.txt',"WorkwearCenter-Sicherung vom ".date('d.m.Y H:i')."\n\nWiederherstellen:\n1. datenbank.sql in phpMyAdmin importieren (vorher die Datenbank leeren).\n2. Ordner uploads/ auf den Webspace kopieren.\n3. config.php bleibt wie sie ist.\n");
+                $dir=$root.'/uploads';
+                if(is_dir($dir)){$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir,FilesystemIterator::SKIP_DOTS));foreach($it as $f){if(!$f->isFile())continue;$rel='uploads/'.substr($f->getPathname(),strlen($dir)+1);if(preg_match('/\.(php\d?|phtml|phar)$/i',$rel))continue;$zip->addFile($f->getPathname(),$rel);}}
+                if(!$zip->close())throw new RuntimeException('ZIP-Datei konnte nicht geschrieben werden (Speicherplatz voll?).');
+                $file=$tmp;$type='application/zip';$ext='.zip';
+            }
         }
+        clearstatcache();$bytes=(int)filesize($file);
+        set_site_setting('last_backup_at',date('Y-m-d H:i:s'));audit_log('system.backup_downloaded','system',null,['bytes'=>$bytes]);
+    }catch(Throwable $e){
+        $cleanup();error_log('WorkwearCenter backup: '.$e->getMessage());
+        flash('error','Die Datensicherung konnte nicht erstellt werden. Bitte freien Speicherplatz beim Hoster prüfen und das Serverprotokoll ansehen.');
+        redirect('/admin?tab=system');
     }
-    set_site_setting('last_backup_at',date('Y-m-d H:i:s'));audit_log('system.backup_downloaded','system',null,['bytes'=>strlen($sql)]);
-    header('Content-Type: application/sql; charset=UTF-8');header('Content-Disposition: attachment; filename="'.$name.'.sql"');header('Cache-Control: no-store');
-    echo $sql;exit;
+    while(ob_get_level()>0)@ob_end_clean(); // große Datei nicht in einen Ausgabepuffer laden
+    header('Content-Type: '.$type);header('Content-Disposition: attachment; filename="'.$name.$ext.'"');header('Content-Length: '.$bytes);header('Cache-Control: no-store');
+    readfile($file);$cleanup();exit;
 }
 
 /** Tage seit der letzten Sicherung, null wenn nie. */
