@@ -5,6 +5,13 @@ require_once __DIR__.'/i18n.php'; // 10.12: Übersetzungen, Zahlen- und Datumsfo
 
 function db(): PDO { global $pdo; return $pdo; }
 function cfg(string $key): mixed { global $config; return $config[$key] ?? null; }
+/** Exporte: Zeilen ungepuffert einzeln vom Server holen statt das ganze Ergebnis in den PHP-Speicher; im Callback keine weiteren Abfragen. */
+function yw_each_row(string $sql,array $params,callable $fn): void {
+    $pdo=db();$buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);$q=null;
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,false);
+    try{$q=$pdo->prepare($sql);$q->execute($params);foreach($q as $row)$fn($row);}
+    finally{if($q)$q->closeCursor();$pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);}
+}
 function e(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function path_only(): string { return '/' . ltrim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/'), '/'); }
 function is_post(): bool { return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'; }

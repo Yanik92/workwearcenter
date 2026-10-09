@@ -345,12 +345,13 @@ function export_orders_csv(): void {
     // 10.11: Beträge je Position (Rundung je Position wie in der Rechnung); Stückpreise nur zur Information.
     fputcsv($out,['Auftrag','Firma','Mitarbeiter','Abteilung','Kostenstelle','Produktion','Datum','Artikel','Größe','Menge','Einzel netto EUR','Einzel brutto EUR','Position netto EUR','Position brutto EUR','Firmenanteil Position EUR','Mitarbeiteranteil Position EUR','Versand brutto EUR (nur erste Position)'],';','"','');
     $last=null;$eur=static fn(int $cents): string => number_format($cents/100,2,',','');
-    foreach(db()->query($sql) as $row){
+    @set_time_limit(300);
+    yw_each_row($sql,[],function(array $row) use($out,&$last,$eur): void { // Großkunden: ungepuffert streamen
         $amounts=yw_order_item_amounts($row);
         $values=[$row['id'],$row['legal_name'],$row['employee_name'],$row['department'],$row['cost_center'],$row['fulfillment_status'],$row['created_at'],$row['product_name'],$row['size'],$row['quantity'],$eur((int)$row['unit_net_cents']),$eur((int)$row['unit_gross_cents']),$eur($amounts['net']),$eur($amounts['gross']),$eur($amounts['company']),$eur($amounts['employee']),$last===$row['id']?'':$eur((int)$row['shipping_gross_cents'])];
         $last=$row['id'];
         fputcsv($out,array_map('yw_csv_safe',$values),';','"','');
-    }
+    });
     fclose($out);
 }
 

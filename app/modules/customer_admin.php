@@ -185,18 +185,12 @@ function yw_customer_report_export(string $slug): never {
     $actor=company_portal_account($company);if(!$actor||!account_is_manager($actor)){http_response_code(403);exit('Kein Zugriff.');}
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$start,$end]=yw_report_period($company,$previous);
-    $q=db()->prepare("SELECT o.id,o.created_at,o.status,o.fulfillment_status,o.shipping_gross_cents,o.shipping_employee_cents,o.shipping_company_cents,
-            COALESCE(ea.name,'') name,COALESCE(ea.employee_number,'') employee_number,COALESCE(ea.department,'') department,COALESCE(ea.cost_center,'') cost_center,COALESCE(ea.location,'') location
-        FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id
-        WHERE o.company_id=? AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? ORDER BY o.id");
-    $q->execute([(int)$company['id'],$start,$end]);$orders=$q->fetchAll();
-    $items=[];
-    if($orders){
-        $ids=array_map(fn($o)=>(int)$o['id'],$orders);
-        $in=implode(',',array_fill(0,count($ids),'?'));
-        $iq=db()->prepare("SELECT order_id,product_name,size,quantity,unit_price_cents,unit_gross_cents,employee_share_cents,company_share_cents,line_net_cents,line_gross_cents,line_employee_cents,line_company_cents FROM order_items WHERE order_id IN ($in) ORDER BY id");
-        $iq->execute($ids);foreach($iq as $row)$items[(int)$row['order_id']][]=$row;
-    }
+    // Großkunden: eine Abfrage (statt IN-Liste mit einem Platzhalter je Bestellung, max. 65.535), ungepuffert gestreamt.
+    $sql="SELECT o.id,o.created_at,o.status,o.fulfillment_status,o.shipping_gross_cents,o.shipping_employee_cents,o.shipping_company_cents,
+            COALESCE(ea.name,'') name,COALESCE(ea.employee_number,'') employee_number,COALESCE(ea.department,'') department,COALESCE(ea.cost_center,'') cost_center,COALESCE(ea.location,'') location,
+            i.id item_id,i.product_name,i.size,i.quantity,i.unit_price_cents,i.unit_gross_cents,i.employee_share_cents,i.company_share_cents,i.line_net_cents,i.line_gross_cents,i.line_employee_cents,i.line_company_cents
+        FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN order_items i ON i.order_id=o.id
+        WHERE o.company_id=? AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? ORDER BY o.id,i.id";
     audit_log('customer.report_export','company',(int)$company['id'],['company_id'=>(int)$company['id'],'period_start'=>$start]);
     $statusLabels=['pending'=>'Wartet auf Freigabe','approved'=>'Freigegeben'];
     header('Content-Type: text/csv; charset=UTF-8');
@@ -204,16 +198,22 @@ function yw_customer_report_export(string $slug): never {
     header('Cache-Control: no-store');
     $out=fopen('php://output','wb');fwrite($out,"\xEF\xBB\xBF");
     fputcsv($out,['Datum','Bestellung','Status','Produktionsstand','Mitarbeiter','Personalnummer','Abteilung','Kostenstelle','Standort','Artikel','Größe','Menge','Einzelpreis brutto','Summe brutto','Mitarbeiteranteil','Firmenanteil'],';','"','');
-    foreach($orders as $o){
-        $base=[date('d.m.Y',strtotime((string)$o['created_at'])),yw_order_number((int)$o['id']),$statusLabels[$o['status']]??$o['status'],$o['status']==='approved'?company_portal_fulfillment_status((string)($o['fulfillment_status']??'')):'',$o['name'],$o['employee_number'],$o['department'],$o['cost_center'],$o['location']];
-        foreach($items[(int)$o['id']]??[] as $it){
-            $qty=(int)$it['quantity'];$amounts=yw_order_item_amounts($it);
-            fputcsv($out,array_map('yw_csv_safe',array_merge($base,[$it['product_name'],$it['size'],$qty,yw_report_money((int)$it['unit_gross_cents']),yw_report_money($amounts['gross']),yw_report_money($amounts['employee']),yw_report_money($amounts['company'])])),';','"','');
+    // Versandzeile folgt wie bisher nach der letzten Position einer Bestellung.
+    $shipping=static function(?array $o,array $base) use($out): void {
+        if($o && (int)$o['shipping_gross_cents']>0)fputcsv($out,array_map('yw_csv_safe',array_merge($base,['Versand','',1,yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_employee_cents']),yw_report_money((int)$o['shipping_company_cents'])])),';','"','');
+    };
+    $prev=null;$base=[];
+    @set_time_limit(300);
+    yw_each_row($sql,[(int)$company['id'],$start,$end],function(array $o) use($out,$statusLabels,$shipping,&$prev,&$base): void {
+        if(!$prev || (int)$prev['id']!==(int)$o['id']){
+            $shipping($prev,$base);$prev=$o;
+            $base=[date('d.m.Y',strtotime((string)$o['created_at'])),yw_order_number((int)$o['id']),$statusLabels[$o['status']]??$o['status'],$o['status']==='approved'?company_portal_fulfillment_status((string)($o['fulfillment_status']??'')):'',$o['name'],$o['employee_number'],$o['department'],$o['cost_center'],$o['location']];
         }
-        if((int)$o['shipping_gross_cents']>0){
-            fputcsv($out,array_map('yw_csv_safe',array_merge($base,['Versand','',1,yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_employee_cents']),yw_report_money((int)$o['shipping_company_cents'])])),';','"','');
-        }
-    }
+        if($o['item_id']===null)return;
+        $qty=(int)$o['quantity'];$amounts=yw_order_item_amounts($o);
+        fputcsv($out,array_map('yw_csv_safe',array_merge($base,[$o['product_name'],$o['size'],$qty,yw_report_money((int)$o['unit_gross_cents']),yw_report_money($amounts['gross']),yw_report_money($amounts['employee']),yw_report_money($amounts['company'])])),';','"','');
+    });
+    $shipping($prev,$base);
     fclose($out);exit;
 }
 
