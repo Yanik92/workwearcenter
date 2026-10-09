@@ -202,7 +202,8 @@ function yw_exchange_create(array $company,array $account,int $itemId,string $ty
     $qty=(int)$quantity;
     try{
         db()->beginTransaction();
-        $q=db()->prepare('SELECT * FROM companies WHERE id=? AND active=1 LIMIT 1');$q->execute([(int)$company['id']]);$company=$q->fetch();
+        // Firmensperre wie im Checkout: Mehrkosten eines Größentauschs und parallele Bestellungen prüfen das Budget nacheinander.
+        $q=db()->prepare('SELECT * FROM companies WHERE id=? AND active=1 LIMIT 1 FOR UPDATE');$q->execute([(int)$company['id']]);$company=$q->fetch();
         if(!$company)throw new DomainException(t('err.shop_unavailable'));
         // Position muss zu einer eigenen, freigegebenen Bestellung dieser Firma gehören.
         $q=db()->prepare("SELECT i.*,o.status order_status,o.fulfillment_status,o.production_updated_at,o.decided_at,o.created_at order_created_at,o.employee_account_id FROM order_items i JOIN orders o ON o.id=i.order_id WHERE i.id=? AND o.company_id=? AND o.employee_account_id=? FOR UPDATE");
