@@ -1024,6 +1024,8 @@ function company_portal_products(array $company,array $account): void {
 
     echo '<div class="cp-welcome cp-welcome-products"><div><h1>Deine Firmenkollektion</h1><p>Wähle Artikel, Farbe, Größe und Menge. Die Kosten siehst du vor dem Absenden in deiner Auswahl.</p></div>'.yw_shop_budget_box($company,$account).'</div>';
 
+    echo yw_batch_shop_notice($company); // 10.11: Sammelbestellung
+
     if(!$products){
         echo '<div class="empty">Für dein Ausstattungsprofil sind derzeit keine Produkte freigeschaltet. Bitte wende dich an deinen Firmenverantwortlichen.</div>';
         return;
