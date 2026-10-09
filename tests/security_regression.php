@@ -135,4 +135,37 @@ test_ok(!str_contains(strtolower($prefixed),'javascript')&&str_contains($prefixe
 test_ok(yw_katalog_product_sku('jn840','Navy Blue')==='JN840-NAVYBLUE','Katalog: SKU je Farbe');
 test_ok(yw_katalog_base_sku('JN840-NAVYBLUE','navy blue')==='JN840' && yw_katalog_base_sku('JN840','navy')==='JN840','Katalog: Grund-SKU wird erkannt (alt und neu)');
 
+// 10.11: Sammelbestellung, Jahreswechsel-Mail, Umtausch & Retouren, Freigabe-Links
+$berlin=new DateTimeZone('Europe/Berlin');
+test_ok(yw_batch_next_date('monthly',1,null,new DateTimeImmutable('2026-10-09 13:00',$berlin))->format('Y-m-d H:i')==='2026-11-01 00:00','Sammeltermin monatlich: nächster Monatserster');
+test_ok(yw_batch_next_date('monthly',15,null,new DateTimeImmutable('2026-10-09 13:00',$berlin))->format('Y-m-d')==='2026-10-15','Sammeltermin monatlich: Stichtag im laufenden Monat');
+test_ok(yw_batch_next_date('monthly',1,null,new DateTimeImmutable('2026-11-01 00:00',$berlin))->format('Y-m-d')==='2026-12-01','Sammeltermin: genau am Stichtag gilt der nächste Termin');
+test_ok(yw_batch_next_date('monthly',28,null,new DateTimeImmutable('2026-12-30 08:00',$berlin))->format('Y-m-d')==='2027-01-28','Sammeltermin über den Jahreswechsel');
+test_ok(yw_batch_next_date('monthly',99,null,new DateTimeImmutable('2026-02-27 08:00',$berlin))->format('Y-m-d')==='2026-02-28','Stichtag wird auf 1–28 begrenzt');
+test_ok(yw_batch_next_date('biweekly',1,'2026-10-01',new DateTimeImmutable('2026-10-09 13:00',$berlin))->format('Y-m-d')==='2026-10-15','Sammeltermin alle 14 Tage ab Starttermin');
+test_ok(yw_batch_next_date('biweekly',1,'2026-10-01',new DateTimeImmutable('2026-10-15 00:00',$berlin))->format('Y-m-d')==='2026-10-29','14-Tage-Termin genau am Stichtag springt weiter');
+test_ok(yw_batch_next_date('biweekly',1,'2026-03-20',new DateTimeImmutable('2026-04-02 12:00',$berlin))->format('Y-m-d H:i')==='2026-04-03 00:00','14-Tage-Termin über die Sommerzeitumstellung');
+test_ok(yw_batch_next_date('biweekly',1,'2026-12-24',new DateTimeImmutable('2026-10-09 13:00',$berlin))->format('Y-m-d')==='2026-12-24','zukünftiger Starttermin ist der erste Sammeltermin');
+test_ok(yw_batch_next_date('off',1,null)===null && yw_batch_next_date('irgendwas',1,null)===null,'ohne Sammelbestellung kein Stichtag');
+test_ok(yw_budget_mail_due('2026-10-01 00:00:00',null,new DateTimeImmutable('2026-10-03 07:00',$berlin)),'Jahreswechsel-Mail in den ersten Tagen des Budgetjahres fällig');
+test_ok(!yw_budget_mail_due('2026-10-01 00:00:00','2026-10-01',new DateTimeImmutable('2026-10-03 07:00',$berlin)),'Jahreswechsel-Mail mit Merker nicht doppelt');
+test_ok(yw_budget_mail_due('2026-10-01 00:00:00','2025-10-01',new DateTimeImmutable('2026-10-03 07:00',$berlin)),'Merker des Vorjahres verhindert die neue Mail nicht');
+test_ok(!yw_budget_mail_due('2026-01-01 00:00:00',null,new DateTimeImmutable('2026-10-09 07:00',$berlin)),'Einschalten mitten im Budgetjahr löst keine Mail aus');
+test_ok(yw_exchange_budget_effect('return','done',-2380)===-2380 && yw_exchange_budget_effect('return','received',-2380)===0,'Rückgabe: Gutschrift erst nach Abschluss');
+test_ok(yw_exchange_budget_effect('exchange','requested',500)===500 && yw_exchange_budget_effect('exchange','rejected',500)===0,'Tausch: Mehrkosten reservieren Budget ab Antrag, Ablehnung gibt frei');
+test_ok(yw_exchange_budget_effect('exchange','approved',-300)===0 && yw_exchange_budget_effect('exchange','done',-300)===-300 && yw_exchange_budget_effect('exchange','done',0)===0,'Tausch: Minderkosten nach Abschluss, gleicher Preis neutral');
+test_ok(yw_exchange_transition_allowed('requested','approved') && yw_exchange_transition_allowed('received','done') && !yw_exchange_transition_allowed('done','rejected') && !yw_exchange_transition_allowed('rejected','approved') && !yw_exchange_transition_allowed('approved','requested'),'Umtausch: nur zulässige Statuswechsel');
+test_ok(yw_exchange_window_base(['fulfillment_status'=>'shipped','production_updated_at'=>'2026-10-05 10:00:00','decided_at'=>'2026-09-01 10:00:00','created_at'=>'2026-09-01'])==='2026-10-05 10:00:00','Frist beginnt mit dem Versand');
+test_ok(yw_exchange_window_base(['fulfillment_status'=>'production','production_updated_at'=>'2026-10-05','decided_at'=>'2026-09-01 10:00:00','created_at'=>'2026-08-30'])==='2026-09-01 10:00:00','ohne Versand beginnt die Frist mit der Freigabe');
+test_ok(yw_exchange_deadline('2026-09-01 10:00:00',30)->format('Y-m-d H:i:s')==='2026-10-01 23:59:59' && yw_exchange_deadline('2026-09-01',0)===null,'Frist: 30 Tage bis Tagesende, 0 = aus');
+$xOrder=['status'=>'approved','fulfillment_status'=>'new','production_updated_at'=>null,'decided_at'=>'2026-09-01 10:00:00','created_at'=>'2026-09-01 09:00:00'];
+test_ok(yw_exchange_window_open(['exchange_window_days'=>30],$xOrder,new DateTimeImmutable('2026-10-01 20:00',$berlin)) && !yw_exchange_window_open(['exchange_window_days'=>30],$xOrder,new DateTimeImmutable('2026-10-02 00:01',$berlin)),'Frist endet am letzten Tag um Mitternacht');
+test_ok(!yw_exchange_window_open(['exchange_window_days'=>30],['status'=>'pending']+$xOrder,new DateTimeImmutable('2026-09-02',$berlin)),'nur freigegebene Bestellungen sind tauschbar');
+$sig=yw_decision_signature(str_repeat('a',32),5,7,3,'2026-10-16 10:00:00','k');
+test_ok($sig!==yw_decision_signature(str_repeat('a',32),5,8,3,'2026-10-16 10:00:00','k') && $sig!==yw_decision_signature(str_repeat('a',32),5,7,4,'2026-10-16 10:00:00','k') && $sig!==yw_decision_signature(str_repeat('a',32),5,7,3,'2026-10-23 10:00:00','k'),'Freigabe-Token: Signatur bindet Person, Firma und Ablauf');
+test_ok(yw_decision_token_parts(str_repeat('a',32).$sig)===[str_repeat('a',32),$sig] && yw_decision_token_parts(str_repeat('a',95))===null && yw_decision_token_parts(strtoupper(str_repeat('a',96)))===null,'Freigabe-Token: nur exaktes Format wird geprüft');
+$decisionMail=yw_mail_html('Freigabe',"Freigeben: https://workwearcenter.de/firma/mail-freigabe/".str_repeat('a',96)."?aktion=freigeben\nAblehnen: https://workwearcenter.de.evil.example/x");
+test_ok(str_contains($decisionMail,'>Freigeben</a>') && !str_contains($decisionMail,'evil.example/x"'),'Freigabe-Mail: Button nur für eigene Domain');
+test_ok(yw_handover_status_label('manual')[0]==='Manuell übertragen','Übergabestatus „manuell übertragen“ ist benannt');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
