@@ -277,7 +277,7 @@ function yw_probeshop_admin_box(?array $shop,?array $inquiry=null): string {
     if($shop){
         $expired=strtotime((string)$shop['expires_at'])<time();
         $html.='<div class="probeshop-box-head"><strong>Probeshop</strong> <span class="badge '.($expired?'rejected':'approved').'">'.($expired?'abgelaufen':'aktiv bis '.e(date('d.m.Y',strtotime((string)$shop['expires_at'])))).'</span></div>';
-        if(yw_probeshop_logo_path_ok((string)$shop['logo_path']))$html.='<img class="probeshop-box-logo" src="/'.e((string)$shop['logo_path']).'" alt="Logo">';
+        if(yw_probeshop_logo_path_ok((string)$shop['logo_path']))$html.='<img class="probeshop-box-logo'.(yw_probeshop_suggest_tone((string)$shop['logo_path'])==='dark'?' on-dark':'').'" src="/'.e((string)$shop['logo_path']).'" alt="Logo">';
         $html.='<p class="muted">'.(int)$shop['view_count'].'× angesehen'.(!empty($shop['last_viewed_at'])?', zuletzt '.e(date('d.m.Y H:i',strtotime((string)$shop['last_viewed_at']))):'').'</p>';
         $html.='<div class="actions"><a class="btn small primary" href="/probeshop/'.e((string)$shop['token']).'" target="_blank" rel="noopener noreferrer">Probeshop ansehen</a><button type="button" class="btn small" data-copy="'.e(yw_probeshop_url((string)$shop['token'])).'">Link kopieren</button></div>';
         $html.='<div class="actions"><form method="post" data-confirm="Neuen Link erzeugen? Der bisherige Link funktioniert dann nicht mehr; die Laufzeit beginnt neu (30 Tage).">'.csrf_field().'<input type="hidden" name="action" value="probeshop_regenerate"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="probeshop_id" value="'.(int)$shop['id'].'"><button class="btn small" type="submit">Neu erzeugen</button></form>';

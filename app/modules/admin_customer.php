@@ -132,6 +132,7 @@ function yw_customer_section_links(array $c): void {
         echo '<strong class="muted">Mitarbeiter-Login</strong><div class="copy">'.e($login).'</div><button type="button" class="btn small" data-copy="'.e($login).'">Login-Link kopieren</button><hr>';
         echo '<strong class="muted">Freigaben / Verantwortlicher</strong><div class="copy">'.e($approval).'</div><button type="button" class="btn small" data-copy="'.e($approval).'">Freigabe-Link kopieren</button>';
         echo '</div></section>';
+        echo '<section class="card"><div class="title-row"><div><h2>QR-Code-Aushang</h2><p class="muted">Druckfertige A4-Seite für Pausenraum, Werkstatt oder Spind: Firmenlogo, „Deine Arbeitskleidung bestellen“, QR-Code und die wichtigsten Schritte.</p></div><div class="actions"><a class="btn primary" href="/admin/aushang/'.(int)$c['id'].'" target="_blank" rel="noopener">Aushang mit Registrierungslink</a><a class="btn" href="/admin/aushang/'.(int)$c['id'].'?ziel=login" target="_blank" rel="noopener">Aushang mit Login-Link</a></div></div></section>';
 }
 
 /** Aufträge dieser Firma (Reiter „Aufträge“). */
@@ -217,4 +218,69 @@ function yw_customer_file(array $company,array $products): void {
         default:          yw_customer_section_overview($company);
     }
     echo '</div>';
+}
+
+/* ---------- 10.11: QR-Code-Aushang je Firma (druckbare A4-Seite) ---------- */
+
+/** Schritte auf dem Aushang – abhängig von Ziel und Registrierungsregeln der Firma. */
+function yw_poster_steps(array $company,string $target): array {
+    if($target==='login')return [
+        'QR-Code mit der Handykamera scannen.',
+        'Mit deiner E-Mail-Adresse und deinem Passwort anmelden. Passwort vergessen? Auf der Anmeldeseite einfach neu anfordern.',
+        'Artikel und Größe wählen, bestellen – den Stand deiner Bestellung siehst du jederzeit im Shop.',
+    ];
+    try{[$pin,$approval]=yw_registration_policy((string)($company['registration_mode']??'approval'));}catch(Throwable $e){[$pin,$approval]=[false,true];}
+    $steps=['QR-Code mit der Handykamera scannen.','Konto anlegen: Name, dienstliche E-Mail-Adresse und ein eigenes Passwort'.($pin?' – dazu die Firmen-PIN, die du von deiner verantwortlichen Person bekommst.':'.')];
+    if($approval)$steps[]='Kurz warten: Deine verantwortliche Person schaltet dich frei. Du bekommst dann eine E-Mail.';
+    $steps[]='Größe wählen und bestellen – fertig. Den Stand deiner Bestellung siehst du jederzeit im Shop.';
+    return $steps;
+}
+
+function yw_admin_poster_page(int $companyId): void {
+    require_admin();
+    $q=db()->prepare('SELECT * FROM companies WHERE id=? LIMIT 1');$q->execute([$companyId]);$c=$q->fetch();
+    if(!$c){http_response_code(404);simple_message('Firma nicht gefunden','Diese Firma gibt es nicht (mehr).');return;}
+    $target=($_GET['ziel']??'')==='login'?'login':'registrieren';
+    $url=workwearcenter_url($c['slug'].'/'.$target);
+    $logo=yw_company_logo_path($c);
+    $primary=color_ok((string)($c['primary_color']??''))?(string)$c['primary_color']:'#17324d';
+    $accent=color_ok((string)($c['accent_color']??''))?(string)$c['accent_color']:'#f47b20';
+    render_head('Aushang – '.$c['shop_name']);
+    echo '<style>
+    @page{size:A4 portrait;margin:0}
+    body{background:#e9ecf0;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#14233a}
+    .poster-tools{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 18px;background:#10263a;color:#fff}
+    .poster-tools .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.poster-tools .btn.primary{background:var(--accent);border-color:var(--accent)}.poster-tools .btn.active{background:#fff;color:#10263a}
+    .poster-tools .poster-tools-hint{margin-left:auto;font-size:.85rem;opacity:.75}
+    .poster-warn{background:#fff3cd;color:#6b4e00;padding:10px 18px;font-weight:600}
+    .poster{box-sizing:border-box;width:210mm;min-height:297mm;margin:24px auto;background:#fff;box-shadow:0 10px 40px rgba(16,24,40,.18);display:flex;flex-direction:column;border-top:10mm solid var(--poster-primary)}
+    .poster-inner{flex:1;display:flex;flex-direction:column;padding:14mm 18mm 12mm}
+    .poster-brand{display:flex;align-items:center;gap:4mm 6mm;flex-wrap:wrap;min-height:24mm}.poster-brand img{max-height:24mm;max-width:min(80mm,100%);object-fit:contain}.poster-brand strong{font-size:15pt;color:#526171;font-weight:700}.poster-brand-text strong{font-size:26pt;color:var(--poster-primary);font-weight:800}
+    .poster h1{font-size:34pt;line-height:1.05;letter-spacing:-.02em;margin:12mm 0 4mm;color:var(--poster-primary)}
+    .poster-lead{font-size:14pt;color:#4a5568;margin:0 0 9mm}
+    .poster-main{display:grid;grid-template-columns:82mm 1fr;gap:12mm;align-items:start}
+    .poster-qr{border:2mm solid var(--poster-accent);border-radius:5mm;padding:4mm;background:#fff}
+    .poster-qr [data-qr]{width:100%;aspect-ratio:1/1}.poster-qr svg{width:100%;height:100%;display:block}
+    .poster-url{margin-top:3mm;font-size:9.5pt;word-break:break-all;color:#4a5568;text-align:center}
+    .poster-steps{list-style:none;counter-reset:s;margin:0;padding:0;display:grid;gap:6mm}
+    .poster-steps li{counter-increment:s;display:grid;grid-template-columns:11mm 1fr;gap:4mm;align-items:start;font-size:13pt;line-height:1.4}
+    .poster-steps li::before{content:counter(s);display:grid;place-items:center;width:11mm;height:11mm;border-radius:50%;background:var(--poster-primary);color:#fff;font-weight:800;font-size:13pt}
+    .poster-foot{margin-top:auto;padding-top:8mm;border-top:.4mm solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:6mm;font-size:10pt;color:#6b7686}
+    .poster-foot img{height:7mm;width:auto}
+    @media print{body{background:#fff}.poster-tools,.poster-warn{display:none!important}.poster{margin:0;box-shadow:none;width:210mm;height:297mm;min-height:0;page-break-after:avoid}}
+    @media screen and (max-width:820px){.poster{width:100%;min-height:0;margin:0;border-top-width:6mm}.poster-inner{padding:22px 18px}.poster h1{font-size:26pt}.poster-main{grid-template-columns:minmax(0,1fr)}.poster-qr{max-width:300px}.poster-tools-hint{display:none}}
+    </style>';
+    echo '<div class="poster-tools"><a class="btn small" href="'.e(yw_customer_url($companyId,'zugaenge')).'">← Zurück zur Kundenakte</a>';
+    echo '<span>QR-Code führt zu:</span><a class="btn small'.($target==='registrieren'?' active':'').'" href="/admin/aushang/'.$companyId.'">Registrierung</a><a class="btn small'.($target==='login'?' active':'').'" href="/admin/aushang/'.$companyId.'?ziel=login">Anmeldung</a>';
+    echo '<button type="button" class="btn small primary" data-print>Drucken</button><span class="poster-tools-hint">Tipp: Im Druckdialog „Ränder: keine“ und „Hintergrundgrafiken“ wählen.</span></div>';
+    if((int)($c['active']??1)!==1)echo '<div class="poster-warn">Achtung: Dieser Firmenshop ist deaktiviert – der QR-Code funktioniert erst nach dem Aktivieren.</div>';
+    echo '<main class="poster" style="--poster-primary:'.e($primary).';--poster-accent:'.e($accent).'"><div class="poster-inner">';
+    echo '<div class="poster-brand'.($logo===''?' poster-brand-text':'').'">'.($logo!==''?'<img src="/'.e($logo).'" alt="'.e($c['shop_name']).'">':'').'<strong>'.e($c['shop_name']).'</strong></div>';
+    echo '<h1>Deine Arbeitskleidung bestellen</h1><p class="poster-lead">'.($target==='login'?'Einfach im Firmenshop anmelden – am Handy oder am Computer.':'Einmal registrieren, dann selbst bestellen – am Handy oder am Computer.').'</p>';
+    echo '<div class="poster-main"><div><div class="poster-qr"><div data-qr="'.e($url).'" role="img" aria-label="QR-Code zu '.e($url).'"></div></div><div class="poster-url">'.e(preg_replace('#^https://#','',$url)).'</div></div>';
+    echo '<ol class="poster-steps">';foreach(yw_poster_steps($c,$target) as $step)echo '<li><span>'.e($step).'</span></li>';echo '</ol></div>';
+    echo '<div class="poster-foot"><span>Fragen zur Bestellung? Wende dich an deine verantwortliche Person.</span><img src="/assets/media/workwearcenter-logo-dunkel.png" alt="WorkwearCenter"></div>';
+    echo '</div></main>';
+    echo '<script src="/assets/vendor/qrcode.js" defer></script>';
+    render_foot();
 }

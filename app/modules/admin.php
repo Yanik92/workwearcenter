@@ -124,7 +124,7 @@ function admin_page(): void {
     echo admin_backend_style();
 
     echo '<header class="admin-topbar"><div class="wrap admin-topbar-inner">'.site_brand_html(false)
-        .'<div class="admin-topbar-title"><strong>WorkwearCenter Verwaltung</strong><small>Zentrale Administration</small></div>'
+        .'<div class="admin-topbar-title"><span class="admin-topbar-badge">Verwaltung</span></div>'
         .'<form method="get" class="admin-search" role="search"><input type="hidden" name="tab" value="suche"><input type="search" name="q" value="'.e($tab==='suche'?(string)($_GET['q']??''):'').'" placeholder="Suchen: Firma, Auftrag, Person, Artikel" aria-label="Suche"></form>'
         .'<a class="btn small" href="/admin?tab=account">Mein Konto</a><form method="post" action="/admin/logout">'.csrf_field().'<button class="btn small" type="submit">Abmelden</button></form>'
         .'</div></header>';
@@ -855,7 +855,7 @@ function admin_backend_style(): string {
     .admin-topbar{background:#10263a;border-bottom:4px solid var(--accent);position:sticky;top:0;z-index:80;box-shadow:0 5px 18px rgba(16,24,40,.12)}
     .admin-topbar-inner{min-height:88px;display:flex;align-items:center;gap:20px}
     .admin-topbar-title{display:flex;flex-direction:column;line-height:1.2;margin-right:auto;color:#fff}.admin-topbar-title strong{font-size:1.3rem;color:#fff}
-    .admin-topbar-title small{color:rgba(255,255,255,.66);margin-top:4px}.admin-topbar .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.admin-topbar .btn:hover{background:#fff;color:#10263a}
+    .admin-topbar-title small{color:rgba(255,255,255,.66);margin-top:4px}.admin-topbar-badge{display:inline-block;padding:5px 10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.86)}@media(max-width:700px){.admin-topbar-badge{display:none}}.admin-topbar .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.admin-topbar .btn:hover{background:#fff;color:#10263a}
     .admin-shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:calc(100vh - 92px);background:linear-gradient(90deg,#fff 239px,#e6e8ec 239px,#e6e8ec 240px,#f7f7f8 240px)}
     .admin-sidebar{background:#fff;color:#172033;padding:24px 16px;position:sticky;top:92px;max-height:calc(100vh - 92px);overflow:auto;box-sizing:border-box;border-right:1px solid #e6e8ec}
     .admin-menu-title{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:#8a93a2;padding:0 12px 10px}
@@ -891,7 +891,8 @@ function admin_backend_style(): string {
     .inquiry-message{background:#f7f8fa;border-radius:10px;padding:14px;white-space:pre-wrap}
     .probeshop-box{margin-top:16px;padding:14px;border:1px solid #e6e9ef;border-radius:12px;background:#fbfcfd;display:grid;gap:9px;max-width:330px}
     .probeshop-box .actions{display:flex;gap:7px;flex-wrap:wrap}.probeshop-box form{margin:0}.probeshop-box p{margin:0}
-    .probeshop-box-logo{max-width:150px;max-height:60px;object-fit:contain;background:repeating-conic-gradient(#eef1f4 0 25%,#fff 0 50%) 0 0/14px 14px;padding:6px;border-radius:8px;border:1px solid #e6e9ef}
+    .probeshop-box-logo{max-width:150px;max-height:60px;object-fit:contain;background:repeating-conic-gradient(#eef1f4 0 25%,#fff 0 50%) 0 0/14px 14px;padding:6px;border-radius:8px;border:1px solid #e6e9ef}.probeshop-box-logo.on-dark{background:#1f3347}
+    .probeshop-panel{margin-bottom:22px}
     .probeshop-box summary{cursor:pointer;font-weight:750}
     .probeshop-create{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:14px;align-items:end}.probeshop-create input[type=color]{height:42px;padding:3px}
     .probeshop-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:20px}.probeshop-item{border:1px solid #e6e9ef;border-radius:14px;padding:16px}.probeshop-item h3{margin:0}.probeshop-item .probeshop-box{margin-top:10px;max-width:none}
@@ -1040,7 +1041,9 @@ function admin_context_header(string $tab): string {
     $sub='';
     $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','handover'=>'Übergabe','api'=>'API-Zugänge','account'=>'Mein Konto & Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
     foreach($groups as $g=>$items)if(isset($items[$tab])){$sub='<nav class="admin-subtabs">';foreach($items as $k=>$l)$sub.='<a class="'.($k===$tab?'active':'').'" href="/admin?tab='.$k.'">'.e($l).'</a>';$sub.='</nav>';}
-    return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">WORKWEARCENTER VERWALTUNG</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
+    // Kicker nennt den Bereich (Logo und „Verwaltung“ stehen schon im Kopf).
+    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
+    return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">'.e(mb_strtoupper($area)).'</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
 }
 
 function admin_sidebar(string $active): string {
@@ -1435,9 +1438,14 @@ function render_admin_audit(array $logs): void {
     $labels=yw_audit_labels();
     echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge.</p></div></div>';
     if(!$logs){echo '<div class="empty">Noch keine protokollierten Vorgänge.</div></section>';return;}
-    echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Akteur</th><th>Objekt</th></tr></thead><tbody>';
+    $people=yw_actor_people($logs);
+    echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Wer</th><th>Objekt</th></tr></thead><tbody>';
     foreach($logs as $log){
-        echo '<tr><td>'.e(date('d.m.Y H:i',strtotime((string)$log['created_at']))).'</td><td><strong>'.e($labels[$log['action']]??$log['action']).'</strong></td><td>'.e($log['legal_name']??'–').'</td><td>'.e($log['actor_type']).($log['actor_id']?' #'.(int)$log['actor_id']:'').'</td><td>'.e($log['entity_type']??'–').($log['entity_id']?' #'.(int)$log['entity_id']:'').'</td></tr>';
+        $meta=json_decode((string)($log['metadata_json']??''),true)?:[];$extra=yw_history_details($meta);
+        $entityId=$log['entity_id']!==null?(int)$log['entity_id']:null;
+        $entity=e(yw_entity_label($log['entity_type']??null,$entityId));
+        if(($log['entity_type']??'')==='order'&&$entityId)$entity='<a href="'.e(yw_order_url($entityId)).'">'.$entity.'</a>';
+        echo '<tr><td>'.e(date('d.m.Y H:i',strtotime((string)$log['created_at']))).'</td><td><strong>'.e($labels[$log['action']]??$log['action']).'</strong>'.($extra!==''?'<br><span class="muted">'.e($extra).'</span>':'').'</td><td>'.e($log['legal_name']??'–').'</td><td>'.e(yw_actor_label((string)$log['actor_type'],$log['actor_id']!==null?(int)$log['actor_id']:null,$meta,$people)).'</td><td>'.$entity.'</td></tr>';
     }
     echo '</tbody></table></div></section>';
 }

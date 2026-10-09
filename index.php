@@ -86,6 +86,7 @@ if ($path === '/admin/login') { admin_login_page(); exit; }
 if (preg_match('#^/admin/vorschau/(\d+)$#', $path, $m)) { yw_admin_preview_start((int)$m[1]); }
 if ($path === '/admin/vorschau-beenden') { yw_admin_preview_stop(); }
 if ($path === '/admin/sicherung') { yw_backup_download(); }
+if (preg_match('#^/admin/aushang/(\d+)$#', $path, $m)) { yw_admin_poster_page((int)$m[1]); exit; }
 if ($path === '/admin/2fa') { admin_2fa_page(); exit; }
 if ($path === '/admin/logout') {
     if (is_post()) {
