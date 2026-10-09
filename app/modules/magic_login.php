@@ -103,7 +103,7 @@ function yw_magic_login_page(string $slug,string $token): void {
             if(!$e instanceof DomainException)error_log('WorkwearCenter login link: '.$e->getMessage());
             http_response_code(410);yw_shop_auth_message($company,$slug,t('magic.expired_title'),t('magic.request_new'),yw_magic_login_intro());return;
         }
-        clear_login_failures('employee-'.(int)$company['id'].'-'.hash('sha256',strtolower((string)$row['email'])));
+        $loginKey='employee-'.(int)$company['id'].'-'.hash('sha256',strtolower((string)$row['email']));clear_login_failures($loginKey);clear_login_failures($loginKey,false);
         session_regenerate_id(true);
         unset($_SESSION['admin_preview_company']);
         $_SESSION['employee_account_id']=(int)$row['id'];

@@ -782,7 +782,9 @@ function employee_account_login_page(string $slug): void {
         $password=(string)($_POST['password']??'');
         $loginKey='employee-'.(int)$company['id'].'-'.hash('sha256',$email);
 
-        if(login_throttled($loginKey)){
+        // Pro IP (8 Versuche) und zusätzlich IP-unabhängig je Konto (25 Versuche) wie bei der Verwaltung,
+        // damit verteiltes Passwort-Raten über viele Adressen ebenfalls gebremst wird.
+        if(login_throttled($loginKey) || login_throttled($loginKey,25,false)){
             $error=t('auth.too_many');
         }else{
             $stmt=db()->prepare("SELECT * FROM employee_accounts WHERE company_id=? AND email=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) LIMIT 1");
@@ -797,7 +799,7 @@ function employee_account_login_page(string $slug): void {
                 if(password_needs_rehash((string)$account['password_hash'],PASSWORD_DEFAULT)){
                     db()->prepare('UPDATE employee_accounts SET password_hash=? WHERE id=?')->execute([password_hash($password,PASSWORD_DEFAULT),(int)$account['id']]);
                 }
-                clear_login_failures($loginKey);
+                clear_login_failures($loginKey);clear_login_failures($loginKey,false);
                 session_regenerate_id(true);
                 $_SESSION['employee_account_id']=(int)$account['id'];
                 $_SESSION['employee_auth_version']=(int)($account['auth_version']??1);
@@ -811,7 +813,7 @@ function employee_account_login_page(string $slug): void {
                 redirect('/'.$company['slug']);
             }
 
-            record_login_failure($loginKey);
+            record_login_failure($loginKey);record_login_failure($loginKey,false);
             $error=t('auth.login_failed');
         }
     }

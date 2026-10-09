@@ -54,8 +54,12 @@ function yw_admin_return_target(string $url): string {
 }
 function random_token(): string { return bin2hex(random_bytes(32)); }
 function yw_dummy_password_hash(): string {
-    // Valid bcrypt cost-12 hash used only to equalise unknown-account logins.
-    return '$2y$12$wLhB7ybs9BxhwD8cCvQ9IeBQCTPBN55VjA61nFj8s8Q8z7yR5q72K';
+    // Gültiger bcrypt-Hash nur zum Angleichen der Laufzeit bei unbekannten Konten. Die Kosten müssen zu den
+    // echten Hashes (PASSWORD_DEFAULT) passen, sonst verrät die Antwortzeit, ob eine E-Mail-Adresse ein Konto hat.
+    static $hash=null;
+    if($hash!==null)return $hash;
+    $cost=defined('PASSWORD_BCRYPT_DEFAULT_COST')?(int)PASSWORD_BCRYPT_DEFAULT_COST:10;
+    return $hash=match($cost){10=>'$2y$10$M6.6jedFguQBYO8TzUpBXOes370qu3dzreffMmOTaYDGo243rk9qG',12=>'$2y$12$wLhB7ybs9BxhwD8cCvQ9IeBQCTPBN55VjA61nFj8s8Q8z7yR5q72K',default=>password_hash('yw-dummy',PASSWORD_DEFAULT)};
 }
 function money(int $cents): string { return yw_money($cents); } // Format je Sprache (Deutsch: 1.234,56 €)
 function color_ok(string $color): bool { return (bool)preg_match('/^#[0-9a-f]{6}$/i', $color); }

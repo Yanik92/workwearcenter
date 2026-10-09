@@ -308,4 +308,9 @@ $plMail=yw_with_lang('pl',fn()=>yw_mail_html(t('mail.confirm.subject',['id'=>5])
 "\n\n".t('mail.sum.total').': 12,00 €'."\n".t('mail.view_status').': https://workwearcenter.de/firma/bestellungen'));
 test_ok(str_contains($plMail,'<html lang="pl"') && str_contains($plMail,'Zobacz status zamówienia') && str_contains($plMail,'Pozdrawiamy'),'Mail-Rahmen und Schaltfläche in der Sprache der Person');
 
+// 10.13.2: Anmeldung – Laufzeit und Drosselung je Konto
+test_ok((int)(password_get_info(yw_dummy_password_hash())['options']['cost']??0)===(int)PASSWORD_BCRYPT_DEFAULT_COST,'Dummy-Hash hat dieselben Kosten wie echte Passwort-Hashes (keine Konto-Erkennung über die Laufzeit)');
+$shopSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/shop.php');
+test_ok(str_contains($shopSrc,'login_throttled($loginKey,25,false)') && str_contains($shopSrc,'record_login_failure($loginKey,false)'),'Mitarbeiter-Anmeldung drosselt zusätzlich IP-unabhängig je Konto');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
