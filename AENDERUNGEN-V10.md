@@ -387,3 +387,8 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - **Neue Registrierungen auf der Startseite:** Verantwortliche sehen offene Registrierungen direkt auf der Startseite ihres Firmenshops und können sie dort mit „Zugang freigeben“ oder „Ablehnen“ entscheiden (bisher versteckt unter „Mitarbeiter“).
 - **Neue Firma:** Nach „Firma anlegen“ öffnet sich direkt der Reiter „Mitarbeiter“, um den ersten Verantwortlichen anzulegen.
 - **Eingaben bleiben stehen:** Endet ein Formular mit einer Fehlermeldung (z. B. Shop-Kurzname vergeben, Lieferadresse fehlt), sind alle Eingaben wieder im Formular eingetragen. Passwörter, PINs und Schlüssel werden bewusst nicht gemerkt.
+
+## Nachtrag 10.13.1 – Katalogbilder mit beliebigen Dateinamen
+- Bilder werden jetzt auch erkannt, wenn der Dateiname nicht mit `Artikelnummer_Farbe` beginnt: Artikelnummer und Farbe dürfen irgendwo im Namen stehen, auch mit Bindestrich oder Leerzeichen (`Foto JN-840 Navy front.jpg`), mit deutscher Suchfarbe (`JN840 schwarz.jpg`, nur wenn eindeutig) oder zusammengeschrieben (`8001_greyheather.jpg`). Bei Artikeln mit nur einer Farbe reicht die Artikelnummer.
+- Was trotzdem nicht erkannt wird, steht unter „Dateien ohne passenden Katalogartikel“ mit einem Eingabefeld je Datei: Artikel und Farbe eintippen oder aus den Produkten ohne Bild wählen, „Zuordnen“ – die Datei wird umbenannt und zugeordnet.
+- Zweifarbige Artikel (black/red) wurden intern teils unter einem falschen Schlüssel gesucht; behoben.
