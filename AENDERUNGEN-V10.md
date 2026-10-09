@@ -382,3 +382,8 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
   - Neuer Kunde: Die Prüfung des Shop-Kurznamens im Browser wirkte nicht (auch beim Lexware-Kontaktfeld).
   - Firmenkunden-Cockpit zählte offene Registrierungen als aktive Konten.
   - „Vorschau beenden“ führt zurück in die Kundenakte statt in die Kundenliste.
+
+## 10.13.0 – Weniger Klicks im Alltag
+- **Neue Registrierungen auf der Startseite:** Verantwortliche sehen offene Registrierungen direkt auf der Startseite ihres Firmenshops und können sie dort mit „Zugang freigeben“ oder „Ablehnen“ entscheiden (bisher versteckt unter „Mitarbeiter“).
+- **Neue Firma:** Nach „Firma anlegen“ öffnet sich direkt der Reiter „Mitarbeiter“, um den ersten Verantwortlichen anzulegen.
+- **Eingaben bleiben stehen:** Endet ein Formular mit einer Fehlermeldung (z. B. Shop-Kurzname vergeben, Lieferadresse fehlt), sind alle Eingaben wieder im Formular eingetragen. Passwörter, PINs und Schlüssel werden bewusst nicht gemerkt.
