@@ -280,6 +280,16 @@ function yw_katalog_assign_images(): array {
     $index=yw_katalog_image_index();$assigned=0;$missing=[];
     if(!$index)return ['assigned'=>0,'missing'=>[],'files'=>0,'unknown'=>[]];
     $images=yw_katalog_image_map(true);
+    // Rück- und Ärmelansichten (…_back.jpg, …_side.jpg) dort ergänzen, wo sie noch fehlen
+    foreach(['back'=>'image_back_path','sleeve'=>'image_sleeve_path'] as $view=>$column){
+        if(!$images['views'][$view])continue;
+        foreach(db()->query("SELECT id,sku,color FROM products WHERE supplier_name='Daiber' AND ($column IS NULL OR $column='')")->fetchAll() as $p){
+            $base=yw_katalog_base_sku((string)$p['sku'],mb_strtolower((string)$p['color']));
+            $file=$images['views'][$view][yw_katalog_image_key($base.'_'.$p['color'])]??null;
+            if($file===null)continue;
+            try{db()->prepare("UPDATE products SET $column=? WHERE id=?")->execute([yw_katalog_store_image($file),(int)$p['id']]);$assigned++;}catch(Throwable $e){}
+        }
+    }
     $products=db()->query("SELECT id,sku,color,name FROM products WHERE supplier_name='Daiber' AND (image_path IS NULL OR image_path='')")->fetchAll();
     $update=db()->prepare('UPDATE products SET image_path=? WHERE id=?');
     foreach($products as $p){
@@ -324,16 +334,20 @@ function yw_katalog_image_map(bool $fresh=false): array {
         $known[yw_katalog_image_key($sku.'_'.$color)]=true;
         if(!empty($c['img']))$known[yw_katalog_image_key((string)$c['img'])]=true;
     }
-    $map=[];$rank=[];$unknown=[];
+    $map=[];$rank=[];$unknown=[];$views=['back'=>[],'sleeve'=>[]];
     foreach(yw_katalog_image_index() as $name=>$path){
         $parts=explode('_',yw_katalog_image_key($name));$hit=null;
         for($n=count($parts);$n>=2;$n--){$try=implode('_',array_slice($parts,0,$n));if(isset($known[$try])){$hit=$try;break;}}
         if($hit===null){$unknown[]=$name;continue;}
+        // Zusatz hinter Artikel_Farbe: Rückansicht (back, rueck, hinten) bzw. Ärmel/Seite (side, sleeve, arm, seite)
+        $rest=implode('_',array_slice($parts,$n));
+        if(preg_match('/(^|_)(back|rueck|ruecken|hinten|rear)(_|$)/',$rest)){$views['back'][$hit]??=$path;continue;}
+        if(preg_match('/(^|_)(side|sleeve|arm|aermel|seite)(_|$)/',$rest)){$views['sleeve'][$hit]??=$path;continue;}
         $r=[count($parts)-$n,strlen($name)];
         if(!isset($rank[$hit])||$r<$rank[$hit]){$rank[$hit]=$r;$map[$hit]=$path;}
     }
     sort($unknown);
-    return $cache=['map'=>$map,'unknown'=>$unknown];
+    return $cache=['map'=>$map,'unknown'=>$unknown,'views'=>$views];
 }
 
 /** Bilddatei für Artikel + Farbe aus dem Bilderordner oder null. */
@@ -592,7 +606,7 @@ function yw_admin_katalog_page(): void {
     }
 
     /* ---- Bilder ---- */
-    echo '<section class="card katalog-images" id="bilder"><div class="katalog-section-head"><div><h3>Produktbilder aus der Daiber Media Cloud</h3><p class="muted">Der Dateiname muss mit <code>Artikelnummer_Farbe</code> beginnen, z. B. <code>JN840_navy.jpg</code> oder <code>JN010_black_red.jpg</code> für black/red – so heißen die Masterbilder in der Media Cloud. Zusätze wie <code>_front</code> oder <code>(1)</code> und Groß-/Kleinschreibung sind egal. Nur die Bilder der Artikel nötig, die im Shop sind; große Fotos werden automatisch verkleinert.</p></div><div class="katalog-stat-inline"><strong>'.count($imageIndex).'</strong> Dateien im Ordner'.($withoutImage?' · <strong class="warn">'.$withoutImage.'</strong> Produkte ohne Bild':'').'</div></div>';
+    echo '<section class="card katalog-images" id="bilder"><div class="katalog-section-head"><div><h3>Produktbilder aus der Daiber Media Cloud</h3><p class="muted">Der Dateiname muss mit <code>Artikelnummer_Farbe</code> beginnen, z. B. <code>JN840_navy.jpg</code> oder <code>JN010_black_red.jpg</code> für black/red – so heißen die Masterbilder in der Media Cloud. Zusätze wie <code>_front</code> oder <code>(1)</code> und Groß-/Kleinschreibung sind egal; Dateien mit <code>_back</code> werden zur Rückansicht, mit <code>_side</code> zur Ärmelansicht. Nur die Bilder der Artikel nötig, die im Shop sind; große Fotos werden automatisch verkleinert.</p></div><div class="katalog-stat-inline"><strong>'.count($imageIndex).'</strong> Dateien im Ordner'.($withoutImage?' · <strong class="warn">'.$withoutImage.'</strong> Produkte ohne Bild':'').'</div></div>';
     echo '<div class="katalog-image-ways"><form method="post" enctype="multipart/form-data" class="katalog-way" data-katalog-upload data-max-bytes="'.(int)yw_katalog_upload_budget().'" data-max-files="'.max(1,min(50,(int)ini_get('max_file_uploads')?:20)).'">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_upload"><h4>Hochladen</h4><p class="muted">Beliebig viele Bilder auf einmal auswählen – sie werden automatisch in Paketen übertragen. ZIP-Dateien bis '.e(ini_get('upload_max_filesize')).'; größere ZIPs entpacken und die Bilder auswählen oder per FTP ablegen.</p><input type="file" name="katalog_images[]" multiple accept=".jpg,.jpeg,.png,.webp,.zip"><button class="btn primary" type="submit">Hochladen und zuordnen</button><p class="muted small" data-katalog-upload-status role="status" aria-live="polite"></p></form>';
     echo '<form method="post" class="katalog-way">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_assign"><h4>Per FTP</h4><p class="muted">Dateien in <code>uploads/katalog/bilder/</code> legen (Unterordner erlaubt), dann hier zuordnen lassen.</p><button class="btn" type="submit">Bilder zuordnen</button></form></div>';
     $unknownImages=$imageIndex?yw_katalog_image_map()['unknown']:[];
