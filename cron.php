@@ -11,6 +11,13 @@ require __DIR__.'/app/bootstrap.php';
 require_once __DIR__.'/app/modules/system.php';
 require_once __DIR__.'/app/modules/probeshop.php';
 
+// Programmdateien neuer als die Datenbank: nur Mails versenden, alles andere erst nach update.php.
+if(!yw_schema_ready()){
+    try{yw_process_mail_queue(50);}catch(Throwable $e){error_log('WorkwearCenter cron: '.$e->getMessage());}
+    fwrite(STDERR,"Datenbank nicht aktuell: ".yw_schema_problem()."\n");
+    exit(1);
+}
+
 try{
     set_site_setting('cron_last_run',date('Y-m-d H:i:s'));
     yw_process_mail_queue(50);

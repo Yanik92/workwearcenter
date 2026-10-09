@@ -1048,7 +1048,7 @@ function admin_context_header(string $tab): string {
     $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','handover'=>'Übergabe','lexware'=>'Lexware Office','api'=>'API-Zugänge','account'=>'Mein Konto & Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
     foreach($groups as $g=>$items)if(isset($items[$tab])){$sub='<nav class="admin-subtabs">';foreach($items as $k=>$l)$sub.='<a class="'.($k===$tab?'active':'').'" href="/admin?tab='.$k.'">'.e($l).'</a>';$sub.='</nav>';}
     // Kicker nennt den Bereich (Logo und „Verwaltung“ stehen schon im Kopf).
-    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
+    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche','exchanges'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
     return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">'.e(mb_strtoupper($area)).'</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
 }
 
@@ -1426,6 +1426,15 @@ function yw_audit_labels(): array {
         'company.status_toggled'=>'Firmen-Shop aktiviert/deaktiviert',
         'inquiry.deleted'=>'Anfrage gelöscht',
         'probeshop.created'=>'Probeshop erzeugt',
+        'exchange.requested'=>'Umtausch/Rückgabe beantragt',
+        'exchange.approved'=>'Umtausch/Rückgabe freigegeben',
+        'exchange.rejected'=>'Umtausch/Rückgabe abgelehnt',
+        'exchange.status'=>'Umtausch/Rückgabe: Status geändert',
+        'exchange.handover_manual'=>'Umtausch manuell übertragen',
+        'employee.login_link_requested'=>'Anmeldelink angefordert',
+        'employee.login_link_used'=>'Mit Anmeldelink angemeldet',
+        'company.order_options'=>'Umtausch- und Sammelbestell-Einstellungen geändert',
+        'company.budget_year_mail'=>'Mail zum neuen Budgetjahr verschickt',
         'probeshop.regenerated'=>'Probeshop-Link neu erzeugt',
         'probeshop.deleted'=>'Probeshop gelöscht',
         'probeshop.expired_deleted'=>'Abgelaufene Probeshops gelöscht',

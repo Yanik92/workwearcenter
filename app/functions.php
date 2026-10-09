@@ -449,11 +449,11 @@ function render_head(string $title, ?array $brand = null): void {
     ];
     $description=$descriptions[$path]??'Geschützter Unternehmensshop für Firmenkleidung von WorkwearCenter.';
     $social=$public?'<meta property="og:type" content="website"><meta property="og:locale" content="de_DE"><meta property="og:site_name" content="WorkwearCenter"><meta property="og:title" content="'.e($title).'"><meta property="og:description" content="'.e($description).'"><meta property="og:url" content="'.e($url).'"><meta property="og:image" content="'.e('https://'.yw_public_host().'/assets/media/screens/shop-desktop.webp').'"><meta name="twitter:card" content="summary_large_image">':'';
-    $favicon='';
+    // Symbol auf allen Seiten (sonst fragt der Browser /favicon.ico an und erhält eine 404-Seite).
+    $favicon='<link rel="icon" type="image/png" href="/assets/media/workwearcenter-icon.png"><link rel="apple-touch-icon" href="/assets/media/workwearcenter-icon.png">';
     $structured='';
     if($public){
         $logo=yw_site_logo_path();
-        $favicon='<link rel="icon" type="image/png" href="/assets/media/workwearcenter-icon.png"><link rel="apple-touch-icon" href="/assets/media/workwearcenter-icon.png">';
         $organization=[
             '@context'=>'https://schema.org',
             '@type'=>'LocalBusiness',

@@ -249,7 +249,7 @@ function yw_account_anonymized(?string $email,?string $anonymizedAt=null): bool 
 
 /** Bestellstatus, Produktionsstand und Entscheidungen als Klartext. */
 function yw_history_status_label(string $value): string {
-    $map=['pending'=>'Freigabe offen','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Storniert']+yw_production_statuses();
+    $map=['pending'=>'Freigabe offen','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Storniert','requested'=>'Beantragt','received'=>'Ware erhalten','done'=>'Erledigt']+yw_production_statuses();
     return $map[$value]??$value;
 }
 
