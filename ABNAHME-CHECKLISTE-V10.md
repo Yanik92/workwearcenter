@@ -1,4 +1,4 @@
-# Abnahme-Checkliste WorkwearCenter 10.10.0
+# Abnahme-Checkliste WorkwearCenter 10.11.0
 
 Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danach öffentlich freischalten.
 
@@ -11,6 +11,8 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 - [ ] Admin → Systemstatus: „Interne Dateien gesperrt“ ist grün (sonst Webserver-Sperren laut START-HIER eintragen).
 - [ ] `https://workwearcenter.de/uploads/katalog/daiber.json` liefert keinen Inhalt (403 oder 404).
 - [ ] Bestehende Firmen, Produkte, Konten und Bestellungen stichprobenartig vorhanden.
+- [ ] 10.11: `/update.php` ein zweites Mal ausgeführt – meldet 0 Datenbankanpassungen; Systemprüfung „Datenbank vollständig“.
+- [ ] 10.11: Eine alte Bestellung zeigt im Shop und in der Verwaltung dieselben Beträge wie vor dem Update.
 
 ## Admin-Sicherheit (neu in 10)
 
@@ -74,6 +76,34 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 - [ ] Auftragszentrale meldet einen Status: Fortschrittsbalken und ggf. Sendungsnummer erscheinen beim Mitarbeiter, E-Mail kommt an.
 - [ ] https://www.workwearcenter.de/sitemap.xml zeigt die richtige Adresse.
 
+## Neu in 10.11
+
+Firmenshop (am Computer und am Handy prüfen)
+- [ ] Übersicht: Begrüßung, Budget-Karte, letzte Bestellung, „Nochmal bestellen“.
+- [ ] Produkte: Karten mit Farbpunkten; Detailansicht öffnet, Farbe/Größe/Menge wählbar, Adresse mit `?artikel=` lässt sich direkt aufrufen.
+- [ ] Testbestellung mit einem 19-%-Artikel (z. B. 3 Stück) und einem 7-%-Artikel bei einer Firma mit Eigenanteil und Versand: Betrag in „Deine Auswahl“ und in der Handy-Leiste = Betrag in „Meine Bestellungen“ = Betrag auf der Auftragsseite.
+- [ ] Budgetwarnung erscheint, wenn die Auswahl das Budget übersteigt; Absenden ist dann gesperrt.
+- [ ] Anmeldung, Registrierung, „Passwort vergessen“ und „Neues Passwort“ zeigen Firmenfarbe und Logo (bzw. Initialen).
+- [ ] Anmeldelink anfordern, Mail kommt an, Anmeldung klappt; zweiter Klick auf denselben Link wird abgelehnt.
+
+Freigaben, Umtausch, Sammelbestellung
+- [ ] Freigabe-Mail: „Freigeben“ aus der Mail funktioniert; eigene Bestellung kann nicht selbst freigegeben werden, solange es eine zweite verantwortliche Person gibt.
+- [ ] Größentausch beantragen → Verantwortliche/r gibt frei → Verwaltung „Ware erhalten“ → „Erledigt“; Mitarbeiter/in bekommt Mails.
+- [ ] Rückgabe: Budget ist erst nach „Erledigt“ wieder frei.
+- [ ] Kundenakte → „Umtausch, Jahreswechsel & Sammelbestellung“: Umtauschfrist, Jahreswechsel-Mail und Sammelbestellung gespeichert; Shop zeigt den nächsten Sammeltermin; Übergabe wartet bis zum Stichtag.
+
+Lexware Office und Lohnabzug
+- [ ] `lexware_api_key` eingetragen, „Verbindung testen“ grün.
+- [ ] Testfirma mit Lexware-Kontakt verknüpft; Rechnungsentwurf für einen Testauftrag erzeugt; Summe in Lexware = Gesamt brutto im WorkwearCenter.
+- [ ] Zweiter Versuch für denselben Auftrag wird abgelehnt (keine Doppelrechnung).
+- [ ] Lohnabzug-Liste eines Monats (Firmenshop → Auswertung) öffnet sich in Excel mit Umlauten und Komma-Beträgen.
+
+Website und Vertrieb
+- [ ] Anfrage mit Logo → Probeshop-Link in der Bestätigungsmail, Probeshop zeigt Logo auf der Kleidung.
+- [ ] Verwaltung → Anfragen: Probeshop verlängern und löschen funktioniert.
+- [ ] Startseite: Vertrauensbereich (Kundenlogos, Kundenstimme, Ansprechpartner) gepflegt oder bewusst leer.
+- [ ] Kundenakte → QR-Code-Aushang gedruckt, QR-Code mit dem Handy getestet.
+
 ## Mail und Betrieb
 
 - [ ] Admin → Systemstatus erkennt die SMTP-Konfiguration ohne Warnung.
@@ -86,7 +116,7 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 ## Bewusste Grenzen bestätigt
 
 - [ ] L-Shop bestellt noch nicht automatisch; Beschaffungs-CSV ist der freigegebene Weg.
-- [ ] Lexware-Rechnung und -Lieferschein bleiben manuell.
+- [ ] Lexware: Es entstehen nur Rechnungsentwürfe; Finalisieren, Versand und Lieferschein bleiben in Lexware.
 - [ ] Kein Textil-Wareneingang wird erwartet.
 - [ ] Motivbestand wird manuell korrigiert und nicht automatisch abgebucht.
 

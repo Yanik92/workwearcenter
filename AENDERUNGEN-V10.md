@@ -277,3 +277,43 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - E-Mails über den Hoster-Mailversand setzen den Absender jetzt auch im Umschlag (bessere Zustellbarkeit, SPF/DMARC).
 - API-Schlüssel (`Authorization: Bearer …`) werden auch unter PHP-FPM/CGI an PHP weitergereicht.
 - Fehlermeldungen in der Verwaltung erscheinen wieder auf der Seite, von der das Formular kam.
+
+## Nachtrag 10.11.0 – Neuer Firmenshop, Umtausch, Lexware Office, Probeshop
+
+**Wichtig: Nach dem Hochladen `/update.php` als Administrator ausführen.** Das Update legt neue Tabellen und Spalten an (Umtausch, Anmeldelinks, Freigabe-Links, Probeshops, Lexware, Positionsbeträge). Bis es gelaufen ist, zeigt der Shop Besuchern „Update erforderlich“ und der Cronjob verschickt nur noch Mails. Ein zweiter Aufruf von `update.php` ändert nichts mehr. Vorher wie immer Webspace und Datenbank sichern.
+
+**Firmenshop im neuen Design (wie der Mustershop)**
+- Seitenleiste in der Firmenfarbe mit Logo (ohne Logo: Initialen), persönliche Begrüßung und Budget-Karte.
+- Schlanke Produktkarten mit einem Preis: „Dein Anteil“ bzw. „übernimmt deine Firma“. Farben eines Artikels erscheinen als eine Karte mit Farbpunkten.
+- Artikel öffnen sich in einer Detailansicht mit Logo-Vorschau, Farbe, Größe, Menge, Material und Pflege. Jeder Artikel hat eine eigene Adresse und kann verlinkt werden.
+- „Deine Auswahl“ listet alle gewählten Artikel mit Ändern/Entfernen; am Handy zeigt eine Leiste unten Anzahl und Betrag.
+- Anmeldung, Registrierung, „Passwort vergessen“, „Neues Passwort“ und der Anmeldelink sehen jetzt einheitlich aus: Firmenfarbe, großes Logo, gleiche Karte.
+
+**Beträge wie in der Lexware-Rechnung**
+- Bisher wurde jeder Artikel einzeln auf Cent gerundet und dann mal Menge genommen. Jetzt rechnet das WorkwearCenter wie Lexware Office: Netto-Einzelpreis × Menge, die Mehrwertsteuer je Steuersatz (19 %, 7 %) auf die Nettosumme. Beispiel: 3 T-Shirts zu 8,40 € netto kosten jetzt 29,99 € statt 30,00 € – genau wie auf der Rechnung.
+- Versand ist eine eigene Position und wird zusammen mit der Ware desselben Steuersatzes gerundet. Der Hinweis im Shop nennt deshalb den Netto-Versand und „ca.“ den Bruttobetrag.
+- Die Summe, die Mitarbeitende beim Auswählen sehen (Auswahl, Handy-Leiste, Budgetwarnung), ist cent-genau die Summe, die gespeichert wird.
+- **Alte Bestellungen bleiben unverändert** – mit ihren bisherigen Beträgen, in Übersicht, Auswertung, Übergabe und Export.
+
+**Lexware Office (optional)**
+- Neue Seite Verwaltung → System → Lexware Office: Verbindung testen, Belegtitel und Texte festlegen, Firmen mit einem Lexware-Kontakt verknüpfen oder einen anlegen.
+- Auf der Auftragsseite „Rechnungsentwurf erzeugen“, auf der Lexware-Seite Monats-Sammelrechnungen (auf Wunsch je Kostenstelle). Es entstehen nur **Entwürfe**; prüfen und versenden immer in Lexware. Jeder Auftrag kann nur einmal abgerechnet werden.
+- Einrichtung (API-Schlüssel in der `config.php`) steht in `START-HIER-V10.txt`.
+- **Lohnabzug:** Verantwortliche (Auswertung) und Verwaltung (Kundenakte) laden je Monat eine Liste der Eigenanteile je Person für die Lohnabrechnung herunter.
+
+**Bestellungen, Freigaben und Umtausch**
+- **Umtausch & Rückgabe:** Mitarbeitende beantragen bei freigegebenen Bestellungen einen Größentausch oder eine Rückgabe (Standard: 30 Tage, je Firma einstellbar, 0 = aus). Verantwortliche entscheiden in „Freigaben“, die Verwaltung bearbeitet alles unter „Umtausch & Retouren“. Gutschriften und Mehrkosten werden mit dem Budget verrechnet.
+- **Freigabe per E-Mail:** Verantwortliche können direkt aus der Freigabe-Mail freigeben oder ablehnen (Link 7 Tage gültig, Vier-Augen-Prinzip gilt weiter).
+- **Anmeldelink:** Auf der Anmeldeseite kann man sich einen Link schicken lassen und ohne Passwort anmelden (15 Minuten gültig, nur einmal).
+- **Sammelbestellung:** Je Firma einstellbar (monatlich oder alle 14 Tage). Freigegebene Aufträge werden bis zum Stichtag gesammelt und dann gemeinsam an die Auftragszentrale übergeben. Der Shop zeigt den nächsten Termin.
+- **Mail zum neuen Budgetjahr:** Zum Start des Budgetjahres bekommen alle aktiven Mitarbeitenden eine Mail mit ihrem neuen Budget (je Firma abschaltbar).
+- Einstellungen dafür: Kundenakte → „Umtausch, Jahreswechsel & Sammelbestellung“.
+
+**Website und Vertrieb**
+- **Probeshop für Interessenten:** Wer im Anfrageformular sein Logo hochlädt, bekommt automatisch einen persönlichen Vorschau-Shop mit eigenem Logo (30 Tage gültig, danach samt Logo gelöscht). Probeshops lassen sich auch in der Verwaltung bei einer Anfrage erzeugen, verlängern oder löschen.
+- **Vertrauensbereich auf der Startseite:** Kundenlogos, eine Kundenstimme und Ihr Ansprechpartner sind unter Website → Inhalte pflegbar.
+- **QR-Code-Aushang:** In der Kundenakte gibt es eine druckfertige A4-Seite mit QR-Code zur Registrierung bzw. Anmeldung für Pausenraum oder Werkstatt.
+
+**Verwaltung**
+- Verlauf und Aktivitätsprotokoll in Klartext (wer hat was getan), gelöschte Konten ohne Namen und E-Mail.
+- Neuer Menüpunkt „Umtausch & Retouren“ (Tagesgeschäft) und „Lexware Office“ (System).
