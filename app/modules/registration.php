@@ -36,7 +36,10 @@ function employee_register_page_by_slug(string $slug): void {
             if(!(int)$company['active']) throw new DomainException(t('err.shop_unavailable'));
             [$pinRequired,$approvalRequired]=yw_registration_policy($company['registration_mode']);
             $pin=is_string($_POST['pin']??null)?$_POST['pin']:'';
-            if($pinRequired && !password_verify($pin,(string)$company['registration_pin_hash'])) throw new DomainException(t('reg.pin_invalid'));
+            // Firmen-PIN zusätzlich IP-unabhängig je Firma drosseln (30 Fehlversuche / 15 Minuten), sonst lässt sie sich über viele Adressen erraten.
+            $pinKey='register-pin-'.(int)$company['id'];
+            if($pinRequired && login_throttled($pinKey,30,false)) throw new DomainException(t('reg.too_many'));
+            if($pinRequired && !password_verify($pin,(string)$company['registration_pin_hash'])){db()->rollBack();record_login_failure($pinKey,false);throw new DomainException(t('reg.pin_invalid'));}
             $q=db()->prepare('SELECT id FROM employee_accounts WHERE company_id=? AND email=? FOR UPDATE');
             $q->execute([$company['id'],$email]);
             if($q->fetchColumn()){

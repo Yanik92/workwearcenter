@@ -313,4 +313,7 @@ test_ok((int)(password_get_info(yw_dummy_password_hash())['options']['cost']??0)
 $shopSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/shop.php');
 test_ok(str_contains($shopSrc,'login_throttled($loginKey,25,false)') && str_contains($shopSrc,'record_login_failure($loginKey,false)'),'Mitarbeiter-Anmeldung drosselt zusätzlich IP-unabhängig je Konto');
 
+$regSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/registration.php');
+test_ok(str_contains($regSrc,'login_throttled($pinKey,30,false)') && str_contains($regSrc,'record_login_failure($pinKey,false)'),'Firmen-PIN der Registrierung wird IP-unabhängig je Firma gedrosselt');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
