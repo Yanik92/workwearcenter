@@ -241,8 +241,11 @@ function yw_lang_switch(string $slug): never {
             db()->prepare('UPDATE employee_accounts SET language=? WHERE id=? AND company_id=?')->execute([$code, (int)$account['id'], (int)$company['id']]);
         }
     }
-    $back = (string)($_POST['back'] ?? '');
-    // Nur zurück in denselben Shop (kein offener Redirect).
-    if (!preg_match('#^/'.preg_quote($slug, '#').'(?:[/?\#][^\s\\\\]*)?$#D', $back) || str_starts_with($back, '//')) $back = '/'.$slug;
-    redirect($back);
+    redirect(yw_lang_back_url($slug, (string)($_POST['back'] ?? '')));
+}
+
+/** Rücksprungziel nach der Sprachwahl: nur Pfade im selben Shop (kein offener Redirect). */
+function yw_lang_back_url(string $slug, string $back): string {
+    $ok = preg_match('#^/'.preg_quote($slug, '#').'(?:[/?\#][^\s\\\\]*)?$#D', $back) && !str_contains($back, '..');
+    return $ok ? $back : '/'.$slug;
 }

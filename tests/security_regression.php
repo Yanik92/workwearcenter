@@ -274,4 +274,38 @@ $csv=yw_payroll_csv_rows('2026-10',$rows);
 test_ok($csv[0][2]==="'=HYPERLINK(\"x\")" && $csv[0][1]==="'+49" && $csv[1][4]==='21,50','Lohnabzug: Formel-Schutz und Betrag mit Komma');
 test_ok(yw_payroll_month('2026-13')!=='2026-13' && yw_payroll_month('2026-02')==='2026-02' && yw_payroll_range('2026-12')===['2026-12-01 00:00:00','2027-01-01 00:00:00'],'Lohnabzug: Monat wird geprüft, Jahreswechsel stimmt');
 
+// 10.12: Mehrsprachiger Firmenshop
+$de=require dirname(__DIR__).'/app/lang/de.php';
+$plural=['de'=>2,'en'=>2,'tr'=>2,'pl'=>3,'ru'=>3,'ro'=>3];
+$placeholders=fn($v)=>(preg_match_all('/\{[a-z_]+\}/',implode('|',(array)$v),$m)?array_values(array_unique($m[0])):[]);
+foreach(array_keys(YW_LANGS) as $code){
+    $table=require dirname(__DIR__).'/app/lang/'.$code.'.php';
+    test_ok(array_keys(array_diff_key($de,$table))===[] && array_keys(array_diff_key($table,$de))===[],"Sprache {$code}: gleiche Schlüssel wie Deutsch");
+    $bad=[];
+    foreach($de as $key=>$value){
+        $tv=$table[$key];
+        if($key==='fmt.months'){if(count($tv)!==12)$bad[]=$key;continue;}
+        if(is_array($value)!==is_array($tv)||(is_array($tv)&&count($tv)!==$plural[$code]))$bad[]=$key;
+        $a=$placeholders($value);$b=$placeholders($tv);sort($a);sort($b);
+        if($a!==$b)$bad[]=$key;
+    }
+    test_ok($bad===[],"Sprache {$code}: Platzhalter und Pluralformen vollständig".($bad?' ('.implode(', ',$bad).')':''));
+}
+test_ok(yw_plural_index('pl',1)===0 && yw_plural_index('pl',3)===1 && yw_plural_index('pl',5)===2 && yw_plural_index('pl',12)===2 && yw_plural_index('pl',22)===1,'Plural Polnisch: 1 / 2–4 / 5+ (12 → viele, 22 → wenige)');
+test_ok(yw_plural_index('ru',21)===0 && yw_plural_index('ru',11)===2 && yw_plural_index('ru',24)===1,'Plural Russisch: 21 → eins, 11 → viele, 24 → wenige');
+test_ok(yw_plural_index('ro',1)===0 && yw_plural_index('ro',19)===1 && yw_plural_index('ro',20)===2,'Plural Rumänisch: 20 → „de“-Form');
+test_ok(yw_with_lang('pl',fn()=>tn('product.colors',5))==='5 kolorów' && yw_with_lang('pl',fn()=>tn('product.colors',3))==='3 kolory','tn() wählt die polnische Pluralform');
+test_ok(yw_with_lang('pl',fn()=>yw_money(123456))==="1\u{00A0}234,56\u{00A0}€" && yw_with_lang('en',fn()=>yw_money(123456))==='€1,234.56' && yw_money(-990)==='-9,90 €','Beträge im Format der Sprache, Euro bleibt');
+test_ok(yw_with_lang('tr',fn()=>yw_percent(20.0))==='%20' && yw_with_lang('en',fn()=>yw_date('2026-10-09'))==='09/10/2026','Prozent und Datum je Sprache');
+test_ok(yw_lang()==='de' && yw_with_lang('xx',fn()=>yw_lang())==='de','unbekannte Sprache fällt auf Deutsch zurück, yw_with_lang stellt zurück');
+test_ok(yw_with_lang('ru',fn()=>t('gibt.es.nicht'))==='gibt.es.nicht' && yw_with_lang('ru',fn()=>t('greet.day_name',['name'=>'<b>']))==='Привет, <b>.','fehlender Schlüssel liefert den Schlüssel; Platzhalter werden nur ersetzt (Escaping beim Ausgeben)');
+test_ok(yw_lang_from_header('tr-TR,tr;q=0.9,de;q=0.8',['de','tr'])==='tr' && yw_lang_from_header('fr,pl;q=0.5,en;q=0.7',['de','en','pl'])==='en' && yw_lang_from_header('fr,es',['de','pl'])===null && yw_lang_from_header('pl;q=0',['de','pl'])===null,'Accept-Language: Gewichtung, nur angebotene Sprachen, q=0 ignoriert');
+test_ok(yw_company_langs_value(['pl','tr','xx'])==='de,pl,tr' && yw_company_langs_value(array_keys(YW_LANGS))===null && yw_company_langs_value([])==='de','Firmen-Sprachauswahl: Deutsch immer dabei, alle = NULL, Unbekanntes verworfen');
+test_ok(yw_company_langs(['shop_languages'=>'tr,pl'])===['de','pl','tr'] && count(yw_company_langs(['shop_languages'=>null]))===6,'angebotene Sprachen der Firma (Standard: alle)');
+test_ok(yw_lang_back_url('nordbau','/nordbau/produkte?artikel=3')==='/nordbau/produkte?artikel=3' && yw_lang_back_url('nordbau','//evil.example/nordbau')==='/nordbau' && yw_lang_back_url('nordbau','https://evil.example')==='/nordbau' && yw_lang_back_url('nordbau','/nordbauer')==='/nordbau' && yw_lang_back_url('nordbau','/nordbau/../admin')==='/nordbau' && yw_lang_back_url('nordbau','/nordbau/\\evil')==='/nordbau','Sprachwahl: Rücksprung nur in denselben Shop (kein offener Redirect)');
+test_ok(yw_with_lang('pl',fn()=>yw_shop_greeting('Ola Nowak',8))==='Dzień dobry, Ola.' && yw_shop_greeting('Max',14)==='Hallo, Max.' && yw_shop_greeting('Max',20)==='Guten Abend, Max.','Begrüßung nach Tageszeit und Sprache');
+$plMail=yw_with_lang('pl',fn()=>yw_mail_html(t('mail.confirm.subject',['id'=>5]),t('mail.hello',['name'=>'Ola']).
+"\n\n".t('mail.sum.total').': 12,00 €'."\n".t('mail.view_status').': https://workwearcenter.de/firma/bestellungen'));
+test_ok(str_contains($plMail,'<html lang="pl"') && str_contains($plMail,'Zobacz status zamówienia') && str_contains($plMail,'Pozdrawiamy'),'Mail-Rahmen und Schaltfläche in der Sprache der Person');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
