@@ -29,6 +29,11 @@ return [
     // Leer = app/private (durch .htaccess gesperrt; nur unter Apache wirksam).
     'private_dir' => '',
 
+    // Zusätzlicher Geheimschlüssel für die Freigabe-Links in E-Mails (mind. 32 Zeichen, zufällig).
+    // Damit reicht eine gestohlene Datenbanksicherung allein nicht, um Freigabe-Links zu fälschen.
+    // Nach dem Setzen werden bereits verschickte Freigabe-Links ungültig.
+    'app_secret' => '',
+
     // Nur für die Neuinstallation über /install.php (mind. 16 Zeichen).
     'install_key' => '',
 

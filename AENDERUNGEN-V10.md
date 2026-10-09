@@ -392,3 +392,30 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - Bilder werden jetzt auch erkannt, wenn der Dateiname nicht mit `Artikelnummer_Farbe` beginnt: Artikelnummer und Farbe dürfen irgendwo im Namen stehen, auch mit Bindestrich oder Leerzeichen (`Foto JN-840 Navy front.jpg`), mit deutscher Suchfarbe (`JN840 schwarz.jpg`, nur wenn eindeutig) oder zusammengeschrieben (`8001_greyheather.jpg`). Bei Artikeln mit nur einer Farbe reicht die Artikelnummer.
 - Was trotzdem nicht erkannt wird, steht unter „Dateien ohne passenden Katalogartikel“ mit einem Eingabefeld je Datei: Artikel und Farbe eintippen oder aus den Produkten ohne Bild wählen, „Zuordnen“ – die Datei wird umbenannt und zugeordnet.
 - Zweifarbige Artikel (black/red) wurden intern teils unter einem falschen Schlüssel gesucht; behoben.
+
+## 10.14.0 – Sicherheit und Belastbarkeit für Großkunden
+Vor dem ersten Großkunden wurde das System in drei Richtungen geprüft: Zugriffsschutz, Angriffe über Eingaben und Dateien, und ein Großkunde mit 1.500 Mitarbeitern und 20.000 Bestellungen. **Nach dem Hochladen unbedingt `/update.php` ausführen** (neue Datenbank-Indizes). Neu im Paket: `GO-LIVE-CHECKLISTE.md`.
+
+**Sicherheit**
+- Anmeldung: Passwort-Raten über viele IP-Adressen wird je Konto gestoppt; die Antwortzeit verrät nicht mehr, ob ein Konto existiert.
+- Firmen-PIN der Registrierung und „Passwort vergessen“ sind unabhängig von der IP gegen Erraten bzw. Mail-Fluten gedrosselt.
+- Zwei-Faktor- und Wiederherstellungscodes sind auch bei gleichzeitigen Anfragen nur einmal nutzbar.
+- Anonymisierte Konten bleiben endgültig gesperrt.
+- API-Schlüssel lassen sich auf eine Firma beschränken (Partner, Fan-Bande).
+- SVG-Logos: Skripte über XSLT und externe Verweise werden entfernt.
+- Interne Ordner (`app/`, `tests/`, `tools/`) und versteckte Dateien sind auch ohne mod_rewrite gesperrt; der Systemstatus prüft das mit.
+- Vorschau, Vorschau beenden und Datensicherung lassen sich nicht von fremden Seiten auslösen.
+- Sitzungen enden spätestens 12 Stunden nach der Anmeldung; `/api/v1/ping` nennt die Version nur mit Schlüssel.
+- Katalog-ZIPs werden höchstens bis 40 MB je Datei und 1 GB gesamt entpackt.
+- Die Verwaltung zeigt einen roten Hinweis, solange nach einem Upload `update.php` nicht gelaufen ist.
+
+**Großkunden-Tauglichkeit**
+- Datensicherung schreibt zeilenweise statt alles im Speicher (bisher 240 MB, jetzt 2 MB); Zeitzonen-Fehler bei der Wiederherstellung behoben.
+- Neue Indizes: Budget- und Mengenprüfung im Shop von 1,1 s auf 0,05 s.
+- Mitarbeiterlisten (Kundenakte und Firmenshop) seitenweise mit Suche.
+- CSV-Exporte werden gestreamt.
+- Hängt der Mailserver oder die Auftragszentrale, pausiert die Warteschlange 5 Minuten, statt jede Seite zu blockieren.
+- Umtausch mit Mehrkosten kann das Budget auch bei gleichzeitigen Anfragen nicht überschreiten.
+- Datenbankausfall zeigt einen verständlichen Hinweis statt einer leeren Seite.
+- Volle Festplatte hinterlässt keine abgeschnittenen Uploads.
+- Einrichtungslinks neuer Konten gelten 7 Tage (große Importe).

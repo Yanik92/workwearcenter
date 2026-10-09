@@ -107,7 +107,7 @@ Schlüssel widerrufen: in Lexware löschen und den Eintrag in der config.php lee
 -------------------------------------------------------------------------------
 VOR DEM ÖFFENTLICHEN START
 -------------------------------------------------------------------------------
-Siehe ABNAHME-CHECKLISTE-V10.md. Insbesondere Impressum (inkl. USt-IdNr.) und die
+Vor dem Start mit einem Großkunden: GO-LIVE-CHECKLISTE.md abarbeiten. Siehe auch ABNAHME-CHECKLISTE-V10.md. Insbesondere Impressum (inkl. USt-IdNr.) und die
 Datenschutzerklärung (Vorlage unter Admin → Inhalte → Datenschutz) fachlich prüfen.
 
 ROLLBACK
