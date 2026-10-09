@@ -487,3 +487,59 @@
     });
   });
 })();
+
+/*
+ * Nach einer Fehlermeldung die Eingaben wieder ins Formular eintragen (siehe yw_remember_input() in
+ * app/functions.php). Gesucht wird das Formular mit derselben Aktion; bei mehreren gleichartigen
+ * Formularen (z. B. je Produkt) muss auch die versteckte ID übereinstimmen.
+ */
+(function () {
+  var node = document.getElementById('yw-old-input');
+  if (!node) return;
+  var old;
+  try { old = JSON.parse(node.textContent || ''); } catch (e) { return; }
+  if (!old || !old.action || !old.data) return;
+  var data = old.data;
+
+  function lookup(name) {
+    var m = name.match(/^([^\[]+)((?:\[[^\]]*\])*)$/);
+    if (!m) return undefined;
+    var value = data[m[1]], parts = (m[2].match(/\[([^\]]*)\]/g) || []).map(function (p) { return p.slice(1, -1); });
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] === '') return Array.isArray(value) ? value : (value && typeof value === 'object' ? Object.keys(value).map(function (k) { return value[k]; }) : []);
+      if (value === undefined || value === null || typeof value !== 'object') return undefined;
+      value = value[parts[i]];
+    }
+    return value;
+  }
+
+  var forms = Array.prototype.filter.call(document.querySelectorAll('form'), function (form) {
+    var a = form.querySelector('input[type=hidden][name=action]');
+    return a && a.value === old.action;
+  });
+  var form = forms.length === 1 ? forms[0] : forms.filter(function (f) {
+    var ids = f.querySelectorAll('input[type=hidden][name$="id"]');
+    return ids.length > 0 && Array.prototype.every.call(ids, function (i) { var v = lookup(i.name); return v === undefined || String(v) === i.value; });
+  })[0];
+  if (!form) return;
+
+  Array.prototype.forEach.call(form.elements, function (el) {
+    if (!el.name || el.disabled || /^(hidden|password|file|submit|button|reset)$/.test(el.type)) return;
+    var value = lookup(el.name);
+    if (el.type === 'checkbox') {
+      if (/\[\]$/.test(el.name)) el.checked = Array.isArray(value) && value.map(String).indexOf(el.value) !== -1;
+      else el.checked = value !== undefined && (el.value === 'on' || String(value) === el.value);
+    } else if (el.type === 'radio') {
+      if (value !== undefined) el.checked = String(value) === el.value;
+    } else if (el.tagName === 'SELECT' && el.multiple) {
+      var list = Array.isArray(value) ? value.map(String) : [];
+      Array.prototype.forEach.call(el.options, function (o) { o.selected = list.indexOf(o.value) !== -1; });
+    } else if (value !== undefined && typeof value !== 'object') {
+      el.value = String(value);
+    } else return;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  var details = form.closest('details');
+  if (details) details.open = true;
+})();

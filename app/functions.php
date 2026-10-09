@@ -8,7 +8,32 @@ function cfg(string $key): mixed { global $config; return $config[$key] ?? null;
 function e(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function path_only(): string { return '/' . ltrim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/'), '/'); }
 function is_post(): bool { return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'; }
-function redirect(string $url): never { header('Location: ' . yw_admin_return_target($url), true, 303); exit; }
+function redirect(string $url): never { yw_remember_input(); header('Location: ' . yw_admin_return_target($url), true, 303); exit; }
+/**
+ * Nach einer Fehlermeldung sollen die Eingaben nicht verloren gehen: Endet ein Formular mit einer
+ * Fehler-Meldung, merkt sich die Sitzung die Eingaben (ohne Passwörter, PINs und Schlüssel) für den
+ * nächsten Seitenaufruf; assets/app.js trägt sie wieder in dasselbe Formular ein.
+ */
+function yw_remember_input(): void {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || (($_SESSION['flash'][0] ?? '') !== 'error') || empty($_POST['action'])) return;
+    $clean = static function (array $data, int $depth = 0) use (&$clean): array {
+        $out = [];
+        foreach ($data as $key => $value) {
+            if (preg_match('/^(csrf|return_to|action)$|pass|secret|token|^pin$|_pin$|api_?key|otp|iban/i', (string)$key)) continue;
+            if (is_array($value)) { if ($depth < 4) $out[$key] = $clean($value, $depth + 1); }
+            elseif (is_scalar($value)) $out[$key] = mb_substr((string)$value, 0, 20000);
+        }
+        return $out;
+    };
+    $json = json_encode(['action' => (string)$_POST['action'], 'data' => $clean($_POST)], JSON_UNESCAPED_UNICODE);
+    if (is_string($json) && strlen($json) <= 200000) $_SESSION['old_input'] = $json;
+}
+/** Gemerkte Eingaben einmalig für assets/app.js ausgeben. */
+function yw_old_input_script(): string {
+    $json = $_SESSION['old_input'] ?? null; unset($_SESSION['old_input']);
+    if (!is_string($json) || $json === '') return '';
+    return '<script type="application/json" id="yw-old-input">' . str_replace(['<', '>', '&'], ['\\u003c', '\\u003e', '\\u0026'], $json) . '</script>';
+}
 /**
  * Kundenakte: Nach dem Speichern zurück in denselben Reiter (z. B. „Kollektion & Design“) statt auf die
  * Übersicht oder – bei einem Fehler – auf die Kundenliste. Die Formulare der Kundenakte tragen dafür
@@ -583,4 +608,4 @@ function render_head(string $title, ?array $brand = null): void {
     echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
 }
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '">' . e($f[1]) . '</div>'; }
-function render_foot(): void { echo '<script src="'.e(asset_url('assets/app.js')).'" defer></script></body></html>'; }
+function render_foot(): void { echo yw_old_input_script().'<script src="'.e(asset_url('assets/app.js')).'" defer></script></body></html>'; }

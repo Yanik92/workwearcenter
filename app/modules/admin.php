@@ -490,7 +490,7 @@ function handle_admin_action(): never {
             $companyId=(int)db()->lastInsertId(); $cp=db()->prepare('INSERT INTO company_products(company_id,product_id) VALUES(?,?)'); foreach(array_unique($productIds) as $id)$cp->execute([$companyId,$id]);
             db()->commit();
             audit_log('company.created','company',$companyId,['company_id'=>$companyId]);
-            flash('success','Firmen-Shop wurde angelegt. Nächster Schritt: unter „Mitarbeiter & Rollen“ den ersten Verantwortlichen anlegen.'); redirect('/admin?tab=companies&company='.$companyId);
+            flash('success','Firmen-Shop wurde angelegt. Nächster Schritt: hier den ersten Verantwortlichen anlegen (Rolle „Verantwortlicher“).'); redirect(yw_customer_url($companyId,'mitarbeiter'));
         }
         if ($action==='update_brand') {
             $id=(int)$_POST['company_id']; $stmt=db()->prepare('SELECT * FROM companies WHERE id=?'); $stmt->execute([$id]); $company=$stmt->fetch(); if(!$company)throw new RuntimeException('Firma nicht gefunden.');
