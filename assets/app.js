@@ -66,22 +66,6 @@
     });
   });
 
-  /* ---------- Firmenshop: Kategorie-Filter ---------- */
-  document.querySelectorAll('.shop-category-filter').forEach(function (filter) {
-    var buttons = filter.querySelectorAll('button[data-filter]');
-    buttons.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        buttons.forEach(function (b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
-        btn.classList.add('active');
-        btn.setAttribute('aria-pressed', 'true');
-        var wanted = btn.dataset.filter;
-        document.querySelectorAll('.product-card[data-category]').forEach(function (card) {
-          card.style.display = (wanted === 'all' || card.dataset.category === wanted) ? '' : 'none';
-        });
-      });
-    });
-  });
-
   /* ---------- Firmenshop: Vorder-/Rückansicht ---------- */
   document.querySelectorAll('[data-product-visual]').forEach(function (visual) {
     var buttons = visual.querySelectorAll('[data-show-side]');
@@ -96,88 +80,7 @@
     });
   });
 
-  /* ---------- Firmenshop: Mengen-Stepper und Live-Summe ---------- */
-  var qtyInputs = document.querySelectorAll('.shop-qty');
-  if (qtyInputs.length) {
-    var panel = document.querySelector('.shop-order-panel[data-shipping-enabled]');
-    var grossFromNet = function (net, vat) { return Math.round(net * (1 + (vat / 100))); };
-
-    var updateSelection = function () {
-      var count = 0, gross = 0, employee = 0, company = 0;
-      qtyInputs.forEach(function (input) {
-        var max = parseInt(input.max || '10', 10);
-        var qty = Math.max(0, parseInt(input.value || '0', 10) || 0);
-        if (qty > max) { qty = max; input.value = String(max); }
-        count += qty;
-        gross += (parseInt(input.dataset.gross || '0', 10) || 0) * qty;
-        employee += (parseInt(input.dataset.employee || '0', 10) || 0) * qty;
-        company += (parseInt(input.dataset.company || '0', 10) || 0) * qty;
-        var card = input.closest('.company-product-card');
-        if (card) card.classList.toggle('is-selected', qty > 0);
-      });
-
-      var shippingGross = 0;
-      if (panel && panel.dataset.shippingEnabled === '1' && count > 0) {
-        var freeFrom = parseInt(panel.dataset.freeShipping || '0', 10) || 0;
-        if (!(freeFrom > 0 && gross >= freeFrom)) {
-          shippingGross = grossFromNet(parseInt(panel.dataset.shippingNet || '0', 10) || 0, parseFloat(panel.dataset.shippingVat || '19') || 19);
-          if (panel.dataset.shippingPayer === 'employee') employee += shippingGross; else company += shippingGross;
-        }
-      }
-
-      var map = {
-        '[data-selection-count]': String(count),
-        '[data-summary-gross]': euro(gross),
-        '[data-summary-shipping]': euro(shippingGross),
-        '[data-summary-employee]': euro(employee),
-        '[data-summary-company]': euro(company),
-        '[data-summary-total]': euro(gross + shippingGross)
-      };
-      Object.keys(map).forEach(function (sel) {
-        document.querySelectorAll(sel).forEach(function (el) { el.textContent = map[sel]; });
-      });
-
-      var budgetBox = document.querySelector('[data-budget-remaining]');
-      var budgetWarning = document.querySelector('[data-budget-warning]');
-      var submit = document.querySelector('.shop-submit');
-      var over = false;
-      if (budgetBox) {
-        var remaining = parseInt(budgetBox.dataset.budgetRemaining || '0', 10) || 0;
-        over = company > remaining;
-        if (budgetWarning) budgetWarning.hidden = !over;
-      }
-      if (submit) submit.disabled = count === 0 || over;
-      document.querySelectorAll('[data-mobile-cart]').forEach(function (bar) { bar.classList.toggle('show', count > 0); });
-    };
-
-    qtyInputs.forEach(function (input) {
-      input.addEventListener('input', updateSelection);
-      input.addEventListener('change', updateSelection);
-    });
-    document.querySelectorAll('[data-qty-step]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        var input = document.getElementById(button.dataset.qtyTarget || '');
-        if (!input || input.disabled) return;
-        var max = parseInt(input.max || '10', 10), step = parseInt(button.dataset.qtyStep, 10) || 0;
-        input.value = String(Math.min(max, Math.max(0, (parseInt(input.value, 10) || 0) + step)));
-        updateSelection();
-      });
-    });
-    document.querySelectorAll('[data-scroll-checkout]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        var target = document.querySelector('.shop-order-panel');
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    });
-    var orderForm = document.querySelector('form[data-order-form]');
-    if (orderForm) {
-      orderForm.addEventListener('submit', function () {
-        var submit = orderForm.querySelector('.shop-submit');
-        if (submit) { submit.disabled = true; submit.textContent = 'Wird gesendet …'; }
-      });
-    }
-    updateSelection();
-  }
+  /* Firmenshop (Filter, Mengen, Auswahl, Detailansicht): assets/shop.js */
 
   /* ---------- Admin: einfacher Rich-Text-Editor ---------- */
   var toolbars = document.querySelectorAll('.rich-toolbar');
