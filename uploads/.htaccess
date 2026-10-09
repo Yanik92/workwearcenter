@@ -3,6 +3,11 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
+# Hochgeladene Listen und Datenexporte nie direkt ausliefern (z. B. Lieferantenpreise)
+<FilesMatch "\.(json|csv|xlsx?|zip|txt|sql|log|bak)$">
+    Require all denied
+</FilesMatch>
+
 # Logo-Dateien (SVG) nie als eigenständige Seite mit Skriptrechten ausliefern
 <FilesMatch "\.svg$">
     Header set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'"

@@ -24,6 +24,11 @@ return [
     'smtp_user' => 'SMTP-BENUTZER',
     'smtp_pass' => 'SMTP-PASSWORT',
 
+    // Privater Datenordner (Lieferantenlisten mit Einkaufspreisen u. Ä.).
+    // Am sichersten AUSSERHALB des Webroots, z. B. '/var/www/workwearcenter-privat'.
+    // Leer = app/private (durch .htaccess gesperrt; nur unter Apache wirksam).
+    'private_dir' => '',
+
     // Nur für die Neuinstallation über /install.php (mind. 16 Zeichen).
     'install_key' => '',
 

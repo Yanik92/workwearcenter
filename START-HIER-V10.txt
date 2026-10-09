@@ -1,4 +1,4 @@
-WORKWEARCENTER (Yanik Textildruck) – VERSION 10.3.0
+WORKWEARCENTER (Yanik Textildruck) – VERSION 10.10.0
 ================================================
 
 Dieses Paket ist beides:
@@ -21,8 +21,9 @@ A) UPDATE EINER BESTEHENDEN INSTALLATION
    config.php und den Ordner uploads NICHT überschreiben oder löschen.
 3. Als Administrator anmelden → https://workwearcenter.de/update.php
    Sicherung bestätigen, Update einmal ausführen (legt die neuen Tabellen an).
-   NEU 10.3: danach Admin → Inhalte → „Neue Texte übernehmen“ klicken
-   (alte Texte werden gesichert und lassen sich zurückholen).
+   (Kommt das Update von einer Version vor 10.3: danach Admin → Inhalte →
+   „Neue Texte übernehmen“ klicken; alte Texte werden gesichert.)
+   NEU 10.10: uploads/.htaccess unbedingt mit hochladen (sperrt Listen/Exporte).
 4. Admin → „Mein Konto“: Zwei-Faktor-Anmeldung einrichten, Codes sicher ablegen.
 5. Admin → „Systemstatus“: alle Prüfungen durchgehen.
 6. Admin → „Übergabe“: ältere freigegebene Aufträge ggf. „für Übergabe vorbereiten“.
@@ -40,7 +41,26 @@ B) NEUINSTALLATION
 4. Weiter wie oben ab Schritt 4.
 
 -------------------------------------------------------------------------------
-CRONJOB (dringend empfohlen)
+WEBSERVER: SPERREN PRÜFEN (wichtig)
+-------------------------------------------------------------------------------
+Alle Sperren (Programmordner app/, Lieferantenpreise, Anleitungen, Uploads ohne
+Skripte) stehen in .htaccess-Dateien. Das wirkt nur unter Apache mit
+„AllowOverride All“. Admin → System → Systemstatus prüft das von außen
+(„Interne Dateien gesperrt“) und muss grün sein.
+
+Bei nginx (oder wenn die Prüfung rot ist) diese Regeln beim Hoster eintragen:
+
+    location ~ ^/(app|tests|tools)/            { deny all; }
+    location ~ ^/uploads/.*\.(php\d?|phtml|phar|json|csv|xlsx?|zip|txt|sql)$ { deny all; }
+    location ~ ^/(config\.php|config\.example\.php|cron\.php|VERSION)$ { deny all; }
+    location ~ \.(md|sql|log|ini|bak|zip)$    { deny all; }
+    location / { try_files $uri $uri/ /index.php?$query_string; }
+
+Am sichersten: in der config.php 'private_dir' auf einen Ordner AUSSERHALB des
+Webroots setzen. Dort liegt dann die eingelesene Daiber-Liste mit Einkaufspreisen.
+
+-------------------------------------------------------------------------------
+CRONJOB (Pflicht für den Betrieb)
 -------------------------------------------------------------------------------
 cron.php alle fünf Minuten per PHP-CLI ausführen, z. B.:
 
@@ -48,7 +68,7 @@ cron.php alle fünf Minuten per PHP-CLI ausführen, z. B.:
 
 Er versendet E-Mails, überträgt Aufträge an die Auftragsverwaltung und löscht
 abgelaufene Daten (Sicherheitsdaten, versendete Mails nach 90 Tagen, erledigte
-Anfragen nach 24 Monaten). cron.php ist über den Browser gesperrt.
+Anfragen nach 24 Monaten). cron.php ist über den Browser gesperrt. Der Systemstatus zeigt, wann er zuletzt lief.
 
 -------------------------------------------------------------------------------
 VOR DEM ÖFFENTLICHEN START

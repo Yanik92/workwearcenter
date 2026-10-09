@@ -235,6 +235,44 @@ function yw_production(): void {
     }
 }
 
+/**
+ * Prüft von außen, ob interne Dateien wirklich gesperrt sind. Der Schutz hängt an der
+ * .htaccess (Apache); bei nginx oder abgeschaltetem AllowOverride wären Programmordner,
+ * Lieferantenpreise und Fehlerprotokoll sonst öffentlich. Ergebnis wird 1 Stunde gemerkt.
+ * Rückgabe: [true|false|null, Hinweis] – null heißt „konnte nicht geprüft werden“.
+ */
+function yw_private_exposure_check(bool $force=false): array {
+    $cached=json_decode(current_site_setting('exposure_check',''),true);
+    if(!$force && is_array($cached) && ($cached['at']??0)>time()-3600)return [$cached['ok'],(string)$cached['hint']];
+    $result=[null,'Prüfung nicht möglich (PHP-Erweiterung curl fehlt)'];
+    if(function_exists('curl_init')){
+        try{
+            $token=bin2hex(random_bytes(16));
+            $probe=yw_private_dir().'/sperrtest.txt';
+            file_put_contents($probe,$token);
+            $secure=(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https');
+            $host=(string)($_SERVER['HTTP_HOST']??yw_public_host());
+            $base=($secure?'https://':'http://').$host;
+            $targets=['/app/private/sperrtest.txt'=>$token,'/app/data/katalog-daiber.json'=>'"articles"','/config.example.php'=>'db_pass','/AENDERUNGEN-V10.md'=>'WorkwearCenter','/uploads/.htaccess'=>'FilesMatch'];
+            $open=[];$reached=0;
+            foreach($targets as $path=>$marker){
+                $ch=curl_init($base.$path);
+                curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>4,CURLOPT_CONNECTTIMEOUT=>3,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_RANGE=>'0-65535']);
+                $body=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE);curl_close($ch);
+                if($body===false||$code===0)continue;
+                $reached++;
+                if($code>=200&&$code<300&&str_contains((string)$body,$marker))$open[]=$path;
+            }
+            @unlink($probe);
+            if($open)$result=[false,'Öffentlich abrufbar: '.implode(', ',$open).' – der Webserver beachtet die .htaccess nicht. Beim Hoster AllowOverride aktivieren oder (nginx) die Sperren aus der Installationsanleitung eintragen.'];
+            elseif($reached>0)$result=[true,''];
+            else $result=[null,'Die eigene Adresse war vom Server aus nicht erreichbar – bitte die Prüfung später erneut starten.'];
+        }catch(Throwable $e){$result=[null,'Prüfung fehlgeschlagen: '.$e->getMessage()];}
+    }
+    set_site_setting('exposure_check',json_encode(['at'=>time(),'ok'=>$result[0],'hint'=>$result[1]]));
+    return $result;
+}
+
 function yw_system(): void {
     $age=yw_backup_age_days();
     echo '<section class="card"><div class="title-row"><div><h2>Datensicherung</h2><p class="muted">Lädt Datenbank und hochgeladene Dateien als ZIP herunter. Bitte wöchentlich und vor jedem Update, und die Datei außerhalb des Webspace aufbewahren.</p></div><a class="btn primary" href="/admin/sicherung">Sicherung herunterladen</a></div><p>'.($age===null?'Noch keine Sicherung heruntergeladen.':'Letzte Sicherung: vor '.$age.' Tag'.($age===1?'':'en').' ('.e(current_site_setting('last_backup_at','')).').').'</p></section>';
@@ -252,7 +290,19 @@ function yw_system(): void {
     $transport=(string)(cfg('mail_transport')?:'mail');
     $mailIssues=yw_mail_config_issues();
     $mailConfigured=$mailIssues===[];
+    [$exposureOk,$exposureHint]=yw_private_exposure_check(isset($_GET['pruefen']));
+    $cronLast=current_site_setting('cron_last_run','');
+    $cronOk=$cronLast!==''&&strtotime($cronLast)>time()-3600;
+    $adminsWithout2fa=null;
+    try{$adminsWithout2fa=(int)db()->query('SELECT COUNT(*) FROM admins WHERE active=1 AND totp_enabled=0')->fetchColumn();}catch(Throwable $e){}
+    $imprintMissing=[];
+    foreach(['imprint_vat_id'=>'USt-IdNr.','imprint_email'=>'E-Mail'] as $key=>$label)if(trim(current_site_setting($key,''))==='')$imprintMissing[]=$label;
     $checks=[
+        ['Interne Dateien gesperrt',$exposureOk===true,$exposureHint.' (Erneut prüfen: Systemstatus mit ?pruefen=1 aufrufen)'],
+        ['Cronjob läuft',$cronOk,$cronLast===''?'cron.php ist noch nie gelaufen – beim Hoster alle 5 Minuten einrichten':'Letzter Lauf '.date('d.m.Y H:i',(int)strtotime($cronLast)).' – Cronjob beim Hoster prüfen'],
+        ['Datensicherung aktuell',$age!==null&&$age<=7,'Sicherung herunterladen (älter als 7 Tage oder noch nie)'],
+        ['Zwei-Faktor für alle Admins',$adminsWithout2fa===0,$adminsWithout2fa===null?'Datenbankschema aktualisieren':$adminsWithout2fa.' aktive Administrator(en) ohne Zwei-Faktor-Anmeldung'],
+        ['Impressum vollständig',$imprintMissing===[],'Unter Website → Inhalte ergänzen: '.implode(', ',$imprintMissing)],
         ['Datenbankschema '.app_version(),yw_schema_ready(),'Update-Assistent ausführen'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren'],
         ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren'],

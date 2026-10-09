@@ -8,8 +8,10 @@ if(PHP_SAPI!=='cli'){
 }
 
 require __DIR__.'/app/bootstrap.php';
+require_once __DIR__.'/app/modules/system.php';
 
 try{
+    set_site_setting('cron_last_run',date('Y-m-d H:i:s'));
     yw_process_mail_queue(50);
     $handed=yw_process_handover_queue(25);
     yw_cleanup_expired_security_rows();

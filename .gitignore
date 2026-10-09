@@ -5,3 +5,5 @@ uploads/company-products/*
 uploads/logos/*
 uploads/branding/*
 uploads/katalog/*
+config.php
+app/private/

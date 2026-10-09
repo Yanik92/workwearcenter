@@ -13,7 +13,21 @@ const YW_KATALOG_PRICE_FACTOR_DEFAULT='2.00';
 
 function yw_katalog_dir(): string { return dirname(__DIR__,2).'/uploads/katalog'; }
 function yw_katalog_images_dir(): string { return yw_katalog_dir().'/bilder'; }
-function yw_katalog_file(): string { return yw_katalog_dir().'/daiber.json'; }
+/**
+ * Die eingelesene Daiber-Liste enthält Händler-Einkaufspreise und darf nie öffentlich
+ * abrufbar sein. Sie liegt deshalb im privaten Datenordner (siehe yw_private_dir()),
+ * nicht mehr unter uploads/katalog/ (bis 10.9.0). Eine alte Datei wird beim ersten
+ * Laden verschoben.
+ */
+function yw_katalog_file(): string { return yw_private_dir().'/katalog-daiber.json'; }
+function yw_katalog_legacy_file(): string { return yw_katalog_dir().'/daiber.json'; }
+function yw_katalog_migrate_legacy(): void {
+    $old=yw_katalog_legacy_file();
+    if(!is_file($old))return;
+    try{$new=yw_katalog_file();}catch(Throwable $e){error_log('Katalog: '.$e->getMessage());return;}
+    if(!is_file($new)&&@rename($old,$new))return;
+    if(is_file($new))@unlink($old);
+}
 function yw_katalog_bundled_file(): string { return dirname(__DIR__).'/data/katalog-daiber.json'; }
 
 /** Marke anhand der Daiber-Artikelnummer. */
@@ -28,6 +42,7 @@ function yw_katalog_brand(string $sku): string {
 function yw_katalog_load(): ?array {
     static $cache=null;
     if($cache!==null)return $cache?:null;
+    yw_katalog_migrate_legacy();
     foreach([yw_katalog_file(),yw_katalog_bundled_file()] as $file){
         if(!is_file($file))continue;
         $data=json_decode((string)file_get_contents($file),true);
@@ -269,7 +284,10 @@ function yw_katalog_import_zip(string $tmp): int {
         if(!preg_match('/^[A-Za-z0-9._ -]+\.(jpe?g|png|webp)$/i',$base))continue;
         $stat=$zip->statIndex($i);if(!$stat||($stat['size']??0)>40*1024*1024)continue;
         $stream=$zip->getStream($name);if(!$stream)continue;
-        file_put_contents($dir.'/'.strtolower($base),$stream);fclose($stream);$count++;
+        $target=$dir.'/'.strtolower($base);
+        file_put_contents($target,$stream);fclose($stream);
+        try{yw_validate_uploaded_raster($target,'Bild '.$base);}catch(Throwable $e){@unlink($target);continue;}
+        $count++;
     }
     $zip->close();
     return $count;
@@ -319,7 +337,6 @@ function yw_admin_katalog_action(string $action): void {
         if(!is_uploaded_file((string)$file['tmp_name']))throw new RuntimeException('Ungültiger Upload.');
         @set_time_limit(300);@ini_set('memory_limit','512M');
         $catalog=yw_katalog_build_from_xlsx((string)$file['tmp_name'],mb_substr((string)$file['name'],0,120));
-        $dir=yw_katalog_dir();if(!is_dir($dir)&&!mkdir($dir,0755,true)&&!is_dir($dir))throw new RuntimeException('Katalogordner konnte nicht erstellt werden.');
         if(file_put_contents(yw_katalog_file(),json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))===false)throw new RuntimeException('Katalog konnte nicht gespeichert werden.');
         audit_log('katalog.updated','system',null,['source'=>$catalog['source'],'articles'=>count($catalog['articles'])]);
         flash('success','Daiber-Liste eingelesen: '.count($catalog['articles']).' Artikel aus '.$catalog['rows'].' Varianten.');redirect('/admin?tab=katalog');

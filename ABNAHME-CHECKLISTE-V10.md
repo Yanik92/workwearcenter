@@ -1,4 +1,4 @@
-# Abnahme-Checkliste WorkwearCenter 10.0.0
+# Abnahme-Checkliste WorkwearCenter 10.10.0
 
 Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danach öffentlich freischalten.
 
@@ -8,6 +8,8 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 - [ ] Versteckte Dateien `.htaccess`, `.user.ini` und `uploads/.htaccess` übertragen.
 - [ ] `/update.php` als Administrator erfolgreich ausgeführt.
 - [ ] Admin → Systemstatus zeigt das Datenbankschema als erfüllt.
+- [ ] Admin → Systemstatus: „Interne Dateien gesperrt“ ist grün (sonst Webserver-Sperren laut START-HIER eintragen).
+- [ ] `https://workwearcenter.de/uploads/katalog/daiber.json` liefert keinen Inhalt (403 oder 404).
 - [ ] Bestehende Firmen, Produkte, Konten und Bestellungen stichprobenartig vorhanden.
 
 ## Admin-Sicherheit (neu in 10)
@@ -76,7 +78,7 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 
 - [ ] Admin → Systemstatus erkennt die SMTP-Konfiguration ohne Warnung.
 - [ ] Testmail kommt mit Logo, korrektem Absender und Antwortadresse an.
-- [ ] Cronjob für `cron.php` alle fünf Minuten eingerichtet.
+- [ ] Cronjob für `cron.php` alle fünf Minuten eingerichtet; Systemstatus zeigt „Cronjob läuft“.
 - [ ] Fehlgeschlagene E-Mail testweise erneut verarbeitet.
 - [ ] HTTPS aktiv; Browser zeigt keine Mixed-Content-Warnung.
 - [ ] Wartungsmodus erst nach allen Prüfungen deaktiviert.

@@ -42,6 +42,22 @@ function yw_validate_uploaded_raster(string $tmp,string $label='Bild'): void {
 function yw_company_logo_path(array $company): string {
     return yw_local_image_path((string)($company['logo_path']??''),['logos']);
 }
+/**
+ * Privater Datenordner für Dateien, die nie über das Web erreichbar sein dürfen
+ * (z. B. Lieferantenlisten mit Einkaufspreisen). Am sichersten liegt er außerhalb
+ * des Webroots ('private_dir' in der config.php). Ohne Eintrag wird app/private
+ * verwendet: dort sperren die Haupt-.htaccess und eine eigene .htaccess den Zugriff.
+ */
+function yw_private_dir(): string {
+    $configured=trim((string)(cfg('private_dir')??''));
+    $dir=$configured!==''?rtrim($configured,'/\\'):__DIR__.'/private';
+    if(!is_dir($dir)&&!@mkdir($dir,0750,true)&&!is_dir($dir))throw new RuntimeException('Privater Datenordner konnte nicht angelegt werden: '.$dir);
+    if($configured===''){
+        if(!is_file($dir.'/.htaccess'))@file_put_contents($dir.'/.htaccess',"Require all denied\n");
+        if(!is_file($dir.'/index.html'))@file_put_contents($dir.'/index.html','');
+    }
+    return $dir;
+}
 function workwearcenter_domain(): string { return (string)(cfg('base_domain') ?: 'workwearcenter.de'); }
 /** Öffentliche Adresse so, wie der Shop tatsächlich aufgerufen wird (mit oder ohne www). */
 function yw_public_host(): string {
