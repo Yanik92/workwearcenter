@@ -105,6 +105,7 @@ function yw_handover_payload(int $orderId,string $event='order.approved',string 
         $unitNet=(int)($item['unit_net_cents']??0);if($unitNet<=0)$unitNet=(int)$item['unit_price_cents'];
         $unitGross=(int)($item['unit_gross_cents']??0);
         $qty=(int)$item['quantity'];
+        $amounts=yw_order_item_amounts($item); // 10.11: Positionswerte (Rundung je Position)
         $items[]=[
             'line'=>$line,
             'product_id'=>(int)$item['product_id'],
@@ -117,10 +118,10 @@ function yw_handover_payload(int $orderId,string $event='order.approved',string 
             'vat_rate'=>(float)($item['vat_rate']??19),
             'unit_net_cents'=>$unitNet,
             'unit_gross_cents'=>$unitGross,
-            'line_net_cents'=>$unitNet*$qty,
-            'line_gross_cents'=>$unitGross*$qty,
-            'employee_share_cents'=>(int)($item['employee_share_cents']??0)*$qty,
-            'company_share_cents'=>(int)($item['company_share_cents']??0)*$qty,
+            'line_net_cents'=>$amounts['net'],
+            'line_gross_cents'=>$amounts['gross'],
+            'employee_share_cents'=>$amounts['employee'],
+            'company_share_cents'=>$amounts['company'],
             'decorations'=>$decorations,
             'base_decoration'=>['type'=>(string)($snap['base_decoration_type']??''),'details'=>(string)($snap['base_decoration_details']??'')],
         ];

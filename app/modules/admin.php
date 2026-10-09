@@ -78,7 +78,7 @@ function admin_page(): void {
     require_admin();
     if (is_post()) { verify_csrf(); handle_admin_action(); }
 
-    $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog'];
+    $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','lexware'];
     $tab=(string)($_GET['tab'] ?? 'dashboard');
     if(!in_array($tab,$allowedTabs,true))$tab='dashboard';
 
@@ -151,6 +151,7 @@ function admin_page(): void {
     elseif($tab==='suche') yw_admin_search_page((string)($_GET['q']??''));
     elseif($tab==='api') yw_admin_api_page();
     elseif($tab==='katalog') yw_admin_katalog_page();
+    elseif($tab==='lexware') yw_lexware_admin_page();
     elseif($tab==='audit') render_admin_audit($auditLogs);
     else render_admin_dashboard($companies,$products,$orders,$inquiries);
 
@@ -163,6 +164,7 @@ function handle_admin_action(): never {
     yw_admin_action();
     $action=(string)($_POST['action'] ?? '');
     if(str_starts_with($action,'handover_'))yw_admin_handover_action($action);
+    if(str_starts_with($action,'lexware_'))yw_lexware_admin_action($action);
     if(str_starts_with($action,'account_') || in_array($action,['admin_invite','admin_toggle'],true))yw_admin_account_action($action);
     try {
         if ($action==='inquiry_status') {
@@ -1016,12 +1018,13 @@ function admin_context_header(string $tab): string {
         'suche'=>['Suche','Kunden, Mitarbeitende, Aufträge und Produkte finden.'],
         'api'=>['API-Zugänge','Schlüssel für Auftragszentrale, Fan-Bande und Partner.'],
         'katalog'=>['Lieferantenkatalog','Produkte aus der Daiber-Liste anlegen und Bilder automatisch zuordnen.'],
+        'lexware'=>['Lexware Office','Kunden verknüpfen und Rechnungsentwürfe aus freigegebenen Aufträgen erzeugen.'],
     ];
     if($tab==='companies'&&!empty($_GET['company']))$data['companies']=['Kundenakte','Alles zu diesem Kunden an einem Ort.'];
     if($tab==='orders'&&!empty($_GET['auftrag']))$data['orders']=['Auftrag','Positionen, Produktion, Übergabe und Verlauf.'];
     [$title,$subtitle]=$data[$tab]??$data['dashboard'];
     $sub='';
-    $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','handover'=>'Übergabe','api'=>'API-Zugänge','account'=>'Mein Konto & Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
+    $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','handover'=>'Übergabe','lexware'=>'Lexware Office','api'=>'API-Zugänge','account'=>'Mein Konto & Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
     foreach($groups as $g=>$items)if(isset($items[$tab])){$sub='<nav class="admin-subtabs">';foreach($items as $k=>$l)$sub.='<a class="'.($k===$tab?'active':'').'" href="/admin?tab='.$k.'">'.e($l).'</a>';$sub.='</nav>';}
     return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">WORKWEARCENTER VERWALTUNG</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
 }
@@ -1053,7 +1056,7 @@ function admin_sidebar(string $active): string {
             'systemgroup'=>['System','settings'],
         ],
     ];
-    $activeKey=match(true){in_array($active,['content','design'],true)=>'website',in_array($active,['system','handover','api','account','audit','guide'],true)=>'systemgroup',in_array($active,['new','corporate'],true)=>'companies',$active==='katalog'=>'products',default=>$active};
+    $activeKey=match(true){in_array($active,['content','design'],true)=>'website',in_array($active,['system','handover','lexware','api','account','audit','guide'],true)=>'systemgroup',in_array($active,['new','corporate'],true)=>'companies',$active==='katalog'=>'products',default=>$active};
     $target=['website'=>'content','systemgroup'=>'system'];
     $html='<aside class="admin-sidebar"><nav class="admin-menu" aria-label="Verwaltung">';
     foreach($groups as $group=>$items){
@@ -1334,7 +1337,7 @@ function render_admin_companies(array $companies,array $products): void {
 
 
 function yw_audit_labels(): array {
-    return [
+    return yw_lexware_audit_labels()+[
         'admin.login'=>'Admin-Anmeldung',
         'company.rules_updated'=>'Shopregeln geändert',
         'order.created'=>'Bestellung erstellt',

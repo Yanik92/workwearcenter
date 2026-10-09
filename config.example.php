@@ -44,4 +44,10 @@ return [
     'handover_url' => '',          // Auftragszentrale: https://auftraege.yanik-textildruck.de/channel.php
     'handover_secret' => '',       // Auftragszentrale: Schlüssel aus „Verkaufskanäle → WorkwearCenter“
     'handover_api_token' => '',    // mind. 32 Zeichen, nur für 'pull' / 'both'
+
+    // Lexware Office (Public API): Rechnungsentwürfe und Kundenkontakte. Leer = aus.
+    // Schlüssel erzeugen: Lexware Office → Erweiterungen → Public API (https://app.lexware.de/addons/public-api)
+    'lexware_api_key' => '',
+    // Nur für Tests ändern (z. B. lokaler Testserver); Standard ist die offizielle Adresse.
+    'lexware_api_base' => 'https://api.lexware.io',
 ];

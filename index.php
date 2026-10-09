@@ -42,7 +42,7 @@ if ($path === '/sitemap.xml') {
 }
 if ($path === '/robots.txt') {
     header('Content-Type: text/plain; charset=UTF-8');
-    echo "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /update.php\nDisallow: /install.php\nDisallow: /api/\nDisallow: /*/login\nDisallow: /*/registrieren\nDisallow: /*/passwort-\nDisallow: /*/mitarbeiter\nDisallow: /*/bestellungen\nDisallow: /*/freigaben\nDisallow: /*/produkte\nDisallow: /*/profil\nDisallow: /*/auswertung.csv\n\nSitemap: https://".yw_public_host()."/sitemap.xml\n";
+    echo "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /update.php\nDisallow: /install.php\nDisallow: /api/\nDisallow: /*/login\nDisallow: /*/registrieren\nDisallow: /*/passwort-\nDisallow: /*/mitarbeiter\nDisallow: /*/bestellungen\nDisallow: /*/freigaben\nDisallow: /*/produkte\nDisallow: /*/profil\nDisallow: /*/auswertung.csv\nDisallow: /*/lohnabzug.csv\n\nSitemap: https://".yw_public_host()."/sitemap.xml\n";
     exit;
 }
 
@@ -98,6 +98,7 @@ if ($path === '/admin/export.csv') { export_orders_csv(); exit; }
 if ($path === '/admin/beschaffung.csv') { export_procurement_csv(); exit; }
 if ($path === '/admin/produkte-vorlage.csv') { yw_product_csv_template(); exit; }
 if ($path === '/admin/produkte.csv') { yw_product_csv_export(); exit; }
+if ($path === '/admin/lohnabzug.csv') { yw_payroll_admin_export(); }
 if ($path === '/admin') { admin_page(); exit; }
 
 /* Unternehmensshops über Pfade, z. B. /leniger */
@@ -108,6 +109,7 @@ if (preg_match('#^/([a-z0-9-]+)/login$#', $path, $match)) { employee_account_log
 if (preg_match('#^/([a-z0-9-]+)/logout$#', $path, $match)) { company_portal_logout($match[1]); exit; }
 if (preg_match('#^/([a-z0-9-]+)/mitarbeiter\.csv$#', $path, $match)) { yw_customer_employee_export($match[1]); exit; }
 if (preg_match('#^/([a-z0-9-]+)/auswertung\.csv$#', $path, $match)) { yw_customer_report_export($match[1]); exit; }
+if (preg_match('#^/([a-z0-9-]+)/lohnabzug\.csv$#', $path, $match)) { yw_payroll_manager_export($match[1]); }
 
 /* alter Freigabe-Link bleibt nur als Weiterleitung bestehen */
 if (preg_match('#^/([a-z0-9-]+)/freigabe$#', $path, $match)) { redirect('/'.$match[1].'/freigaben'); }

@@ -361,8 +361,7 @@ function yw_order_mail_summary(int $orderId): string {
     $status=['pending'=>'Freigabe erforderlich','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Zurückgezogen'][(string)$order['status']]??(string)$order['status'];
     $text="Bestellung: #".$orderId."\nFirma: ".$order['legal_name']."\nMitarbeiter: ".$order['employee_name']."\nStatus: ".$status."\n\nBestellte Artikel:\n";
     foreach(order_items($orderId) as $item){
-        $unit=(int)($item['unit_gross_cents']??0);if($unit<=0)$unit=(int)$item['unit_price_cents'];
-        $text.=(int)$item['quantity'].' × '.$item['product_name'].' · Größe '.$item['size'].' · '.money($unit*(int)$item['quantity'])."\n";
+        $text.=(int)$item['quantity'].' × '.$item['product_name'].' · Größe '.$item['size'].' · '.money(yw_order_item_amounts($item)['gross'])."\n";
     }
     if((int)($order['shipping_gross_cents']??0)>0)$text.='Versand: '.money((int)$order['shipping_gross_cents'])."\n";
     $gross=(int)($order['gross_total_cents']??0);if($gross<=0)$gross=(int)$order['total_cents'];

@@ -400,5 +400,42 @@ function run_schema_updates(PDO $pdo): array {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     schema_mark_version($pdo,'10.8.0',$changes);
 
+    // ---- Version 10.11: Positionsrundung wie Lexware Office, Lexware-Anbindung ----
+    // NULL = Bestellung vor 10.11 (Stückrundung); diese Beträge bleiben unverändert.
+    foreach(['line_net_cents','line_gross_cents','line_employee_cents','line_company_cents'] as $column)
+        schema_add_column($pdo,'order_items',$column,'INT UNSIGNED NULL',$changes);
+    schema_add_column($pdo,'orders','shipping_vat_rate','DECIMAL(5,2) NULL',$changes);
+    schema_add_column($pdo,'companies','lexware_contact_id','CHAR(36) NULL',$changes);
+    schema_add_column($pdo,'companies','lexware_customer_number','VARCHAR(20) NULL',$changes);
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_lexware_documents (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        dedupe_key VARCHAR(120) NOT NULL,
+        company_id INT UNSIGNED NOT NULL,
+        kind VARCHAR(16) NOT NULL,
+        order_id INT UNSIGNED NULL,
+        period CHAR(7) NULL,
+        group_label VARCHAR(190) NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'creating',
+        lexware_id CHAR(36) NULL,
+        voucher_number VARCHAR(40) NULL,
+        voucher_status VARCHAR(20) NULL,
+        net_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        gross_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        line_count INT UNSIGNED NOT NULL DEFAULT 0,
+        last_error VARCHAR(500) NULL,
+        created_by INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_yw_lexware_dedupe (dedupe_key),
+        KEY idx_yw_lexware_company (company_id,created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Jeder Auftrag steht höchstens in einem Lexware-Beleg (keine Doppelberechnung).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_lexware_document_orders (
+        order_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        document_id INT UNSIGNED NOT NULL,
+        KEY idx_yw_lexware_doc (document_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    schema_mark_version($pdo,'10.11.0',$changes);
+
     return $changes;
 }
