@@ -227,14 +227,23 @@
     function num(el) { return parseFloat(String(el.value || '').replace(',', '.')) || 0; }
     function update() {
       var chosen = colors.filter(function (c) { return c.checked && !c.disabled; });
-      var ek = chosen.length ? Math.max.apply(null, chosen.map(function (c) { return parseFloat(c.dataset.ek) || 0; })) : parseFloat(form.dataset.ek) || 0;
+      // Wie beim Anlegen: je Farbe gilt der höchste Einkaufspreis der gewählten Größen (Übergrößen-Aufpreis).
+      var checkedSizes = sizes.filter(function (s) { return s.checked; }).map(function (s) { return s.value; });
+      function colorEk(c) {
+        var base = parseFloat(c.dataset.ek) || 0, ps = {}, sz = [];
+        try { ps = JSON.parse(c.dataset.ps || '{}') || {}; sz = JSON.parse(c.dataset.sz || '[]') || []; } catch (e) { return base; }
+        var used = sz.filter(function (s) { return checkedSizes.indexOf(s) !== -1; });
+        if (!used.length) used = sz;
+        return used.reduce(function (m, s) { return Math.max(m, parseFloat(ps[s]) || 0); }, base);
+      }
+      var ek = chosen.length ? Math.max.apply(null, chosen.map(colorEk)) : parseFloat(form.dataset.ek) || 0;
       var mode = form.querySelector('input[name="price_mode"]:checked').value;
       if (factor) factor.disabled = mode !== 'factor';
       if (fixed) fixed.disabled = mode !== 'fixed';
       var vk = mode === 'fixed' ? num(fixed) : Math.ceil(ek * num(factor) * 10 - 1e-9) / 10;
       out.ek && (out.ek.textContent = eur(ek));
       out.vk && (out.vk.textContent = vk > 0 ? eur(vk) : '–');
-      out.brutto && (out.brutto.textContent = vk > 0 ? eur(vk * 1.19) : '–');
+      out.brutto && (out.brutto.textContent = vk > 0 ? eur(Math.round(Math.round(vk * 100) * 119 / 100) / 100) : '–'); // wie gross_from_net: in Cent runden
       out.marge && (out.marge.textContent = vk > 0 ? eur(vk - ek) : '–');
       var n = chosen.length;
       out.count && (out.count.textContent = n === 1 ? '1 Produkt' : n + ' Produkte');
