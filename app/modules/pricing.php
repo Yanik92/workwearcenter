@@ -63,8 +63,9 @@ function yw_calc_items(array $lines,float $employeePercent=0.0): array {
         }
         $tax=yw_tax_for_net($sum,$bp);
         $extra=$tax-$floors;
-        // größte Reste zuerst, bei Gleichstand die frühere Position
-        uksort($remainders,static fn(int $a,int $b): int => [$remainders[$b],$a] <=> [$remainders[$a],$b]);
+        // größte Reste zuerst, bei Gleichstand der größere Positionsbetrag, dann die frühere Position.
+        // So hängt das Ergebnis nicht von der Reihenfolge der Artikel ab (gleiche Rechnung in assets/shop.js).
+        uksort($remainders,static fn(int $a,int $b): int => [$remainders[$b],$out[$b]['net'],$a] <=> [$remainders[$a],$out[$a]['net'],$b]);
         foreach(array_keys($remainders) as $i){if($extra<=0)break;$out[$i]['tax']++;$extra--;}
         $netByRate[$bp]=$sum;$taxByRate[$bp]=$tax;
     }

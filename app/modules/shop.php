@@ -312,7 +312,8 @@ function shipping_breakdown(array $company,int $itemsGrossCents,array $itemsNetB
 function shipping_rule_label(array $company): string {
     if(!shipping_enabled($company)) return 'Keine Versandkosten';
     $gross=gross_from_net((int)($company['shipping_net_cents']??0),(float)($company['shipping_vat_rate']??19.0));
-    $text=money($gross).' brutto Versand';
+    // 10.11: Die Versandsteuer wird mit der Ware je Steuersatz gerundet – brutto daher „ca.“ (± 1 Cent).
+    $text='Versand '.money((int)($company['shipping_net_cents']??0)).' netto (ca. '.money($gross).' brutto)';
     $freeFrom=(int)($company['free_shipping_gross_cents']??0);
     if($freeFrom>0) $text.=' · kostenfrei ab '.money($freeFrom).' Warenwert brutto';
     $text.=' · trägt '.(((string)($company['shipping_payer']??'company'))==='employee'?'Mitarbeiter':'Firma');

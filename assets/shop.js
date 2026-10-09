@@ -158,7 +158,7 @@
   /* 10.11: gleiche Rechnung wie app/modules/pricing.php (yw_calc_items) – Netto × Menge je Position,
      Umsatzsteuer je Steuersatz auf die Nettosumme (wie Lexware Office), Verteilung der Steuer auf die
      Positionen nach größten Resten, Eigenanteil je Position. Ganze Cent, keine Gleitkommarundung.
-     Reihenfolge der Positionen = Reihenfolge im Formular (so sendet der Browser sie auch). */
+     Gleichstand bei den Resten: größerer Positionsbetrag zuerst – unabhängig von der Artikelreihenfolge. */
   var bpOf = function (rate) { var v = parseFloat(rate); return isNaN(v) ? 0 : Math.max(0, Math.min(10000, Math.round(v * 100))); };
   var taxFor = function (net, bp) { return Math.floor((Math.max(0, net) * bp + 5000) / 10000); };
   var lineValues = {};
@@ -174,7 +174,7 @@
       var bp = parseInt(key, 10), idx = groups[key], sum = 0, floors = 0;
       idx.forEach(function (i) { var exact = lines[i].net * bp; lines[i].tax = Math.floor(exact / 10000); lines[i].rem = exact % 10000; floors += lines[i].tax; sum += lines[i].net; });
       var extra = taxFor(sum, bp) - floors;
-      idx.slice().sort(function (a, b) { return (lines[b].rem - lines[a].rem) || (a - b); }).forEach(function (i) { if (extra > 0) { lines[i].tax++; extra--; } });
+      idx.slice().sort(function (a, b) { return (lines[b].rem - lines[a].rem) || (lines[b].net - lines[a].net) || (a - b); }).forEach(function (i) { if (extra > 0) { lines[i].tax++; extra--; } });
       netByRate[bp] = sum;
     });
     var totals = { net: 0, gross: 0, employee: 0, company: 0, netByRate: netByRate, count: lines.length };

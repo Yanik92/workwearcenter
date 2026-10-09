@@ -231,6 +231,11 @@ test_ok(yw_order_item_amounts(['quantity'=>3,'unit_price_cents'=>840,'unit_net_c
 test_ok(yw_order_item_amounts(['quantity'=>3,'unit_gross_cents'=>1000,'line_net_cents'=>2520,'line_gross_cents'=>2999,'line_employee_cents'=>900,'line_company_cents'=>2099])['gross']===2999,'neue Bestellung liest Positionswerte');
 test_ok(yw_percent_of(1999,12.5)===250 && yw_percent_of(0,30)===0 && yw_tax_for_net(1495,1900)===284,'Prozentwerte werden kaufmännisch und ohne Gleitkommafehler gerundet');
 
+$x=yw_calc_items([['net_unit'=>1003,'qty'=>1,'vat'=>19],['net_unit'=>1103,'qty'=>1,'vat'=>19]],20.0);$y=yw_calc_items([['net_unit'=>1103,'qty'=>1,'vat'=>19],['net_unit'=>1003,'qty'=>1,'vat'=>19]],20.0);
+test_ok($x['lines'][1]['gross']===$y['lines'][0]['gross'] && $x['lines'][0]['gross']===$y['lines'][1]['gross'] && $x['employee']===$y['employee'] && $x['gross']===$y['gross'],'Rest-Cent bei gleichem Rest an den größeren Betrag – unabhängig von der Artikelreihenfolge (wie assets/shop.js)');
+$shopJs=(string)file_get_contents(dirname(__DIR__).'/assets/shop.js');
+test_ok(str_contains($shopJs,'(lines[b].rem - lines[a].rem) || (lines[b].net - lines[a].net) || (a - b)') && str_contains($shopJs,'Math.floor((Math.max(0, net) * bp + 5000) / 10000)'),'Live-Summe im Shop nutzt dieselbe Rundung wie pricing.php');
+
 // 10.11: Lexware-Anbindung (reine Logik)
 test_ok(yw_lexware_base_ok('https://api.lexware.io') && yw_lexware_base_ok('http://127.0.0.1:8105') && !yw_lexware_base_ok('http://api.lexware.io') && !yw_lexware_base_ok('https://user:pw@api.lexware.io') && !yw_lexware_base_ok('ftp://x'),'Lexware-Basis-URL nur HTTPS (HTTP nur lokal)');
 test_ok(!str_contains(yw_lexware_error_message(403,['message'=>"'geheim123' not a valid key=value pair"]),'geheim123'),'Lexware-Fehler 403 gibt den API-Schlüssel nie aus');
