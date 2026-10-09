@@ -1,0 +1,49 @@
+VOLLSTÄNDIGE CONFIG.PHP – VORLAGE FÜR WORKWEARCENTER 9
+=======================================================
+
+WICHTIG: Erst die vorhandene config.php sichern. Die Werte in Großbuchstaben sind
+Platzhalter und müssen durch die echten Angaben des Hosters ersetzt werden. Diese
+Datei niemals per Screenshot oder Supportnachricht mit echten Passwörtern teilen.
+
+<?php
+declare(strict_types=1);
+
+return [
+    'db_host' => 'localhost',
+    'db_port' => 3306,
+    'db_name' => 'ECHTER_DATENBANKNAME',
+    'db_user' => 'ECHTER_DATENBANKBENUTZER',
+    'db_pass' => 'ECHTES_DATENBANKPASSWORT',
+
+    'mail_transport' => 'smtp',
+    'mail_from' => 'noreply@workwearcenter.de',
+    'mail_reply_to' => 'info@yanik-textildruck.de',
+    'smtp_host' => 'ECHTER_SMTP_HOST',
+    'smtp_port' => 587,
+    'smtp_encryption' => 'tls',
+    'smtp_user' => 'ECHTER_SMTP_BENUTZER',
+    'smtp_pass' => 'ECHTES_SMTP_PASSWORT',
+];
+
+ÜBLICHE SMTP-VARIANTEN
+- Port 587 mit 'tls'
+- Port 465 mit 'ssl'
+- 'none' nur, wenn der Hoster das in einem vertrauenswürdigen internen Netz verlangt
+
+Wenn der Hoster ausdrücklich PHP mail() vorsieht:
+
+    'mail_transport' => 'mail',
+
+Die SMTP-Felder können im Array stehen bleiben, werden dann aber nicht verwendet.
+
+PRÜFUNG
+1. Datei als config.php im Stammverzeichnis speichern.
+2. /admin öffnen.
+3. „Systemstatus“ öffnen. Konfigurationsfehler werden dort ohne Passwörter angezeigt.
+4. „Testmail senden“ verwenden.
+5. Eingang, Absender, Antwortadresse und Spamordner prüfen.
+6. Fehlgeschlagene Mails im selben Bereich kontrollieren.
+
+Die Anwendung akzeptiert nur mail oder smtp als Transport, gültige Absenderadressen,
+Ports von 1 bis 65535 sowie tls, ssl oder none als Verschlüsselung. Benutzername und
+Passwort müssen gemeinsam gesetzt oder gemeinsam leer sein.

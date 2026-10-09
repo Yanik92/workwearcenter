@@ -1,0 +1,440 @@
+openapi: 3.0.3
+info:
+  title: WorkwearCenter API
+  version: "1.0"
+  description: |
+    Schnittstelle des WorkwearCenters (Firmen-Shops für Berufsbekleidung) für die
+    Auftragszentrale, Fan-Bande.de und Partner. Felder werden nur ergänzt, nie entfernt.
+    Ausführliche Beschreibung: API-DOKUMENTATION.md
+  contact:
+    name: Yanik Textildruck
+    email: info@yanik-textildruck.de
+servers:
+  - url: https://workwearcenter.de/api/v1
+security:
+  - ApiKey: []
+tags:
+  - name: System
+  - name: Kunden
+  - name: Produkte
+  - name: Bestellungen
+
+paths:
+  /ping:
+    get:
+      tags: [System]
+      summary: Verbindung und Schlüssel prüfen
+      security: [{}, {ApiKey: []}]
+      responses:
+        "200":
+          description: Erreichbar
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  system: {type: string, example: WorkwearCenter}
+                  version: {type: string, example: 10.8.0}
+                  api: {type: string, example: v1}
+                  time: {type: string, format: date-time}
+                  key:
+                    nullable: true
+                    type: object
+                    properties:
+                      name: {type: string}
+                      system: {type: string, enum: [auftragszentrale, fan-bande, partner, test]}
+                      scopes: {type: array, items: {type: string}}
+
+  /kunden:
+    get:
+      tags: [Kunden]
+      summary: Firmen (Kunden) auflisten
+      description: Benötigt das Recht `customers:read`.
+      parameters:
+        - {name: seit, in: query, schema: {type: string, format: date-time}, description: Nur Firmen, die seit diesem Zeitpunkt angelegt wurden}
+        - {name: aktiv, in: query, schema: {type: string, enum: ["1"]}, description: Nur freigeschaltete Firmenshops}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: {type: integer}
+                  data: {type: array, items: {$ref: "#/components/schemas/Kunde"}}
+        "400": {$ref: "#/components/responses/Fehler"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+
+  /kunden/{id}:
+    get:
+      tags: [Kunden]
+      summary: Eine Firma mit Kollektion
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        "200":
+          description: Firma
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: "#/components/schemas/Kunde"}
+                  - type: object
+                    properties:
+                      employeeCount: {type: integer, description: Freigegebene Mitarbeiterkonten}
+                      collection: {type: array, items: {$ref: "#/components/schemas/Produkt"}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /produkte:
+    get:
+      tags: [Produkte]
+      summary: Produkte auflisten
+      description: Benötigt das Recht `products:read`. Einkaufspreise werden nie ausgegeben.
+      parameters:
+        - {name: aktiv, in: query, schema: {type: string, enum: ["1"]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: {type: integer}
+                  data: {type: array, items: {$ref: "#/components/schemas/Produkt"}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+
+  /produkte/{id}:
+    get:
+      tags: [Produkte]
+      summary: Ein Produkt
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        "200":
+          description: Produkt
+          content: {application/json: {schema: {$ref: "#/components/schemas/Produkt"}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /bestellungen:
+    get:
+      tags: [Bestellungen]
+      summary: Bestellungen auflisten
+      description: |
+        Benötigt `orders:read`. Standard: nur freigegebene (produktionsreife) Bestellungen.
+        Mit `seit` werden alle Bestellungen geliefert, die seitdem angelegt, entschieden oder im
+        Produktionsstand geändert wurden. `next` enthält den Pfad der nächsten Seite.
+      parameters:
+        - {name: freigabe, in: query, schema: {type: string, enum: [approved, pending, rejected, cancelled, alle], default: approved}}
+        - {name: produktion, in: query, schema: {$ref: "#/components/schemas/Produktionsstand"}}
+        - {name: kunde, in: query, schema: {type: integer}, description: Firmen-ID}
+        - {name: seit, in: query, schema: {type: string, format: date-time}}
+        - {name: nach, in: query, schema: {type: integer}, description: Nur Bestellungen mit größerer ID (Blättern)}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200":
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: {type: integer}
+                  next: {type: string, nullable: true, example: "/api/v1/bestellungen?nach=8&limit=50"}
+                  data: {type: array, items: {$ref: "#/components/schemas/Bestellung"}}
+        "400": {$ref: "#/components/responses/Fehler"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+
+  /bestellungen/{id}:
+    get:
+      tags: [Bestellungen]
+      summary: Eine Bestellung
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}, description: "Zahl (8) oder Nummer (WWC-000008)"}
+      responses:
+        "200":
+          description: Bestellung
+          content: {application/json: {schema: {$ref: "#/components/schemas/Bestellung"}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /bestellungen/{id}/status:
+    post:
+      tags: [Bestellungen]
+      summary: Produktionsstand und Sendungsnummer melden
+      description: Benötigt `orders:write`. Wiederholte gleiche Meldungen sind erlaubt (`changed=false`).
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {$ref: "#/components/schemas/Statusmeldung"}
+                tracking:
+                  type: object
+                  properties:
+                    carrier: {type: string, maxLength: 40, example: DHL}
+                    number: {type: string, pattern: "^[A-Za-z0-9-]{4,80}$"}
+                    url: {type: string, format: uri, description: Nur https://; sonst wird der Link für bekannte Paketdienste automatisch gebildet}
+                externalReference: {type: string, maxLength: 120, description: Eure Auftragsnummer}
+      responses:
+        "200":
+          description: Übernommen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  order: {type: string, example: WWC-000008}
+                  status: {type: string}
+                  changed: {type: boolean}
+        "400": {$ref: "#/components/responses/Fehler"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /bestellungen/{id}/quittung:
+    post:
+      tags: [Bestellungen]
+      summary: Eingang der Bestellung bestätigen
+      description: Benötigt `orders:write`. Nur für freigegebene Bestellungen.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reference: {type: string, maxLength: 120}
+      responses:
+        "200":
+          description: Bestätigt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  order: {type: string}
+                  externalReference: {type: string, nullable: true}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: http
+      scheme: bearer
+      description: "API-Schlüssel `wwc_` + 48 Hex-Zeichen, angelegt unter Verwaltung → System → API-Zugänge. Nur über HTTPS."
+
+  responses:
+    Fehler:
+      description: Ungültige Anfrage
+      content: {application/json: {schema: {$ref: "#/components/schemas/Fehler"}}}
+    Unauthorized:
+      description: Schlüssel fehlt, ist ungültig oder gesperrt
+      content: {application/json: {schema: {$ref: "#/components/schemas/Fehler"}}}
+    Forbidden:
+      description: Recht fehlt oder IP nicht freigegeben
+      content: {application/json: {schema: {$ref: "#/components/schemas/Fehler"}}}
+    NotFound:
+      description: Nicht gefunden
+      content: {application/json: {schema: {$ref: "#/components/schemas/Fehler"}}}
+    RateLimited:
+      description: 600 Anfragen je 10 Minuten überschritten
+      headers:
+        Retry-After: {schema: {type: integer}}
+      content: {application/json: {schema: {$ref: "#/components/schemas/Fehler"}}}
+
+  schemas:
+    Fehler:
+      type: object
+      properties:
+        error: {type: string, example: forbidden}
+        message: {type: string, example: Dem Schlüssel fehlt das Recht orders:write.}
+
+    Produktionsstand:
+      type: string
+      enum: [new, accepted, goods_ordered, goods_received, processing, production, quality_check, ready, shipped, picked_up, completed]
+
+    Statusmeldung:
+      type: string
+      description: Werte, die per POST gemeldet werden dürfen
+      enum: [accepted, goods_ordered, goods_received, production, quality_check, ready, shipped, picked_up, completed]
+
+    Kunde:
+      type: object
+      properties:
+        id: {type: integer}
+        slug: {type: string, example: musterbau}
+        legalName: {type: string}
+        shopName: {type: string}
+        active: {type: boolean}
+        shopUrl: {type: string, format: uri}
+        delivery:
+          type: object
+          properties:
+            mode: {type: string, enum: [company, pickup]}
+            address: {type: string}
+        financing:
+          type: object
+          properties:
+            mode: {type: string, enum: [company, percentage]}
+            employeeSharePercent: {type: number}
+        approvalRequired: {type: boolean}
+        createdAt: {type: string, format: date-time}
+
+    Produkt:
+      type: object
+      properties:
+        id: {type: integer}
+        sku: {type: string, example: JN002}
+        name: {type: string}
+        brand: {type: string}
+        supplier: {type: string, example: L-Shop}
+        category: {type: string}
+        color: {type: string}
+        sizes: {type: array, items: {type: string}}
+        netPriceCents: {type: integer, description: Verkaufspreis netto in Cent}
+        vatRate: {type: number, example: 19}
+        decorationType: {type: string}
+        active: {type: boolean}
+        images:
+          type: object
+          description: Nur gepflegte Ansichten sind enthalten
+          properties:
+            front: {type: string, format: uri}
+            back: {type: string, format: uri}
+            sleeve: {type: string, format: uri}
+
+    Veredelung:
+      type: object
+      properties:
+        position: {type: string, enum: [chest_left, chest_right, back_top, back_large, sleeve_left, sleeve_right, neck, other]}
+        position_label: {type: string}
+        method: {type: string, enum: [print, dtf, flex, embroidery, other]}
+        method_label: {type: string}
+        text: {type: string}
+        motif_id: {type: integer, nullable: true}
+        motif_name: {type: string, nullable: true}
+        motif_file: {type: string, format: uri, nullable: true, description: Logo als SVG/PNG, öffentlich abrufbar}
+        size: {type: string, enum: [s, m, l]}
+
+    Position:
+      type: object
+      properties:
+        line: {type: integer}
+        product_id: {type: integer}
+        sku: {type: string}
+        name: {type: string}
+        description: {type: string}
+        color: {type: string}
+        size: {type: string}
+        quantity: {type: integer}
+        vat_rate: {type: number}
+        unit_net_cents: {type: integer}
+        unit_gross_cents: {type: integer}
+        line_net_cents: {type: integer}
+        line_gross_cents: {type: integer}
+        employee_share_cents: {type: integer}
+        company_share_cents: {type: integer}
+        decorations: {type: array, items: {$ref: "#/components/schemas/Veredelung"}}
+        base_decoration:
+          type: object
+          properties:
+            type: {type: string}
+            details: {type: string}
+
+    Bestellung:
+      type: object
+      description: Schema workwearcenter.order.v1 – identisch mit dem Push-Datensatz, ergänzt um Produktionsfelder
+      properties:
+        schema: {type: string, example: workwearcenter.order.v1}
+        event: {type: string, example: order.snapshot}
+        delivery_id: {type: string}
+        generated_at: {type: string, format: date-time}
+        source:
+          type: object
+          properties:
+            system: {type: string}
+            version: {type: string}
+            url: {type: string, format: uri}
+        order:
+          type: object
+          properties:
+            id: {type: integer}
+            number: {type: string, example: WWC-000008}
+            status: {type: string, enum: [pending, approved, rejected, cancelled]}
+            created_at: {type: string, format: date-time}
+            approved_at: {type: string, format: date-time, nullable: true}
+            approved_by:
+              type: object
+              nullable: true
+              properties: {id: {type: integer}, name: {type: string}, email: {type: string}}
+            approval_type: {type: string}
+            note: {type: string}
+            currency: {type: string, example: EUR}
+            totals:
+              type: object
+              properties:
+                net_cents: {type: integer}
+                gross_cents: {type: integer}
+                employee_share_cents: {type: integer}
+                company_share_cents: {type: integer}
+                shipping:
+                  type: object
+                  properties:
+                    net_cents: {type: integer}
+                    gross_cents: {type: integer}
+                    employee_cents: {type: integer}
+                    company_cents: {type: integer}
+            approvalStatus: {type: string, enum: [pending, approved, rejected, cancelled]}
+            productionStatus: {$ref: "#/components/schemas/Produktionsstand"}
+            productionUpdatedAt: {type: string, format: date-time, nullable: true}
+            tracking:
+              type: object
+              nullable: true
+              properties:
+                carrier: {type: string}
+                number: {type: string}
+                url: {type: string, format: uri, nullable: true}
+            externalReference: {type: string, nullable: true}
+        customer:
+          type: object
+          properties:
+            company_id: {type: integer}
+            slug: {type: string}
+            legal_name: {type: string}
+            shop_name: {type: string}
+        employee:
+          type: object
+          properties:
+            id: {type: integer}
+            name: {type: string}
+            email: {type: string}
+            department: {type: string}
+            cost_center: {type: string}
+            location: {type: string}
+            employee_number: {type: string}
+        delivery:
+          type: object
+          properties:
+            mode: {type: string}
+            company: {type: string}
+            address_lines: {type: array, items: {type: string}}
+        items: {type: array, items: {$ref: "#/components/schemas/Position"}}

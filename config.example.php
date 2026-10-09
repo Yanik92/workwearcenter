@@ -1,0 +1,42 @@
+<?php
+declare(strict_types=1);
+
+/*
+ * Vorlage für eine neue Installation.
+ * Die produktive Datei heißt config.php und darf niemals öffentlich geteilt
+ * oder bei einem Update durch diese Vorlage ersetzt werden.
+ * Zufällige Schlüssel erzeugen z. B. mit:  php -r "echo bin2hex(random_bytes(32));"
+ */
+return [
+    'db_host' => 'localhost',
+    'db_port' => 3306,
+    'db_name' => 'DATENBANKNAME',
+    'db_user' => 'DATENBANKBENUTZER',
+    'db_pass' => 'EIN_LANGES_EIGENES_DATENBANKPASSWORT',
+
+    // "mail" nutzt den Maildienst des Hosters, "smtp" die Angaben darunter.
+    'mail_transport' => 'smtp',
+    'mail_from' => 'noreply@workwearcenter.de',
+    'mail_reply_to' => 'info@yanik-textildruck.de',
+    'smtp_host' => 'SMTP-HOST-DES-ANBIETERS',
+    'smtp_port' => 587,
+    'smtp_encryption' => 'tls',
+    'smtp_user' => 'SMTP-BENUTZER',
+    'smtp_pass' => 'SMTP-PASSWORT',
+
+    // Nur für die Neuinstallation über /install.php (mind. 16 Zeichen).
+    'install_key' => '',
+
+    // Übergabe freigegebener Aufträge an die Auftragsverwaltung.
+    // 'off'  = aus (Aufträge werden trotzdem gesammelt und später übergeben)
+    // 'push' = WorkwearCenter sendet an handover_url
+    // 'pull' = Auftragsverwaltung holt über /api/v1/auftraege ab
+    // 'both' = beides
+    // Anleitung: SCHNITTSTELLE-AUFTRAGSVERWALTUNG.md
+    'handover_mode' => 'off',
+    // 'auftragszentrale' = Yanik Auftragszentrale (empfohlen), 'workwearcenter' = eigenes Schema v1
+    'handover_format' => 'auftragszentrale',
+    'handover_url' => '',          // Auftragszentrale: https://auftraege.yanik-textildruck.de/channel.php
+    'handover_secret' => '',       // Auftragszentrale: Schlüssel aus „Verkaufskanäle → WorkwearCenter“
+    'handover_api_token' => '',    // mind. 32 Zeichen, nur für 'pull' / 'both'
+];

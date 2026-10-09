@@ -1,0 +1,220 @@
+<?php
+declare(strict_types=1);
+
+/*
+ * 10.7: Kundenakte – alles zu einer Firma an einem Ort, aufgeteilt in Reiter.
+ * Ersetzt die frühere Mammut-Seite und den eigenen Menüpunkt „Ausstattung & Budgets“.
+ * Die Inhalte der Abschnitte sind unverändert übernommen; nur die Anordnung ist neu.
+ */
+
+/** Reiter der Kundenakte: Schlüssel => [Beschriftung, Kurzbeschreibung]. */
+function yw_customer_tabs(): array {
+    return [
+        'uebersicht'=>['Übersicht','Status, Einrichtung und Notizen'],
+        'kollektion'=>['Kollektion & Design','Artikel, Logo, Farben und Veredelungsmotive'],
+        'mitarbeiter'=>['Mitarbeiter','Personen, Rollen und Registrierungen'],
+        'regeln'=>['Regeln & Budget','Finanzierung, Budgets, Limits und Ausstattungsprofile'],
+        'auftraege'=>['Aufträge','Bestellungen dieser Firma'],
+        'zugaenge'=>['Zugänge & Links','Shop-, Registrierungs- und Freigabe-Links'],
+    ];
+}
+
+function yw_customer_tab(): string {
+    $t=(string)($_GET['bereich'] ?? 'uebersicht');
+    return array_key_exists($t,yw_customer_tabs()) ? $t : 'uebersicht';
+}
+
+function yw_customer_url(int $companyId,string $tab='uebersicht'): string {
+    return '/admin?tab=companies&company='.$companyId.($tab==='uebersicht'?'':'&bereich='.$tab);
+}
+
+/** Reiterleiste. */
+function yw_customer_tabbar(int $companyId,string $active): string {
+    $html='<nav class="customer-tabs" aria-label="Bereiche der Kundenakte">';
+    foreach(yw_customer_tabs() as $key=>[$label,$hint]){
+        $html.='<a class="'.($active===$key?'active':'').'" href="'.e(yw_customer_url($companyId,$key)).'" title="'.e($hint).'">'.e($label).'</a>';
+    }
+    return $html.'</nav>';
+}
+
+/* ---------- Abschnitte (Inhalte wie bisher) ---------- */
+
+function yw_customer_section_design(array $c): void {
+        echo '<section class="card"><h2>Design</h2><div class="card-body"><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="update_brand"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><label>Shopname<input name="shop_name" maxlength="190" value="'.e($c['shop_name']).'" required></label><label>Logo<input type="file" name="logo" accept="image/png,image/jpeg,image/webp"></label><div class="grid2"><label>Primärfarbe<input type="color" name="primary_color" value="'.e($companyPrimary).'"></label><label>Akzentfarbe<input type="color" name="accent_color" value="'.e($companyAccent).'"></label></div><button class="btn small" type="submit">Design speichern</button></form></div></section>';
+}
+
+function yw_customer_section_people(array $c): void {
+        $stmtAccounts=db()->prepare('SELECT * FROM employee_accounts WHERE company_id=? ORDER BY role DESC,name ASC');
+        $stmtAccounts->execute([(int)$c['id']]);
+        $companyAccounts=array_values(array_filter($stmtAccounts->fetchAll(),fn($a)=>empty($a['anonymized_at'])));
+        $equipmentProfiles=yw_equipment_profile_options((int)$c['id']);
+
+        $hasManager=(bool)array_filter($companyAccounts,fn($a)=>$a['role']==='manager'&&(int)$a['active']===1&&$a['registration_status']==='approved');
+        echo '<section class="card"><h2>Mitarbeiter & Rollen <span class="muted">('.count($companyAccounts).')</span></h2><div class="card-body">';
+        echo '<form method="post" class="admin-add-person">'.csrf_field().'<input type="hidden" name="action" value="admin_add_manager"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><strong>Person direkt anlegen</strong><p class="muted">Die Person erhält per E-Mail einen Link, mit dem sie ihr Passwort selbst festlegt. Du siehst oder vergibst kein Passwort.</p><div class="grid3"><label>Name<input name="name" maxlength="160" required></label><label>E-Mail<input type="email" name="email" maxlength="190" required></label><label>Rolle<select name="role"><option value="manager">Verantwortlicher</option><option value="employee">Mitarbeiter</option></select></label></div><button class="btn small primary" type="submit">Anlegen und Einladung senden</button></form>';
+        if(!$companyAccounts){
+            echo '<div class="empty">Noch keine registrierten Mitarbeiter.</div>';
+        }else{
+            foreach($companyAccounts as $account){
+                if(!empty($account['anonymized_at']))continue;
+                echo '<form method="post" class="employee-role-form">'.csrf_field()
+                    .'<input type="hidden" name="action" value="update_employee_account">'
+                    .'<input type="hidden" name="company_id" value="'.(int)$c['id'].'">'
+                    .'<input type="hidden" name="account_id" value="'.(int)$account['id'].'">'
+                    .'<div class="employee-role-identity"><strong>'.e($account['name']).'</strong><br><span class="muted">'.e($account['email']).'</span></div>'
+                    .'<label>Rolle<select name="role">'
+                        .'<option value="employee" '.(((string)($account['role']??'employee'))==='employee'?'selected':'').'>Mitarbeiter</option>'
+                        .'<option value="manager" '.(((string)($account['role']??'employee'))==='manager'?'selected':'').'>Verantwortlicher</option>'
+                    .'</select></label>'
+                    .'<label>Zugang<select name="registration_status">'
+                        .'<option value="pending" '.(((string)($account['registration_status']??'approved'))==='pending'?'selected':'').'>Wartet auf Freigabe</option>'
+                        .'<option value="approved" '.(((string)($account['registration_status']??'approved'))==='approved'?'selected':'').'>Freigegeben</option>'
+                        .'<option value="rejected" '.(((string)($account['registration_status']??'approved'))==='rejected'?'selected':'').'>Abgelehnt</option>'
+                    .'</select></label>'
+                    .yw_equipment_profile_select($equipmentProfiles,isset($account['equipment_profile_id'])?(int)$account['equipment_profile_id']:null)
+                    .'<div class="employee-role-actions"><label class="check"><input type="checkbox" name="active" value="1" '.((int)$account['active']===1?'checked':'').'><span>Aktiv</span></label>'
+                    .'<button class="btn small" type="submit">Rolle und Zugang speichern</button></div>'
+                    .'</form>'
+                    .'<form method="post" class="employee-anonymize" data-confirm="Alle persönlichen Daten von '.e($account['name']).' endgültig entfernen? Bestellungen bleiben erhalten.">'.csrf_field().'<input type="hidden" name="action" value="employee_anonymize"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><input type="hidden" name="account_id" value="'.(int)$account['id'].'"><button class="btn small danger" type="submit">Daten löschen (DSGVO)</button></form>';
+                if((string)$account['registration_status']==='pending'){
+                    echo '<div class="employee-quick-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$account['id'].'"><input type="hidden" name="return_company" value="'.(int)$c['id'].'"><input type="hidden" name="decision" value="rejected"><button class="btn small" type="submit">Registrierung ablehnen</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$account['id'].'"><input type="hidden" name="return_company" value="'.(int)$c['id'].'"><input type="hidden" name="decision" value="approved"><button class="btn small primary" type="submit">Mitarbeiter jetzt freigeben</button></form></div>';
+                }
+            }
+        }
+        echo '<p class="muted" style="margin-top:14px">Hinweis: Ein Verantwortlicher registriert sich zunächst ganz normal im Shop. Danach weist du ihm hier die Rolle „Verantwortlicher“ zu.</p>';
+        echo '</div></section>';
+
+}
+
+function yw_customer_section_rules(array $c): void {
+        echo '<section class="card"><h2>Shopregeln & Finanzierung</h2><div class="card-body"><form method="post" class="form-stack">'.csrf_field()
+            .'<input type="hidden" name="action" value="update_shop_rules">'
+            .'<input type="hidden" name="return_tab" value="companies">'
+            .'<input type="hidden" name="company_id" value="'.(int)$c['id'].'">'
+            .'<div class="grid2"><label>Finanzierungsmodell<select name="financing_mode">'
+                .'<option value="company" '.(((string)($c['financing_mode']??'company'))==='company'?'selected':'').'>Firma übernimmt 100 %</option>'
+                .'<option value="percentage" '.(((string)($c['financing_mode']??'company'))==='percentage'?'selected':'').'>Mitarbeiter zahlt prozentualen Eigenanteil</option>'
+            .'</select></label>'
+            .'<label>Eigenanteil Mitarbeiter in %<input type="number" min="0" max="100" step="0.01" name="employee_share_percent" value="'.e(number_format((float)($c['employee_share_percent']??0),2,'.','')).'"></label></div>'
+            .'<p class="muted">Geld- und Mengenbudgets werden eindeutig im Reiter „Firmenregeln“ verwaltet.</p>'
+            .'<label class="check"><input type="checkbox" name="approval_required" value="1" '.((int)($c['approval_required']??1)===1?'checked':'').'><span>Freigabe durch Firmenverantwortlichen erforderlich</span></label>'
+            .'<hr><h4>Versandkosten</h4>'
+            .'<label class="check"><input type="checkbox" name="shipping_enabled" value="1" '.((int)($c['shipping_enabled']??0)===1?'checked':'').'><span>Versandkosten berechnen</span></label>'
+            .'<div class="grid2"><label>Versand netto in €<input type="number" min="0" step="0.01" name="shipping_net" value="'.e(number_format(((int)($c['shipping_net_cents']??0))/100,2,'.','')).'"></label>'
+            .'<label>Versand-MwSt. in %<input type="number" min="0" max="100" step="0.01" name="shipping_vat_rate" value="'.e(number_format((float)($c['shipping_vat_rate']??19),2,'.','')).'"></label></div>'
+            .'<div class="grid2"><label>Versandkostenfrei ab brutto in € <small>0 = deaktiviert</small><input type="number" min="0" step="0.01" name="free_shipping_gross" value="'.e(number_format(((int)($c['free_shipping_gross_cents']??0))/100,2,'.','')).'"></label>'
+            .'<label>Versandkostenträger<select name="shipping_payer"><option value="company" '.(((string)($c['shipping_payer']??'company'))==='company'?'selected':'').'>Firma</option><option value="employee" '.(((string)($c['shipping_payer']??'company'))==='employee'?'selected':'').'>Mitarbeiter</option></select></label></div>'
+            .'<div class="flash info"><strong>Finanzierung:</strong> '.e(financing_label($c)).'<br><strong>Versand:</strong> '.e(shipping_rule_label($c)).'</div>'
+            .'<button class="btn small" type="submit">Shopregeln speichern</button></form></div></section>';
+}
+
+function yw_customer_section_collection(array $c,array $products,array $assigned): void {
+        echo '<section class="card"><h2>Firmenkollektion</h2><div class="card-body"><p class="muted">Wähle hier die Stammprodukte aus, die in diesem Firmenshop angeboten werden.</p><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="update_collection"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><div class="checkboxes">';foreach($products as $p)if((int)$p['active'])echo '<label class="check"><input type="checkbox" name="products[]" value="'.(int)$p['id'].'" '.(in_array((int)$p['id'],$assigned,true)?'checked':'').'><span>'.e($p['name']).' · '.money((int)$p['price_cents']).' netto</span></label>';echo '</div><button class="btn small" type="submit">Kollektion speichern</button></form>';
+
+        $shopProducts=shop_company_products((int)$c['id']);
+        if($shopProducts){
+            echo '<div class="collection-config-section"><div class="collection-config-title"><h3>Shop-Produkte individualisieren</h3><p>Logo-/Mockup-Vorschauen, Shopname, eigener Preis und Veredelungspositionen gelten nur für diesen Kunden.</p></div>';
+            foreach($shopProducts as $shopProduct) render_company_product_customization_form($c,$shopProduct);
+            echo '</div>';
+        }
+        echo '</div></section>';
+}
+
+function yw_customer_section_links(array $c): void {
+        $base=workwearcenter_url($c['slug']);
+        $shop=$base;
+        $registration=$base.'/registrieren';
+        $login=$base.'/login';
+        $approval=$base.'/freigaben';
+        echo '<section class="card"><h2>Zugänge & Links</h2><div class="card-body">';
+        echo '<strong class="muted">Shop</strong><div class="copy">'.e($shop).'</div><button type="button" class="btn small" data-copy="'.e($shop).'">Shop-Link kopieren</button><hr>';
+        echo '<strong class="muted">Registrierung für Mitarbeiter</strong><div class="copy">'.e($registration).'</div><button type="button" class="btn small" data-copy="'.e($registration).'">Registrierungslink kopieren</button><hr>';
+        echo '<strong class="muted">Mitarbeiter-Login</strong><div class="copy">'.e($login).'</div><button type="button" class="btn small" data-copy="'.e($login).'">Login-Link kopieren</button><hr>';
+        echo '<strong class="muted">Freigaben / Verantwortlicher</strong><div class="copy">'.e($approval).'</div><button type="button" class="btn small" data-copy="'.e($approval).'">Freigabe-Link kopieren</button>';
+        echo '</div></section>';
+}
+
+/** Aufträge dieser Firma (Reiter „Aufträge“). */
+function yw_customer_section_orders(array $c): void {
+    $id=(int)$c['id'];
+    $q=db()->prepare("SELECT o.*,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? ORDER BY o.id DESC LIMIT 100");
+    $q->execute([$id]);$orders=$q->fetchAll();
+    $labels=['pending'=>'Freigabe offen','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Zurückgezogen'];
+    echo '<section class="card"><div class="title-row"><div><h2>Aufträge</h2><p class="muted">Die letzten 100 Bestellungen dieser Firma. Ein Klick öffnet den Auftrag.</p></div><a class="btn" href="/admin?tab=production&amp;company_id='.$id.'">Produktionsansicht</a></div>';
+    if(!$orders){echo '<div class="empty compact">Noch keine Bestellungen.</div></section>';return;}
+    echo '<div class="table-wrap"><table class="table"><thead><tr><th>Auftrag</th><th>Mitarbeiter</th><th>Freigabe</th><th>Produktion</th><th>Betrag</th><th></th></tr></thead><tbody>';
+    foreach($orders as $o){
+        $total=(int)($o['gross_total_cents']??0)>0?(int)$o['gross_total_cents']:(int)$o['total_cents'];
+        echo '<tr><td><strong>'.e(yw_order_number((int)$o['id'])).'</strong><br><span class="muted">'.e(date('d.m.Y',strtotime((string)$o['created_at']))).'</span></td>'
+            .'<td>'.e((string)$o['employee_name']).'</td>'
+            .'<td><span class="badge '.e((string)$o['status']).'">'.e($labels[$o['status']]??$o['status']).'</span></td>'
+            .'<td>'.e(yw_production_statuses()[$o['fulfillment_status']]??(string)$o['fulfillment_status']).'</td>'
+            .'<td><strong>'.money($total).'</strong></td>'
+            .'<td><a class="btn small" href="/admin?tab=orders&amp;auftrag='.(int)$o['id'].'">Öffnen</a></td></tr>';
+    }
+    echo '</tbody></table></div></section>';
+}
+
+/** Übersicht: Status, Einrichtung, Notizen, Shop-Vorschau. */
+function yw_customer_section_overview(array $c): void {
+    $id=(int)$c['id'];
+    echo '<div class="company-kpi-grid">'
+        .'<div class="company-kpi"><strong>'.(int)($c['registered_count']??0).'</strong><span>Registriert</span></div>'
+        .'<div class="company-kpi"><strong>'.(int)($c['approved_order_count']??0).'</strong><span>Freigegebene Bestellungen</span></div>'
+        .'<div class="company-kpi"><strong>'.(int)($c['completed_order_count']??0).'</strong><span>Ausgeliefert</span></div>'
+        .'<div class="company-kpi"><strong>'.money((int)($c['revenue_cents']??0)).'</strong><span>Bestellvolumen brutto</span></div>'
+        .'</div>';
+
+    $steps=yw_company_setup_steps($c);$done=count(array_filter($steps,fn($s)=>$s[2]));
+    echo '<section class="card setup-progress"><div class="title-row"><div><h2>Einrichtung '.($done===count($steps)?'abgeschlossen ✓':$done.' von '.count($steps).' erledigt').'</h2><p class="muted">Diese Schritte sollten vor dem Start erledigt sein.</p></div><div class="setup-meter" aria-hidden="true"><span style="width:'.(int)round($done/count($steps)*100).'%"></span></div></div><ol class="setup-steps-grid">';
+    foreach($steps as [$label,$hint,$ok,$link])echo '<li class="'.($ok?'done':'open').'"><span class="setup-dot">'.($ok?'✓':'').'</span><div><strong>'.e($label).'</strong><small>'.e($hint).'</small></div>'.($ok?'':'<a class="btn small" href="'.e($link).'">Erledigen</a>').'</li>';
+    echo '</ol></section>';
+    foreach(yw_company_setup_warnings($c) as $warning)echo '<div class="flash info">'.$warning.'</div>';
+
+    echo '<section class="card"><h2>Interne Notizen</h2><p class="muted">Nur für dich und dein Team sichtbar – zum Beispiel Absprachen zu Logo, Rechnung oder Ansprechpartner.</p>'
+        .'<form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="save_company_note"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'">'
+        .'<textarea name="internal_note" rows="5" maxlength="5000" placeholder="z. B. Logo nur Brust links, Rechnung an die Buchhaltung, Ansprechpartner Frau Meier">'.e((string)($c['internal_note']??'')).'</textarea>'
+        .'<button class="btn primary">Notiz speichern</button></form></section>';
+}
+
+/** Hauptseite der Kundenakte. */
+function yw_customer_file(array $company,array $products): void {
+    $id=(int)$company['id'];
+    $tab=yw_customer_tab();
+    $isActive=(int)($company['active']??1)===1;
+    $logo=yw_company_logo_path($company);
+    $primary=color_ok((string)($company['primary_color']??''))?(string)$company['primary_color']:'#17324d';
+    $accent=color_ok((string)($company['accent_color']??''))?(string)$company['accent_color']:'#f47b20';
+
+    echo '<div class="customer-head" style="--company-primary:'.e($primary).';--company-accent:'.e($accent).'">';
+    echo '<a class="btn small" href="/admin?tab=companies">← Alle Kunden</a>';
+    echo '<div class="customer-ident">'.($logo!==''?'<img src="/'.e($logo).'" alt="">':'<span class="logo logo-fallback">'.e(mb_strtoupper(mb_substr((string)$company['legal_name'],0,1))).'</span>')
+        .'<div><h2>'.e($company['shop_name']).'</h2><p>'.e($company['legal_name']).' · workwearcenter.de/'.e($company['slug']).'</p></div></div>';
+    echo '<div class="customer-head-actions"><span class="badge '.($isActive?'approved':'rejected').'">'.($isActive?'aktiv':'deaktiviert').'</span>';
+    echo '<a class="btn small" href="/admin/vorschau/'.$id.'" target="_blank" rel="noopener" title="Öffnet den Firmenshop so, wie ein Verantwortlicher ihn sieht – ohne bestellen zu können">Shop ansehen</a>';
+    echo '<form method="post" class="inline-form" data-confirm="'.($isActive?'Shop wirklich deaktivieren? Mitarbeitende können sich dann nicht mehr anmelden.':'Shop wieder aktivieren?').'">'.csrf_field()
+        .'<input type="hidden" name="action" value="toggle_company"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'">'
+        .'<button class="btn small '.($isActive?'danger':'success').'">'.($isActive?'Deaktivieren':'Aktivieren').'</button></form>';
+    echo '</div></div>';
+
+    echo yw_customer_tabbar($id,$tab);
+    echo '<div class="customer-body">';
+    switch($tab){
+        case 'kollektion':
+            $q=db()->prepare('SELECT product_id FROM company_products WHERE company_id=?');$q->execute([$id]);
+            $assigned=array_map('intval',array_column($q->fetchAll(),'product_id'));
+            yw_customer_section_design($company);
+            yw_customer_section_collection($company,$products,$assigned);
+            render_admin_decoration_motifs($company);
+            break;
+        case 'mitarbeiter': yw_customer_section_people($company); break;
+        case 'regeln':
+            yw_customer_section_rules($company);
+            yw_customer_section_budget($company);
+            break;
+        case 'auftraege': yw_customer_section_orders($company); break;
+        case 'zugaenge':  yw_customer_section_links($company); break;
+        default:          yw_customer_section_overview($company);
+    }
+    echo '</div>';
+}

@@ -1,0 +1,51 @@
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=308,L,NE]
+</IfModule>
+
+<FilesMatch "^(config\.php|config\.example\.php|cron\.php|bootstrap-test\.php|test\.php|workwearcenter_debug\.php|README.*|START-HIER.*|ABNAHME.*|PRUEFBERICHT.*|RELEASE-NOTES.*|MARKTFREIGABE.*|SMTP-KONFIGURATION.*|SCHNITTSTELLE.*|AENDERUNGEN.*|VERSION)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(sql|log|ini|bak|dist|md|zip|rar|7z|tar|gz)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    <FilesMatch "\.(?:css|js|png|jpe?g|webp|svg)$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Selbst bei einer fehlerhaften Fremdkonfiguration nie Skripte aus Uploads ausführen.
+    RewriteRule ^uploads/.*\.(?:php[0-9]?|phtml|phar)$ - [F,L,NC]
+
+    # Let's-Encrypt/ACME-Prüfungen nicht durch PHP routen
+    RewriteRule ^\.well-known/ - [L]
+
+    # Interne Anwendungsdateien nicht direkt ausliefern
+    RewriteRule ^app/ - [F,L]
+    RewriteRule ^tests/ - [F,L]
+    RewriteRule ^tools/ - [F,L]
+
+    # Vorhandene Dateien und Ordner normal ausliefern (Bilder, Uploads, Assets usw.)
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Alle sprechenden URLs, z. B. /musterbau, /musterbau/login,
+    # /musterbau/registrieren und /musterbau/freigabe, an index.php geben.
+    # REQUEST_URI bleibt dabei erhalten und wird vom PHP-Router ausgewertet.
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>

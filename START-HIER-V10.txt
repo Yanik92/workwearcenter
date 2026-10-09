@@ -1,0 +1,61 @@
+WORKWEARCENTER (Yanik Textildruck) – VERSION 10.3.0
+================================================
+
+Dieses Paket ist beides:
+  A) ein kumulatives UPDATE für die bestehende Installation (ab Version 8/9) und
+  B) eine vollständige NEUINSTALLATION für einen neuen Server.
+Eine produktive config.php ist absichtlich NICHT enthalten.
+
+VORAUSSETZUNGEN
+- PHP 8.1 oder neuer (getestet mit 8.4)
+- MySQL 5.7+/8 oder MariaDB 10.4+ mit InnoDB und utf8mb4
+- PHP-Erweiterungen: PDO MySQL, mbstring, fileinfo, OpenSSL, (empfohlen) curl
+- HTTPS für workwearcenter.de
+
+-------------------------------------------------------------------------------
+A) UPDATE EINER BESTEHENDEN INSTALLATION
+-------------------------------------------------------------------------------
+1. Webspace, Datenbank und config.php vollständig sichern (und Download prüfen).
+2. Inhalt des Ordners in das Stammverzeichnis hochladen, Programmdateien ersetzen.
+   Versteckte Dateien mitnehmen: .htaccess, .user.ini, uploads/.htaccess
+   config.php und den Ordner uploads NICHT überschreiben oder löschen.
+3. Als Administrator anmelden → https://workwearcenter.de/update.php
+   Sicherung bestätigen, Update einmal ausführen (legt die neuen Tabellen an).
+   NEU 10.3: danach Admin → Inhalte → „Neue Texte übernehmen“ klicken
+   (alte Texte werden gesichert und lassen sich zurückholen).
+4. Admin → „Mein Konto“: Zwei-Faktor-Anmeldung einrichten, Codes sicher ablegen.
+5. Admin → „Systemstatus“: alle Prüfungen durchgehen.
+6. Admin → „Übergabe“: ältere freigegebene Aufträge ggf. „für Übergabe vorbereiten“.
+   Die Verbindung zur Auftragsverwaltung wird eingeschaltet, sobald diese bereit ist
+   (Anleitung: SCHNITTSTELLE-AUFTRAGSVERWALTUNG.md). Bis dahin wird gesammelt.
+
+-------------------------------------------------------------------------------
+B) NEUINSTALLATION
+-------------------------------------------------------------------------------
+1. Leere Datenbank beim Hoster anlegen.
+2. Dateien hochladen, config.example.php kopieren und als config.php speichern,
+   Datenbank- und Mailzugang sowie einen langen install_key eintragen.
+3. https://ihre-domain/install.php öffnen, install_key und Admin-Daten eingeben.
+   Der Assistent legt alle Tabellen an und sperrt sich danach selbst.
+4. Weiter wie oben ab Schritt 4.
+
+-------------------------------------------------------------------------------
+CRONJOB (dringend empfohlen)
+-------------------------------------------------------------------------------
+cron.php alle fünf Minuten per PHP-CLI ausführen, z. B.:
+
+    /usr/bin/php /VOLLSTAENDIGER/SERVERPFAD/cron.php
+
+Er versendet E-Mails, überträgt Aufträge an die Auftragsverwaltung und löscht
+abgelaufene Daten (Sicherheitsdaten, versendete Mails nach 90 Tagen, erledigte
+Anfragen nach 24 Monaten). cron.php ist über den Browser gesperrt.
+
+-------------------------------------------------------------------------------
+VOR DEM ÖFFENTLICHEN START
+-------------------------------------------------------------------------------
+Siehe ABNAHME-CHECKLISTE-V10.md. Insbesondere Impressum (inkl. USt-IdNr.) und die
+Datenschutzerklärung (Vorlage unter Admin → Inhalte → Datenschutz) fachlich prüfen.
+
+ROLLBACK
+Bei einem Fehler keine alten und neuen Einzeldateien mischen. Webspace UND
+Datenbank aus derselben Sicherung gemeinsam wiederherstellen.
