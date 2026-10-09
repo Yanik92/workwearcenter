@@ -602,6 +602,7 @@ return [
     'mail.pw.new_intro' => 'A company account has been created for you.',
     'mail.pw.reset_intro' => 'A new password has been requested for your company account.',
     'mail.pw.link_text' => 'Use this link within 60 minutes to set a new password:',
+    'mail.pw.link_text_new' => 'Use this link within 7 days to set your password:',
     'mail.magic.subject' => 'Your login link for {shop}',
     'mail.magic.body' => 'Use this link to log in to the company shop without a password. It is valid for {minutes} minutes and works only once.',
     'mail.magic.button' => 'Log in now',

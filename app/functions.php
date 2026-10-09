@@ -556,6 +556,14 @@ function yw_asset_integrity_notice(): string {
     return '<div class="flash error"><strong>Design-Dateien auf dem Server sind nicht aktuell.</strong> Deshalb sehen manche Seiten verschoben aus. Bitte diese Dateien aus dem Paket '.e($r['version']).' per FTP erneut hochladen und vorhandene Dateien dabei <em>immer überschreiben</em> (FileZilla fragt sonst ggf. „nur wenn neuer“): '.e(implode(', ',array_slice($files,0,8))).(count($files)>8?' …':'').'. Danach im Browser Strg+F5 drücken.</div>';
 }
 
+/** Letzter Datenbankstand, den dieses Programmpaket braucht (siehe app/migrations.php). */
+const YW_SCHEMA_REQUIRED='10.14.0';
+/** Roter Hinweis in der Verwaltung, solange nach einem Upload der Update-Assistent noch nicht gelaufen ist. */
+function yw_schema_notice(): string {
+    try{$q=db()->prepare('SELECT COUNT(*) FROM yw_schema_versions WHERE version=?');$q->execute([YW_SCHEMA_REQUIRED]);if((int)$q->fetchColumn()>0)return '';}catch(Throwable $e){}
+    return '<div class="flash error"><strong>Datenbank-Update fehlt.</strong> Die neuen Programmdateien sind hochgeladen, die Datenbank aber noch nicht angepasst. Bitte jetzt den <a href="/update.php">Update-Assistenten</a> ausführen, sonst funktionieren einzelne Bereiche nicht.</div>';
+}
+
 function yw_site_logo_path(): string {
     $fallback='assets/media/workwearcenter-logo.png';
     if(!function_exists('current_site_setting')) return $fallback;

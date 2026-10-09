@@ -632,6 +632,7 @@ return [
     'mail.pw.new_intro' => 'Für dich wurde ein Firmenkonto angelegt.',
     'mail.pw.reset_intro' => 'Für dein Firmenkonto wurde ein neues Passwort angefordert.',
     'mail.pw.link_text' => 'Über diesen Link legst du innerhalb von 60 Minuten ein neues Passwort fest:',
+    'mail.pw.link_text_new' => 'Über diesen Link legst du innerhalb von 7 Tagen dein Passwort fest:',
     'mail.magic.subject' => 'Dein Anmeldelink für {shop}',
     'mail.magic.body' => 'mit diesem Link meldest du dich ohne Passwort im Firmenshop an. Er ist {minutes} Minuten gültig und funktioniert nur einmal.',
     'mail.magic.button' => 'Jetzt anmelden',

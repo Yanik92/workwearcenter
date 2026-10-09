@@ -602,6 +602,7 @@ return [
     'mail.pw.new_intro' => 'Utworzono dla ciebie konto firmowe.',
     'mail.pw.reset_intro' => 'Dla twojego konta firmowego poproszono o nowe hasło.',
     'mail.pw.link_text' => 'Przez ten link ustawisz nowe hasło w ciągu 60 minut:',
+    'mail.pw.link_text_new' => 'Przez ten link ustawisz swoje hasło w ciągu 7 dni:',
     'mail.magic.subject' => 'Twój link logowania do {shop}',
     'mail.magic.body' => 'tym linkiem zalogujesz się do sklepu firmowego bez hasła. Jest ważny przez {minutes} minut i działa tylko raz.',
     'mail.magic.button' => 'Zaloguj się teraz',

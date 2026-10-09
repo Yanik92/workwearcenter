@@ -49,9 +49,13 @@ if (time() - (int)$_SESSION['created_at'] > 1800) {
     session_regenerate_id(true);
     $_SESSION['created_at'] = time();
 }
-if(!empty($_SESSION['last_activity']) && time()-(int)$_SESSION['last_activity']>14400){
+// Höchstdauer zählt ab der Anmeldung: solange niemand angemeldet ist, läuft die Uhr nicht.
+if (empty($_SESSION['started_at']) || (empty($_SESSION['admin_id']) && empty($_SESSION['employee_account_id']))) $_SESSION['started_at'] = time();
+// Abmeldung nach 4 h ohne Aktivität und spätestens nach 12 h (absolute Höchstdauer einer Sitzung)
+if((!empty($_SESSION['last_activity']) && time()-(int)$_SESSION['last_activity']>14400) || time()-(int)$_SESSION['started_at']>43200){
     session_unset();
     session_regenerate_id(true);
+    $_SESSION['started_at'] = time();
 } elseif(!empty($_SESSION['admin_id']) && !empty($_SESSION['last_activity']) && time()-(int)$_SESSION['last_activity']>7200){
     // Verwaltung: nach 2 Stunden ohne Aktivität wird nur die Admin-Anmeldung beendet.
     unset($_SESSION['admin_id'],$_SESSION['admin_auth_version'],$_SESSION['admin_preview_company']);

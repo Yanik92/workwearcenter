@@ -324,4 +324,15 @@ test_ok(str_contains($accountSrc,'(totp_last_step IS NULL OR totp_last_step<?)')
 $customerSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/customer_admin.php');
 test_ok(substr_count($customerSrc,'AND company_id=? AND anonymized_at IS NULL FOR UPDATE')>=1 && str_contains($customerSrc,"registration_status='approved' AND anonymized_at IS NULL FOR UPDATE"),'anonymisierte Konten lassen sich im Firmenshop weder reaktivieren noch mit Passwort-Link versehen');
 
+// 10.14: API-Schlüssel je Firma, Vorschau nur per POST, Sitzungs-Höchstdauer, Einrichtungslinks
+$apiSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/api.php');
+test_ok(substr_count($apiSrc,'yw_api_assert_order_scope((int)$m[1])')===3 && substr_count($apiSrc,'yw_api_company_scope())!==null')>=3,'auf eine Firma beschränkte API-Schlüssel sehen und ändern nur Kunden und Bestellungen dieser Firma');
+test_ok(str_contains($apiSrc,"'version'=>\$key?app_version():null"),'API-Ping verrät die Version nur mit gültigem Schlüssel');
+$toolsSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_tools.php');
+test_ok((bool)preg_match('/function yw_admin_preview_start\(int \$companyId\): never \{\s*require_admin\(\);.*?if\(!is_post\(\)\).*?verify_csrf\(\);/s',$toolsSrc),'Shop-Vorschau startet nur per POST mit CSRF-Prüfung');
+$bootSrc=(string)file_get_contents(dirname(__DIR__).'/app/bootstrap.php');
+test_ok(str_contains($bootSrc,"time()-(int)\$_SESSION['started_at']>43200"),'Sitzungen enden spätestens 12 Stunden nach der Anmeldung');
+$pwSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/password_reset.php');
+test_ok(str_contains($pwSrc,'$newAccount?10080:60') && str_contains($pwSrc,'max(1,min(10080,$minutes))'),'Einrichtungslinks neuer Konten 7 Tage, Passwort-vergessen-Links 60 Minuten gültig');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

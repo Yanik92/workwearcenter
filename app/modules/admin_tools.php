@@ -139,6 +139,9 @@ function yw_admin_search_page(string $q): void {
 
 function yw_admin_preview_start(int $companyId): never {
     require_admin();
+    // Nur per Formular (POST + CSRF): eine fremde Seite darf keine Vorschau starten und damit Mitarbeiter-Sitzungen beenden.
+    if(!is_post()){http_response_code(405);simple_message('Nicht erlaubt','Die Vorschau bitte über „Shop ansehen“ in der Kundenakte öffnen.');exit;}
+    verify_csrf();
     $q=db()->prepare('SELECT slug FROM companies WHERE id=? LIMIT 1');$q->execute([$companyId]);$slug=$q->fetchColumn();
     if(!$slug)redirect('/admin?tab=companies');
     $_SESSION['admin_preview_company']=$companyId;

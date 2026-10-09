@@ -619,3 +619,4 @@ a.cp-btn.cp-btn-light:hover{border-color:var(--cp-accent,#e85d00);color:var(--cp
 .katalog-rename-list label{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,260px);gap:10px;align-items:center;margin:0}
 .katalog-rename-list .mono{overflow-wrap:anywhere;font-size:.86rem}
 @media (max-width:640px){.katalog-rename-list label{grid-template-columns:1fr}}
+.inline-form{display:inline-flex;margin:0}

@@ -602,6 +602,7 @@ return [
     'mail.pw.new_intro' => 'Senin için bir firma hesabı oluşturuldu.',
     'mail.pw.reset_intro' => 'Firma hesabın için yeni bir şifre istendi.',
     'mail.pw.link_text' => 'Bu bağlantıyla 60 dakika içinde yeni bir şifre belirlersin:',
+    'mail.pw.link_text_new' => 'Bu bağlantıyla 7 gün içinde şifreni belirlersin:',
     'mail.magic.subject' => '{shop} için giriş bağlantın',
     'mail.magic.body' => 'bu bağlantıyla firma mağazasına şifresiz giriş yaparsın. {minutes} dakika geçerlidir ve yalnızca bir kez çalışır.',
     'mail.magic.button' => 'Şimdi giriş yap',

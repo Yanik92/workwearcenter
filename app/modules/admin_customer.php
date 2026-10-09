@@ -208,7 +208,7 @@ function yw_customer_file(array $company,array $products): void {
     echo '<div class="customer-ident">'.($logo!==''?'<img src="/'.e($logo).'" alt="">':'<span class="logo logo-fallback">'.e(mb_strtoupper(mb_substr((string)$company['legal_name'],0,1))).'</span>')
         .'<div><h2>'.e($company['shop_name']).'</h2><p>'.e($company['legal_name']).' · workwearcenter.de/'.e($company['slug']).'</p></div></div>';
     echo '<div class="customer-head-actions"><span class="badge '.($isActive?'approved':'rejected').'">'.($isActive?'aktiv':'deaktiviert').'</span>';
-    echo '<a class="btn small" href="/admin/vorschau/'.$id.'" target="_blank" rel="noopener" title="Öffnet den Firmenshop so, wie ein Verantwortlicher ihn sieht – ohne bestellen zu können">Shop ansehen</a>';
+    echo '<form method="post" action="/admin/vorschau/'.$id.'" target="_blank" class="inline-form">'.csrf_field().'<button class="btn small" type="submit" title="Öffnet den Firmenshop so, wie ein Verantwortlicher ihn sieht – ohne bestellen zu können">Shop ansehen</button></form>';
     echo '<form method="post" class="inline-form" data-confirm="'.($isActive?'Shop wirklich deaktivieren? Mitarbeitende können sich dann nicht mehr anmelden.':'Shop wieder aktivieren?').'">'.csrf_field()
         .'<input type="hidden" name="action" value="toggle_company"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'">'
         .'<button class="btn small '.($isActive?'danger':'success').'">'.($isActive?'Deaktivieren':'Aktivieren').'</button></form>';

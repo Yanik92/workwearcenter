@@ -602,6 +602,7 @@ return [
     'mail.pw.new_intro' => 'Pentru tine a fost creat un cont de firmă.',
     'mail.pw.reset_intro' => 'Pentru contul tău de firmă a fost cerută o parolă nouă.',
     'mail.pw.link_text' => 'Cu acest link îți setezi o parolă nouă în cel mult 60 de minute:',
+    'mail.pw.link_text_new' => 'Cu acest link îți setezi parola în cel mult 7 zile:',
     'mail.magic.subject' => 'Linkul tău de autentificare pentru {shop}',
     'mail.magic.body' => 'cu acest link te autentifici în magazinul firmei fără parolă. Este valabil {minutes} de minute și funcționează o singură dată.',
     'mail.magic.button' => 'Autentifică-te acum',

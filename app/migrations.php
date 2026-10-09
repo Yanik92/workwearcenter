@@ -521,6 +521,9 @@ function run_schema_updates(PDO $pdo): array {
     // Sprache des Mailrahmens (Gruß, Schaltflächen); Inhalt wird beim Einreihen übersetzt.
     schema_add_column($pdo,'yw_mail_queue','language','VARCHAR(5) NULL',$changes);
     schema_mark_version($pdo,'10.12.0',$changes);
+    // ---- Version 10.14: API-Schlüssel auf eine Firma beschränken (NULL = alle Firmen) ----
+    schema_add_column($pdo,'yw_api_keys','company_id','INT UNSIGNED NULL',$changes);
+    schema_mark_version($pdo,'10.14.0',$changes);
 
     return $changes;
 }
