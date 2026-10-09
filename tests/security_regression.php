@@ -340,4 +340,15 @@ test_ok(!str_contains($xslSvg,'xml-stylesheet')&&!str_contains($xslSvg,'xsl:elem
 $cssSvg=yw_sanitize_svg('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><style>rect{fill:u\72l(https://example.org/x)}</style><rect fill="url(#g)" filter="url(https://example.org/f#a)"/></svg>');
 test_ok(!str_contains($cssSvg,'example.org')&&str_contains($cssSvg,'fill="url(#g)"'),'SVG-Logo: externe Adressen auch über CSS-Escapes und url() in Attributen werden entfernt, interne Verläufe bleiben');
 
+// Härtung Server: Sperren gelten auch ohne mod_rewrite, versteckte Dateien und Skript-Endungen in uploads/
+$denied=static function(string $htaccess,string $file): bool {
+    preg_match_all('#<FilesMatch "([^"]+)">\s*Require all denied#',(string)file_get_contents(dirname(__DIR__).'/'.$htaccess),$m);
+    foreach($m[1] as $pattern)if(preg_match('#'.str_replace('#','\#',$pattern).'#',$file))return true;
+    return false;
+};
+foreach(['app','tests','tools'] as $dir)test_ok(preg_match('/^Require all denied$/m',(string)@file_get_contents(dirname(__DIR__).'/'.$dir.'/.htaccess'))===1,"{$dir}/ hat eine eigene .htaccess mit „Require all denied“ (Schutz ohne mod_rewrite)");
+test_ok($denied('.htaccess','.htaccess')&&$denied('.htaccess','.gitignore')&&$denied('.htaccess','openapi.yaml')&&!$denied('.htaccess','robots.txt')&&!$denied('.htaccess','app.js'),'Haupt-.htaccess sperrt versteckte Dateien und Dokumentation, nicht aber robots.txt und Assets');
+test_ok($denied('uploads/.htaccess','x.pht')&&$denied('uploads/.htaccess','x.php7')&&$denied('uploads/.htaccess','x.html')&&$denied('uploads/.htaccess','x.shtml')&&$denied('uploads/.htaccess','x.json')&&!$denied('uploads/.htaccess','logo.png')&&!$denied('uploads/.htaccess','logo.svg'),'uploads/.htaccess sperrt Skript-, HTML- und Datenendungen, Bilder bleiben abrufbar');
+test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/uploads/.htaccess'),"default-src 'none'; style-src 'unsafe-inline'; sandbox"),'SVG aus uploads/ wird mit CSP inkl. sandbox ausgeliefert');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";
