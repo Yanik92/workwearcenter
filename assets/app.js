@@ -327,6 +327,49 @@
       next();
     });
   });
+  /* ---------- 10.15: Bilder aus dem Daiber-Shop laden – Aufrufe nacheinander, bis nichts mehr offen ist ---------- */
+  document.querySelectorAll('[data-autosubmit]').forEach(function (el) {
+    el.addEventListener('change', function () { if (el.form) el.form.submit(); });
+  });
+  document.querySelectorAll('[data-katalog-fetch]').forEach(function (form) {
+    if (!window.fetch || !window.FormData) return;
+    var status = document.querySelector('[data-katalog-fetch-status="' + form.id + '"]');
+    var buttons = Array.prototype.slice.call(document.querySelectorAll('button[form="' + form.id + '"]')).concat(Array.prototype.slice.call(form.querySelectorAll('button[type="submit"]')));
+    var running = false;
+    function say(text) { if (status) status.textContent = text; }
+    function post(extra) {
+      var fd = new FormData(form);
+      fd.append('ajax', '1');
+      Object.keys(extra || {}).forEach(function (k) { fd.append(k, extra[k]); });
+      return fetch(form.getAttribute('action') || window.location.pathname + window.location.search, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+    }
+    function run() {
+      if (running) return;
+      running = true;
+      buttons.forEach(function (b) { b.disabled = true; });
+      var loaded = 0, assigned = 0, rounds = 0, notfound = [], offline = false, error = '';
+      say('Bilder werden aus dem Daiber-Shop geladen …');
+      function finish() {
+        var msg = error ? error : (offline && !loaded ? 'Der Daiber-Shop ist gerade nicht erreichbar. Der Cronjob versucht es in 15 Minuten erneut.' : loaded + ' Bild(er) aus dem Daiber-Shop geladen, ' + assigned + ' Produkt(e) zugeordnet.');
+        if (notfound.length) msg += ' Im Daiber-Shop nicht gefunden: ' + notfound.slice(0, 10).join(', ') + ' – diese Bilder bitte selbst hochladen.';
+        say(msg + ' Seite wird aktualisiert …');
+        post({ finish: msg }).catch(function () {}).then(function () { window.location.href = window.location.pathname + window.location.search.replace(/([?&])bilder=laden(&|$)/, '$1').replace(/[?&]$/, '') + (form.id === 'katalog-fetch-all' ? '#bilder' : ''); });
+      }
+      function next() {
+        rounds++;
+        post({}).then(function (j) {
+          if (!j.ok) { error = j.error || 'Bilder konnten nicht geladen werden.'; finish(); return; }
+          loaded += j.loaded; assigned += j.assigned; offline = j.offline;
+          (j.notfound || []).forEach(function (s) { if (notfound.indexOf(s) < 0) notfound.push(s); });
+          if (j.remaining > 0 && !j.offline && rounds < 80) { say(loaded + ' Bild(er) geladen, ' + assigned + ' Produkt(e) zugeordnet – noch ' + j.remaining + ' Artikel …'); next(); }
+          else finish();
+        }).catch(function () { error = 'Die Verbindung wurde unterbrochen. Bereits geladene Bilder sind gespeichert, der Rest folgt über den Cronjob.'; finish(); });
+      }
+      next();
+    }
+    form.addEventListener('submit', function (ev) { ev.preventDefault(); run(); });
+    if (form.dataset.auto === '1') run();
+  });
   /* ---------- 10.9: Logo-Ebenen exakt auf die sichtbare Bildfläche legen ---------- */
   function fitMockupLayers() {
     document.querySelectorAll('.mockup-view').forEach(function (view) {

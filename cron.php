@@ -27,6 +27,12 @@ try{
     $budgetMails=yw_send_budget_year_mails(500);
     yw_orders_cleanup();
     require_once __DIR__.'/app/modules/shop.php';
+    if(yw_daiber_enabled()){ // fehlende Produktbilder (vorne, hinten, Ärmel) aus dem Daiber-Shop, höchstens 20 Sekunden je Lauf
+        try{
+            $daiber=yw_daiber_fetch_missing(20.0);
+            fwrite(STDOUT,"Bilder aus dem Daiber-Shop: ".$daiber['loaded']." geladen, ".$daiber['assigned']." zugeordnet".($daiber['remaining']?", ".$daiber['remaining']." Artikel folgen":"").($daiber['offline']?" (Daiber-Shop nicht erreichbar)":"")."\n");
+        }catch(Throwable $e){error_log('WorkwearCenter cron Daiber-Bilder: '.$e->getMessage());}
+    }
     $zones=yw_zone_auto_backfill(100); // Druckzonen neuer oder geänderter Produktfotos erkennen
     fwrite(STDOUT,"Druckzonen automatisch erkannt: ".$zones."\n");
     fwrite(STDOUT,"Mails zum neuen Budgetjahr: ".$budgetMails."\n");

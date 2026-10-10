@@ -370,4 +370,16 @@ test_ok(!str_contains($crossSite('cross-site'),'weiter')&&str_contains($crossSit
 $adminTools=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_tools.php');
 test_ok(substr_count($adminTools,'yw_block_cross_site_get();')>=2,'Vorschau beenden und Datensicherung prüfen Sec-Fetch-Site (Vorschau starten nur per POST+CSRF)');
 
+// 10.15: Bilder aus dem Daiber-Shop – nur feste HTTPS-Adressen, nur Bilder der passenden Farbe
+test_ok(yw_daiber_url_allowed('https://www.daiber.shop/search?search=JN840')&&yw_daiber_url_allowed('https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/a/b.jpg')&&yw_daiber_url_allowed('https://daiber-images.synaigy.com/http/media/a/b.jpg?w=1000'),'Daiber-Abgleich: Shop, Bildspeicher und Bilddienst sind erlaubt');
+test_ok(!yw_daiber_url_allowed('http://www.daiber.shop/')&&!yw_daiber_url_allowed('https://www.daiber.shop.example.org/')&&!yw_daiber_url_allowed('https://evil@www.daiber.shop/')&&!yw_daiber_url_allowed('https://www.daiber.shop:8443/')&&!yw_daiber_url_allowed('https://127.0.0.1/')&&!yw_daiber_url_allowed('file:///etc/passwd'),'Daiber-Abgleich: kein HTTP, keine fremden Hosts, Zugangsdaten, Ports oder lokalen Adressen (SSRF)');
+$daiberPage='<div data-variant-switch-options="{&quot;url&quot;:&quot;https:\/\/www.daiber.shop\/detail\/abc\/switch&quot;}"></div>'
+    .'<label class="product-detail-configurator-option-label is-combinable is-display-media" title="black/red" for="'.str_repeat('a',32).'-'.str_repeat('b',32).'-x"><img src="https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/1/jn010-schwarz.33960_master.jpg?ts=1"></label>'
+    .'<label class="product-detail-configurator-option-label is-display-media" title="navy" for="'.str_repeat('a',32).'-'.str_repeat('c',32).'-x"><img src="https://evil.example.org/x_master.jpg"></label>';
+$parsed=yw_daiber_parse_article($daiberPage);
+test_ok(($parsed['colors']['black/red']['img']??'')==='https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/1/jn010-schwarz.33960_master.jpg'&&!isset($parsed['colors']['navy'])&&$parsed['switch']==='https://www.daiber.shop/detail/abc/switch','Daiber-Seite: Farbe → Masterbild erkannt, Bilder fremder Hosts verworfen');
+$details=yw_daiber_detail_urls('https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/2/jn010-ocs-schwarz.33960_detail_1.jpg "https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/3/art-jn010-weiss.33960_detail_2.jpg" https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/4/jn010-rot.33962_detail_3.jpg https://evil.example.org/media/jn010.33960_detail_4.jpg','https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/1/jn010-schwarz.33960_master.jpg');
+test_ok($details===['https://daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net/media/2/jn010-ocs-schwarz.33960_detail_1.jpg'],'Daiber-Variante: nur Detailbilder derselben Farbe, keine Modellfotos (art-) und keine fremden Hosts');
+test_ok(!yw_daiber_save_image('<?php echo 1;',sys_get_temp_dir().'/wwc-daiber-test.jpg')&&!is_file(sys_get_temp_dir().'/wwc-daiber-test.jpg'),'Daiber-Abgleich: Nicht-Bilder werden nicht gespeichert');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

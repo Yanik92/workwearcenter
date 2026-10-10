@@ -2,11 +2,12 @@
 declare(strict_types=1);
 /**
  * Lieferantenkatalog (ab 10.9): Produkte aus der Daiber-SKU-Liste (Excel) anlegen,
- * Bilder aus der Daiber Media Cloud automatisch zuordnen.
+ * Bilder automatisch laden und zuordnen.
  *
  * Ablauf: Excel-Liste → kompakter Katalog (JSON) → Artikel suchen → Farben/Größen wählen → Produkte.
- * Bilder: Dateien aus der Media Cloud (z. B. JN840_navy.jpg) in uploads/katalog/bilder/ legen
- * (Upload oder FTP) → „Bilder zuordnen“ findet sie anhand von Artikelnummer + Farbe.
+ * Bilder: ab 10.15 automatisch aus dem Daiber-Shop (katalog_daiber.php). Eigene Dateien
+ * (z. B. JN840_navy.jpg aus der Media Cloud) in uploads/katalog/bilder/ legen (Upload oder FTP)
+ * → „Bilder zuordnen“ findet sie anhand von Artikelnummer + Farbe.
  */
 
 const YW_KATALOG_PRICE_FACTOR_DEFAULT='2.00';
@@ -507,8 +508,10 @@ function yw_admin_katalog_action(string $action): void {
         $result=yw_katalog_create_products($sku,$colors,$sizes,$mode,$factor,$fixed,$categoryId,$categoryName);
         $msg=count($result['created']).' Produkt(e) für '.strtoupper($sku).' angelegt'.($result['with_image']?' ('.$result['with_image'].' mit Bild)':'').'.';
         if($result['skipped'])$msg.=' Übersprungen, weil schon vorhanden: '.implode(', ',$result['skipped']).'.';
-        if($result['created']&&!$result['with_image'])$msg.=' Noch ohne Bild – Bilder unten hochladen und zuordnen.';
-        flash('success',$msg);redirect('/admin?tab=katalog&artikel='.rawurlencode(strtoupper($sku)));
+        $fetch=yw_daiber_enabled()&&count($result['created'])>$result['with_image'];
+        if($fetch)$msg.=' Die Bilder (vorne, hinten, Ärmel) werden jetzt automatisch aus dem Daiber-Shop geladen.';
+        elseif($result['created']&&!$result['with_image'])$msg.=' Noch ohne Bild – Bilder unten hochladen und zuordnen.';
+        flash('success',$msg);redirect('/admin?tab=katalog&artikel='.rawurlencode(strtoupper($sku)).($fetch?'&bilder=laden':''));
     }
     if($action==='katalog_images_upload'){
         // Mit ajax=1 schickt app.js große Auswahlen in Paketen; Antwort dann als JSON.
@@ -551,6 +554,32 @@ function yw_admin_katalog_action(string $action): void {
         }
         $r=yw_katalog_assign_images();
         flash($bad&&!$done?'error':'success',$done.' Datei(en) umbenannt, '.$r['assigned'].' Produkt(e) neu zugeordnet.'.($bad?' Nicht erkannt: '.implode(', ',array_slice($bad,0,8)).' – bitte Artikelnummer und Farbe wie in der Daiber-Liste angeben.':''));
+        redirect('/admin?tab=katalog#bilder');
+    }
+    if($action==='katalog_images_fetch'){
+        // Bilder aus dem Daiber-Shop; mit ajax=1 ruft app.js so lange auf, bis nichts mehr offen ist
+        $ajax=($_POST['ajax']??'')==='1';
+        $json=static function(array $data): never{header('Content-Type: application/json; charset=utf-8');echo json_encode($data,JSON_UNESCAPED_UNICODE);exit;};
+        try{
+            $catalog=yw_katalog_load();if(!$catalog)throw new RuntimeException('Kein Katalog geladen.');
+            $sku=strtoupper(trim((string)($_POST['sku']??'')));
+            if($sku!==''&&!isset($catalog['articles'][$sku]))throw new RuntimeException('Artikel '.$sku.' ist nicht im Katalog.');
+            $back=$sku!==''?'/admin?tab=katalog&artikel='.rawurlencode($sku):'/admin?tab=katalog#bilder';
+            if($ajax&&trim((string)($_POST['finish']??''))!==''){flash('success',mb_substr(trim((string)$_POST['finish']),0,1500));$json(['ok'=>true]);}
+            $r=yw_daiber_fetch_missing($ajax?15.0:25.0,$sku!==''?[$sku]:null,$sku!==''&&($_POST['all']??'')==='1');
+            if($r['loaded'])audit_log('katalog.daiber_images','system',null,['sku'=>$sku,'loaded'=>$r['loaded'],'assigned'=>$r['assigned']]);
+        }catch(RuntimeException $e){
+            if(!$ajax)throw $e;
+            $json(['ok'=>false,'error'=>$e->getMessage()]);
+        }
+        if($ajax)$json(['ok'=>true,'loaded'=>$r['loaded'],'assigned'=>$r['assigned'],'remaining'=>$r['remaining'],'notfound'=>$r['notfound'],'offline'=>$r['offline'],'message'=>yw_daiber_fetch_message($r)]);
+        flash($r['offline']&&!$r['loaded']?'error':'success',yw_daiber_fetch_message($r));redirect($back);
+    }
+    if($action==='katalog_daiber_settings'){
+        $on=($_POST['katalog_daiber_auto']??'')==='1';
+        set_site_setting('katalog_daiber_auto',$on?'1':'0');
+        audit_log('katalog.daiber_auto','system',null,['enabled'=>$on]);
+        flash('success',$on?'Bilder werden automatisch aus dem Daiber-Shop geladen (neue Produkte und Cronjob).':'Automatisches Laden aus dem Daiber-Shop ist ausgeschaltet. Der Knopf „Fehlende Bilder jetzt laden“ funktioniert weiterhin.');
         redirect('/admin?tab=katalog#bilder');
     }
     if($action==='katalog_images_assign'){
@@ -625,7 +654,7 @@ function yw_admin_katalog_page(): void {
         echo '<details class="katalog-details"><summary>Beschreibung und Material</summary><p style="white-space:pre-line">'.e($a['d']).'</p>'.($a['m']!==''?'<p><strong>Material:</strong> '.e($a['m']).'</p>':'').'</details></section>';
 
         // Farben
-        echo '<section class="card"><div class="katalog-section-head"><div><h3>Farben</h3><p class="muted">Jede gewählte Farbe wird ein eigenes Produkt im Shop. '.($inShop?$inShop.' Farbe(n) sind bereits angelegt.':'').'</p></div><div class="katalog-tools"><button type="button" class="btn small" data-katalog-select="all">Alle</button><button type="button" class="btn small" data-katalog-select="image">Nur mit Bild</button><button type="button" class="btn small" data-katalog-select="none">Keine</button></div></div><div class="katalog-colors">';
+        echo '<section class="card"><div class="katalog-section-head"><div><h3>Farben</h3><p class="muted">Jede gewählte Farbe wird ein eigenes Produkt im Shop. '.($inShop?$inShop.' Farbe(n) sind bereits angelegt.':'').'</p></div><div class="katalog-tools"><button type="button" class="btn small" data-katalog-select="all">Alle</button><button type="button" class="btn small" data-katalog-select="image">Nur mit Bild</button><button type="button" class="btn small" data-katalog-select="none">Keine</button>'.($withImg<count($a['col'])?'<button type="submit" class="btn small" form="katalog-fetch-article">Bilder von Daiber laden</button>':'').'</div></div><p class="muted small" data-katalog-fetch-status="katalog-fetch-article" role="status" aria-live="polite"></p><div class="katalog-colors">';
         foreach($a['col'] as $color=>$c){
             $label=yw_katalog_color_label((string)$color);$has=isset($existing[$artikel.'|'.mb_strtolower($label)]);
             $imgFile=yw_katalog_find_image($artikel,(string)$color);
@@ -649,8 +678,10 @@ function yw_admin_katalog_page(): void {
         echo '<label>Kategorie im Shop<select name="category_id"><option value="0">Neu anlegen: „'.e($a['c']).'“</option>';
         foreach($categories as $cat)echo '<option value="'.(int)$cat['id'].'" '.($pre===(int)$cat['id']?'selected':'').'>'.e($cat['name']).'</option>';
         echo '</select><input type="hidden" name="category_name" value="'.e($a['c']).'"></label>';
-        echo '<button class="btn primary katalog-submit" type="submit" data-katalog-submit disabled><span data-katalog-out="count">0 Produkte</span> anlegen</button><p class="muted small">Marke, Beschreibung, Größen, EK und VK werden übernommen. Bilder folgen automatisch, sobald die Dateien im Bilderordner liegen.</p></section></aside>';
+        echo '<button class="btn primary katalog-submit" type="submit" data-katalog-submit disabled><span data-katalog-out="count">0 Produkte</span> anlegen</button><p class="muted small">Marke, Beschreibung, Größen, EK und VK werden übernommen. '.(yw_daiber_enabled()?'Die Bilder (vorne, hinten, Ärmel) lädt das System danach automatisch aus dem Daiber-Shop.':'Bilder folgen, sobald die Dateien im Bilderordner liegen.').'</p></section></aside>';
         echo '</form>';
+        // Bilder dieses Artikels aus dem Daiber-Shop laden (auch Farben, die noch nicht im Shop sind) – nach dem Anlegen automatisch
+        echo '<form method="post" id="katalog-fetch-article" data-katalog-fetch'.(($_GET['bilder']??'')==='laden'?' data-auto="1"':'').' hidden>'.csrf_field().'<input type="hidden" name="action" value="katalog_images_fetch"><input type="hidden" name="sku" value="'.e($artikel).'"><input type="hidden" name="all" value="1"></form>';
 
     } elseif($catalog&&($q!==''||$artikel!=='')){
         /* ---- Suchergebnis ---- */
@@ -669,11 +700,17 @@ function yw_admin_katalog_page(): void {
         }
         echo '</section>';
     } elseif($catalog){
-        echo '<section class="katalog-results"><div class="katalog-grid katalog-grid-hint"><div class="card katalog-hint"><h3>1 · Suchen</h3><p class="muted">Artikelnummer aus dem Daiber-Katalog eingeben oder nach Bezeichnung suchen.</p></div><div class="card katalog-hint"><h3>2 · Farben und Größen wählen</h3><p class="muted">Jede Farbe wird ein Produkt. Preis per Faktor auf deinen Einkauf.</p></div><div class="card katalog-hint"><h3>3 · Bilder zuordnen</h3><p class="muted">Dateien aus der Daiber Media Cloud hochladen – Zuordnung läuft automatisch über den Dateinamen.</p></div></div></section>';
+        echo '<section class="katalog-results"><div class="katalog-grid katalog-grid-hint"><div class="card katalog-hint"><h3>1 · Suchen</h3><p class="muted">Artikelnummer aus dem Daiber-Katalog eingeben oder nach Bezeichnung suchen.</p></div><div class="card katalog-hint"><h3>2 · Farben und Größen wählen</h3><p class="muted">Jede Farbe wird ein Produkt. Preis per Faktor auf deinen Einkauf.</p></div><div class="card katalog-hint"><h3>3 · Bilder kommen automatisch</h3><p class="muted">Vorder-, Rück- und Seitenansicht lädt das System selbst aus dem Daiber-Shop. Eigene Fotos kannst du zusätzlich hochladen.</p></div></div></section>';
     }
 
     /* ---- Bilder ---- */
-    echo '<section class="card katalog-images" id="bilder"><div class="katalog-section-head"><div><h3>Produktbilder aus der Daiber Media Cloud</h3><p class="muted">Erkannt wird jeder Dateiname, der Artikelnummer und Farbe enthält – egal in welcher Reihenfolge, mit Bindestrich, Leerzeichen oder Zusätzen, die Farbe englisch wie in der Daiber-Liste oder deutsch (z. B. <code>JN840_navy.jpg</code>, <code>Foto JN-840 Navy front.jpg</code>, <code>JN010_black_red.jpg</code>, <code>JN840 schwarz.jpg</code>). Was nicht erkannt wird, ordnest du unten mit einem Klick zu; Dateien mit <code>_back</code> werden zur Rückansicht, mit <code>_side</code> zur Ärmelansicht. Nur die Bilder der Artikel nötig, die im Shop sind; große Fotos werden automatisch verkleinert.</p></div><div class="katalog-stat-inline"><strong>'.count($imageIndex).'</strong> Dateien im Ordner'.($withoutImage?' · <strong class="warn">'.$withoutImage.'</strong> Produkte ohne Bild':'').'</div></div>';
+    $daiberLast=json_decode(current_site_setting('katalog_daiber_last',''),true);$daiberOn=yw_daiber_enabled();
+    echo '<section class="card katalog-images" id="bilder"><div class="katalog-section-head"><div><h3>Produktbilder</h3><p class="muted">Vorder-, Rück- und Seitenansicht holt das System selbst aus dem Daiber-Shop – für jedes Daiber-Produkt im Shop, in jeder Farbe. Rücken und Seite gehen direkt in die Druckzonen-Erkennung. Eigene Fotos (z. B. aus der Media Cloud) haben Vorrang.</p></div><div class="katalog-stat-inline"><strong>'.count($imageIndex).'</strong> Dateien im Ordner'.($withoutImage?' · <strong class="warn">'.$withoutImage.'</strong> Produkte ohne Bild':'').'</div></div>';
+    echo '<div class="katalog-daiber"><form method="post" class="katalog-daiber-run" id="katalog-fetch-all" data-katalog-fetch>'.csrf_field().'<input type="hidden" name="action" value="katalog_images_fetch"><div><h4>Automatisch aus dem Daiber-Shop</h4><p class="muted">'.($daiberOn?'Eingeschaltet: Neue Katalogprodukte bekommen ihre Bilder sofort, der Cronjob ergänzt alle 5 Minuten, was noch fehlt.':'Ausgeschaltet: Bilder werden nur geladen, wenn du auf den Knopf klickst.').'</p>';
+    if(is_array($daiberLast)&&!empty($daiberLast['t']))echo '<p class="muted small">Letzter Abgleich: '.e((string)$daiberLast['t']).' · '.(int)($daiberLast['loaded']??0).' Bild(er) geladen'.(!empty($daiberLast['notfound'])?' · nicht im Daiber-Shop: '.e(implode(', ',array_slice((array)$daiberLast['notfound'],0,8))):'').(!empty($daiberLast['offline'])?' · Daiber-Shop war nicht erreichbar':'').'</p>';
+    echo '<p class="muted small" data-katalog-fetch-status="katalog-fetch-all" role="status" aria-live="polite"></p></div><button class="btn primary" type="submit">Fehlende Bilder jetzt laden</button></form>';
+    echo '<form method="post" class="katalog-daiber-toggle">'.csrf_field().'<input type="hidden" name="action" value="katalog_daiber_settings"><label class="check"><input type="checkbox" name="katalog_daiber_auto" value="1" '.($daiberOn?'checked':'').' data-autosubmit> Automatisch laden (neue Produkte und Cronjob)</label><noscript><button class="btn small" type="submit">Speichern</button></noscript></form></div>';
+    echo '<h4 class="katalog-own">Eigene Bilder</h4><p class="muted">Erkannt wird jeder Dateiname, der Artikelnummer und Farbe enthält – egal in welcher Reihenfolge, mit Bindestrich, Leerzeichen oder Zusätzen, die Farbe englisch wie in der Daiber-Liste oder deutsch (z. B. <code>JN840_navy.jpg</code>, <code>Foto JN-840 Navy front.jpg</code>, <code>JN010_black_red.jpg</code>, <code>JN840 schwarz.jpg</code>). Was nicht erkannt wird, ordnest du unten mit einem Klick zu; Dateien mit <code>_back</code> werden zur Rückansicht, mit <code>_side</code> zur Ärmelansicht. Große Fotos werden automatisch verkleinert.</p>';
     echo '<div class="katalog-image-ways"><form method="post" enctype="multipart/form-data" class="katalog-way" data-katalog-upload data-max-bytes="'.(int)yw_katalog_upload_budget().'" data-max-files="'.max(1,min(50,(int)ini_get('max_file_uploads')?:20)).'">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_upload"><h4>Hochladen</h4><p class="muted">Beliebig viele Bilder auf einmal auswählen – sie werden automatisch in Paketen übertragen. ZIP-Dateien bis '.e(ini_get('upload_max_filesize')).'; größere ZIPs entpacken und die Bilder auswählen oder per FTP ablegen.</p><input type="file" name="katalog_images[]" multiple accept=".jpg,.jpeg,.png,.webp,.zip"><button class="btn primary" type="submit">Hochladen und zuordnen</button><p class="muted small" data-katalog-upload-status role="status" aria-live="polite"></p></form>';
     echo '<form method="post" class="katalog-way">'.csrf_field().'<input type="hidden" name="action" value="katalog_images_assign"><h4>Per FTP</h4><p class="muted">Dateien in <code>uploads/katalog/bilder/</code> legen (Unterordner erlaubt), dann hier zuordnen lassen.</p><button class="btn" type="submit">Bilder zuordnen</button></form></div>';
     $unknownImages=$imageIndex?yw_katalog_image_map()['unknown']:[];
