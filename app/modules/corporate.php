@@ -103,6 +103,7 @@ function yw_schema_probes(): array {
             // 10.15: Sammel-Erinnerung an Verantwortliche, Vier-Augen-Schutz
             'SELECT reminder_digest_at FROM employee_accounts LIMIT 0',
             'SELECT managers_can_appoint FROM companies LIMIT 0',
+            'SELECT part_no,part_count,line_grouping FROM yw_lexware_documents LIMIT 0',
         ];
 }
 

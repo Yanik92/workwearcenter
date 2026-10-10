@@ -608,7 +608,7 @@ function yw_asset_integrity_notice(): string {
 }
 
 /** Letzter Datenbankstand, den dieses Programmpaket braucht (siehe app/migrations.php). */
-const YW_SCHEMA_REQUIRED='10.14.0';
+const YW_SCHEMA_REQUIRED='10.15.0';
 /**
  * Datenbankstand in einer Abfrage je Anfrage: Ist YW_SCHEMA_REQUIRED eingetragen (roter Hinweis), und für welche
  * Prüfliste wurde diese Datenbank zuletzt vollständig geprüft (Schnellweg in yw_schema_ready)? Fehlt eine Tabelle,

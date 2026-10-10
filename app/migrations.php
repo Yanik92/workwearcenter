@@ -530,6 +530,7 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_index($pdo,'yw_exchange_requests','idx_yw_exchange_item','`order_item_id`',$changes);
     // ---- Version 10.14: API-Schlüssel auf eine Firma beschränken (NULL = alle Firmen) ----
     schema_add_column($pdo,'yw_api_keys','company_id','INT UNSIGNED NULL',$changes);
+    schema_mark_version($pdo,'10.14.0',$changes);
     // 10.15 – Sammel-Erinnerung und Aufbewahrungsfristen
     // Letzte Sammel-Erinnerung je verantwortlicher Person (höchstens eine in 24 Stunden; NULL = noch keine).
     schema_add_column($pdo,'employee_accounts','reminder_digest_at','DATETIME NULL',$changes);
@@ -558,7 +559,7 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_column($pdo,'yw_lexware_documents','part_no','SMALLINT UNSIGNED NULL',$changes);
     schema_add_column($pdo,'yw_lexware_documents','part_count','SMALLINT UNSIGNED NULL',$changes);
     schema_add_column($pdo,'yw_lexware_documents','line_grouping','VARCHAR(16) NULL',$changes);
-    schema_mark_version($pdo,'10.14.0',$changes);
+    schema_mark_version($pdo,'10.15.0',$changes);
 
     return $changes;
 }
