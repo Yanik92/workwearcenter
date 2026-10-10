@@ -1208,7 +1208,9 @@ function company_portal_approvals(array $company,array $account): void {
     $orders=$stmt->fetchAll();
     $itemsByOrder=order_items_grouped(array_column($orders,'id'));
 
-    $pendingStmt=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$pendingStmt->execute([(int)$company['id']]);$pending=(int)$pendingStmt->fetchColumn();
+    $others=yw_other_manager_count((int)$company['id'],(int)$account['id']); // 10.15: Vier-Augen-Prinzip wie in yw_order_decide()
+    // 10.15: eigene Bestellungen warten nicht auf „deine Entscheidung“, solange eine andere Person freigeben kann
+    $pendingStmt=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'".($others>0?' AND NOT (employee_account_id<=>?)':''));$pendingStmt->execute($others>0?[(int)$company['id'],(int)$account['id']]:[(int)$company['id']]);$pending=(int)$pendingStmt->fetchColumn();
 
     echo '<div class="cp-section-head"><div><h1>'.e(t('nav.approvals')).'</h1><p>'.e(t('approvals.intro')).'</p></div></div>';
     if($pending>0) echo '<div class="cp-manager-alert">'.tn('approvals.pending_alert',$pending,['count'=>'<strong>'.$pending.'</strong>']).'</div>';
@@ -1219,7 +1221,6 @@ function company_portal_approvals(array $company,array $account): void {
         return;
     }
 
-    $others=yw_other_manager_count((int)$company['id'],(int)$account['id']); // 10.15: Vier-Augen-Prinzip wie in yw_order_decide()
     echo '<div class="cp-order-list">';
     foreach($orders as $o){
         $items=$itemsByOrder[(int)$o['id']]??[];

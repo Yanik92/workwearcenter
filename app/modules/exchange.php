@@ -261,7 +261,8 @@ function yw_exchange_manager_panel(array $company,array $account): string {
     $q->execute([(int)$company['id']]);$rows=$q->fetchAll();
     if(!$rows)return '';
     $others=yw_other_manager_count((int)$company['id'],(int)$account['id']);
-    $html=yw_exchange_style().'<section class="yw-x-mgr" aria-label="'.e(t('x.title')).'"><div class="cp-manager-alert">'.tn('x.mgr_alert',count($rows),['count'=>'<strong>'.count($rows).'</strong>']).'</div>';
+    $open=count(array_filter($rows,fn(array $r): bool => $others===0||(int)$r['employee_account_id']!==(int)$account['id'])); // 10.15: eigene Anträge nicht als „deine Entscheidung“ zählen
+    $html=yw_exchange_style().'<section class="yw-x-mgr" aria-label="'.e(t('x.title')).'">'.($open>0?'<div class="cp-manager-alert">'.tn('x.mgr_alert',$open,['count'=>'<strong>'.$open.'</strong>']).'</div>':'');
     foreach($rows as $r){
         $html.='<article class="yw-x"><div class="yw-x-head"><strong>'.e(yw_exchange_type_label((string)$r['type'])).' · '.e(t('orders.order_no',['id'=>(int)$r['order_id']])).' · '.e($r['employee_name']).'</strong><small>'.e(yw_date((string)$r['created_at'],'datetime')).'</small></div>';
         $html.='<div class="yw-x-line"><span>'.(int)$r['quantity'].'× '.e($r['product_name']).' · '.e(t('common.size_value',['size'=>$r['old_size']])).($r['type']==='exchange'?' → <strong>'.e((string)$r['new_size']).'</strong>':'').'</span><span>'.e((int)$r['budget_delta_cents']!==0?t('x.budget',['amount'=>((int)$r['budget_delta_cents']>0?'+':'').money((int)$r['budget_delta_cents'])]).($r['type']==='return'?' '.t('x.after_completion'):''):t('x.budget_neutral')).'</span></div>';
