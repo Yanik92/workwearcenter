@@ -398,7 +398,7 @@
       var loaded = 0, assigned = 0, rounds = 0, idle = 0, lastRemaining = -1, notfound = [], offline = false, error = '';
       say('Bilder werden aus dem Daiber-Shop geladen …');
       function finish() {
-        var msg = error ? error : (offline && !loaded ? 'Der Daiber-Shop ist gerade nicht erreichbar. Der Cronjob versucht es in 15 Minuten erneut.' : loaded + ' Bild(er) aus dem Daiber-Shop geladen, ' + assigned + ' Produkt(e) zugeordnet.');
+        var msg = error ? error : (offline && !loaded ? 'Der Daiber-Shop ist gerade nicht erreichbar. Der Cronjob versucht es in 15 Minuten erneut.' : (!loaded && !assigned && lastRemaining === 0 && !notfound.length ? 'Alles aktuell: Alle Katalogprodukte haben ihre Bilder schon.' : loaded + ' Bild(er) aus dem Daiber-Shop geladen, ' + assigned + ' Produkt(e) zugeordnet.'));
         if (notfound.length) msg += ' Im Daiber-Shop nicht gefunden: ' + notfound.slice(0, 10).join(', ') + ' – diese Bilder bitte selbst hochladen.';
         say(msg + ' Seite wird aktualisiert …');
         post({ finish: msg, finish_type: error || (offline && !loaded) ? 'error' : 'success' }).catch(function () {}).then(function () {
