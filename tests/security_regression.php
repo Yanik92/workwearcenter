@@ -450,8 +450,12 @@ if(extension_loaded('pdo_sqlite')){
     $pdo->exec('ALTER TABLE companies ADD COLUMN shop_languages');
     test_ok(yw_schema_ready() && yw_schema_state()['signature']===yw_schema_signature() && strlen(yw_schema_signature())===40,'Schema: direkt nach update.php bereit, Marke für diese Prüfliste gesetzt');
     $pdo->exec('ALTER TABLE yw_probeshops RENAME TO yw_probeshops_weg');
-    test_ok(!yw_schema_ready(true) && yw_schema_ready(),'Schema: update.php und Systemstatus prüfen vollständig, Seitenaufrufe nur die Marke (eine Abfrage)');
-    $pdo->exec("UPDATE site_settings SET setting_value='andere-pruefliste' WHERE setting_key='schema_checked'");yw_schema_state(true);
+    test_ok(!yw_schema_ready(true) && yw_schema_state()['signature']==='' && (int)$pdo->query("SELECT COUNT(*) FROM site_settings WHERE setting_key='schema_checked'")->fetchColumn()===0 && !yw_schema_ready(),'Schema: update.php/Systemstatus prüfen vollständig; fehlt etwas, wird die Marke verworfen und der Shop sperrt wieder');
+    $pdo->exec("INSERT INTO site_settings VALUES('schema_checked','".yw_schema_signature()."')");yw_schema_state(true);
+    test_ok(yw_schema_ready(),'Schema: Seitenaufrufe vergleichen nur die Marke (eine Abfrage)');
+    yw_schema_forget();
+    test_ok((int)$pdo->query("SELECT COUNT(*) FROM site_settings WHERE setting_key='schema_checked'")->fetchColumn()===0 && yw_schema_state()['signature']==='' && !yw_schema_ready(true) && str_contains(yw_schema_problem(),'yw_probeshops') && str_contains((string)file_get_contents(dirname(__DIR__).'/index.php'),"in_array((string)\$e->getCode(),['42S02','42S22'],true) && function_exists('yw_schema_forget')"),'Schema: fehlende Tabelle/Spalte im laufenden Betrieb verwirft die Marke → nächster Aufruf „Update erforderlich“');
+    $pdo->exec("REPLACE INTO site_settings VALUES('schema_checked','andere-pruefliste')");yw_schema_state(true);
     test_ok(!yw_schema_ready(true) && !yw_schema_ready() && str_contains(yw_schema_problem(),'yw_probeshops'),'Schema: andere Prüfliste (neue Dateien) oder zurückgespielte Sicherung → wieder volle Prüfung');
     $pdo->exec('ALTER TABLE yw_probeshops_weg RENAME TO yw_probeshops');
     test_ok(yw_schema_ready() && yw_schema_state()['signature']===yw_schema_signature(),'Schema: nach dem Update wieder bereit, Marke erneuert');

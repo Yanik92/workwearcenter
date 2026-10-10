@@ -17,6 +17,8 @@ set_exception_handler(static function(Throwable $e): void {
     $msg=get_class($e).': '.$e->getMessage().' ('.basename($e->getFile()).':'.$e->getLine().')';
     error_log('WorkwearCenter: '.$msg."\n".$e->getTraceAsString());
     @file_put_contents(__DIR__.'/app/letzter-fehler.txt',date('d.m.Y H:i:s').' · '.(string)parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH)."\n".$msg);
+    // Tabelle oder Spalte fehlt (SQLSTATE 42S02/42S22): Schema-Marke verwerfen, der nächste Aufruf prüft vollständig und zeigt „Update erforderlich“.
+    if($e instanceof PDOException && in_array((string)$e->getCode(),['42S02','42S22'],true) && function_exists('yw_schema_forget'))try{if(db()->inTransaction())db()->rollBack();yw_schema_forget();}catch(Throwable $ignored){}
     if(!headers_sent())http_response_code(500);
     if(preg_grep('#^Content-Type:#i',headers_list()) && !preg_grep('#^Content-Type:\s*text/html#i',headers_list()))return; // CSV/ZIP: nichts anhängen
     if(!headers_sent())header('Content-Type: text/html; charset=UTF-8');

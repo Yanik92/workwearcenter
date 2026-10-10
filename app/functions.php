@@ -589,6 +589,15 @@ function yw_schema_state(bool $refresh=false): array {
     try{$q=db()->prepare("SELECT (SELECT COUNT(*) FROM yw_schema_versions WHERE version=?) required,(SELECT setting_value FROM site_settings WHERE setting_key='schema_checked') signature");$q->execute([YW_SCHEMA_REQUIRED]);$row=$q->fetch();$state=['required'=>(int)($row['required']??0)>0,'signature'=>(string)($row['signature']??'')];}catch(Throwable $e){}
     return $state;
 }
+/**
+ * Marke verwerfen, wenn eine Tabelle oder Spalte fehlt, obwohl die Programmdateien gleich geblieben sind (z. B. einzelne
+ * ältere Tabelle zurückgespielt): Der nächste Aufruf prüft wieder vollständig und sperrt wie früher mit „Update erforderlich“.
+ */
+function yw_schema_forget(): void {
+    if(yw_schema_state()['signature']==='')return;
+    try{db()->exec("DELETE FROM site_settings WHERE setting_key='schema_checked'");}catch(Throwable $ignored){}
+    yw_schema_state(true);
+}
 /** Roter Hinweis in der Verwaltung, solange nach einem Upload der Update-Assistent noch nicht gelaufen ist. */
 function yw_schema_notice(): string {
     if(yw_schema_state()['required'])return '';

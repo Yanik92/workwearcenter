@@ -33,8 +33,9 @@ function yw_locked_company(int $id): array {
  * Ist die Datenbank auf dem Stand dieser Programmdateien? Volle Prüfung (~40 Abfragen) nur, wenn sich die
  * Prüfliste geändert hat (neue Programmdateien) oder $full verlangt wird (update.php, Systemstatus); sonst
  * genügt der Vergleich mit der Marke in site_settings aus yw_schema_state() – dieselbe eine Abfrage, die auch
- * den roten Hinweis „Datenbank-Update fehlt“ speist. Nur ein bestandener Lauf setzt die Marke; solange etwas
- * fehlt, wird bei jedem Aufruf neu geprüft, damit „Update erforderlich“ direkt nach update.php verschwindet.
+ * den roten Hinweis „Datenbank-Update fehlt“ speist. Nur ein bestandener Lauf setzt die Marke, ein fehlgeschlagener
+ * verwirft sie; solange etwas fehlt, wird bei jedem Aufruf neu geprüft, damit „Update erforderlich“ direkt nach
+ * update.php verschwindet.
  */
 function yw_schema_ready(bool $full=false): bool {
     static $ready=false;
@@ -43,13 +44,13 @@ function yw_schema_ready(bool $full=false): bool {
     if(!$full && hash_equals($signature,yw_schema_state()['signature']))return $ready=true;
     $current='Versionsmarke 10.12.0';
     try {
-        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.12.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.12.0 fehlt – bitte update.php ausführen';return $ready=false;}
+        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.12.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.12.0 fehlt – bitte update.php ausführen';yw_schema_forget();return $ready=false;}
         foreach(yw_schema_probes() as $current) db()->query($current);
         // Marke liegt in derselben Datenbank: eine zurückgespielte ältere Sicherung bringt ihre alte Marke mit und wird neu geprüft.
         if(!hash_equals($signature,yw_schema_state()['signature']))try{db()->prepare("REPLACE INTO site_settings(setting_key,setting_value) VALUES('schema_checked',?)")->execute([$signature]);yw_schema_state(true);}catch(Throwable $ignored){}
         return $ready=true;
     }
-    catch(Throwable $e) { $GLOBALS['yw_schema_problem']=$e->getMessage().' – Prüfung: '.$current; return $ready=false; }
+    catch(Throwable $e) { $GLOBALS['yw_schema_problem']=$e->getMessage().' – Prüfung: '.$current; yw_schema_forget(); return $ready=false; }
 }
 
 /** Kennung der Prüfliste samt verlangtem Datenbankstand; ändert sich mit jedem Programmpaket, das neue Spalten verlangt. */
