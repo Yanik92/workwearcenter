@@ -1,4 +1,4 @@
-WORKWEARCENTER (Yanik Textildruck) – VERSION 10.12.3
+WORKWEARCENTER (Yanik Textildruck) – VERSION 10.17.0
 ================================================
 
 Dieses Paket ist beides:
@@ -30,9 +30,11 @@ A) UPDATE EINER BESTEHENDEN INSTALLATION
    NEU 10.10: uploads/.htaccess unbedingt mit hochladen (sperrt Listen/Exporte).
 4. Admin → „Mein Konto“: Zwei-Faktor-Anmeldung einrichten, Codes sicher ablegen.
 5. Admin → „Systemstatus“: alle Prüfungen durchgehen.
-6. Admin → „Übergabe“: ältere freigegebene Aufträge ggf. „für Übergabe vorbereiten“.
-   Die Verbindung zur Auftragsverwaltung wird eingeschaltet, sobald diese bereit ist
-   (Anleitung: SCHNITTSTELLE-AUFTRAGSVERWALTUNG.md). Bis dahin wird gesammelt.
+6. Admin → System → „Schnittstellen“ → Auftragszentrale: Schlüssel aus der
+   Auftragszentrale (Verkaufskanäle → WorkwearCenter → „Schlüssel erzeugen“)
+   einfügen, „Übergabe einschalten“, eigenes Passwort bestätigen, speichern.
+   Die Verbindung wird sofort geprüft. Bis dahin wird gesammelt. Ältere
+   freigegebene Aufträge ggf. dort „für Übergabe vorbereiten“.
 
 -------------------------------------------------------------------------------
 B) NEUINSTALLATION
@@ -92,10 +94,11 @@ LEXWARE OFFICE ANBINDEN (optional, ab 10.11)
 2. https://app.lexware.de/addons/public-api öffnen (Erweiterungen → Public API),
    Schlüssel erzeugen und kopieren. Der Schlüssel handelt mit den Rechten dieses
    Benutzers – wie ein Passwort behandeln, nie per E-Mail weitergeben.
-3. In der config.php eintragen:   'lexware_api_key' => 'DER-SCHLÜSSEL',
-   'lexware_api_base' bleibt 'https://api.lexware.io' (nur für Tests ändern).
-4. Admin → System → Lexware Office → „Verbindung testen“. Dort auch Belegtitel,
-   Einleitung und ob Bestellernamen in den Positionen stehen sollen.
+3. Admin → System → Schnittstellen → Lexware Office: Schlüssel einfügen, eigenes
+   Passwort bestätigen, „Speichern und Verbindung prüfen“. (Alternativ wie bisher
+   in der config.php als 'lexware_api_key' – das hat dann Vorrang.)
+4. Admin → Tagesgeschäft → Abrechnung: Belegtitel, Einleitung und ob
+   Bestellernamen in den Positionen stehen sollen.
 5. Je Firma einmal den Kontakt anlegen oder einen vorhandenen verknüpfen.
 Danach: Auf der Auftragsseite „Rechnungsentwurf erzeugen“ oder auf der
 Lexware-Seite eine Monats-Sammelrechnung (optional je Kostenstelle). Es entstehen
@@ -107,7 +110,8 @@ teilt das System ab 10.15 automatisch in mehrere Entwürfe auf (ganze Kostenstel
 sonst „Teil 1 von 3“), die Vorschau zeigt die Aufteilung vorher. Viele Entwürfe
 sendet die Seite automatisch in mehreren Durchgängen (Seite geöffnet lassen). Scheitert
 ein Teil, bleibt er in der Monatsübersicht stehen und wird mit „Erneut senden“ nachgeholt.
-Schlüssel widerrufen: in Lexware löschen und den Eintrag in der config.php leeren.
+Schlüssel widerrufen: in Lexware löschen und unter System → Schnittstellen
+„Verbindung trennen“ (bzw. den Eintrag in der config.php leeren).
 
 -------------------------------------------------------------------------------
 VOR DEM ÖFFENTLICHEN START

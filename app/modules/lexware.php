@@ -104,7 +104,7 @@ function yw_lexware_audit_labels(): array {
 function yw_lexware_error_message(int $status,mixed $json): string {
     $text=match(true){
         $status===400=>'Lexware Office hat die Anfrage als fehlerhaft abgelehnt (400).',
-        $status===401=>'Lexware Office hat den API-Schlüssel nicht akzeptiert (401). Bitte lexware_api_key in der config.php prüfen oder in Lexware einen neuen Schlüssel erzeugen.',
+        $status===401=>'Lexware Office hat den API-Schlüssel nicht akzeptiert (401). Bitte in Lexware einen neuen Schlüssel erzeugen und unter System → Schnittstellen eintragen.',
         $status===402=>'Der Lexware-Office-Tarif erlaubt diese Funktion nicht (402).',
         $status===403=>'Keine Berechtigung für diese Aktion in Lexware Office (403).',
         $status===404=>'Der Datensatz wurde in Lexware Office nicht gefunden (404).',
@@ -445,7 +445,7 @@ function yw_lexware_parts_ready(): bool {
 function yw_lexware_check_ready(array $company): string {
     $contactId=(string)($company['lexware_contact_id']??'');
     if(!yw_lexware_uuid_ok($contactId))throw new DomainException('Diese Firma ist noch nicht mit einem Lexware-Kontakt verknüpft. Bitte zuerst unter Tagesgeschäft → Abrechnung den Kontakt anlegen oder verknüpfen.');
-    if(!yw_lexware_enabled())throw new DomainException('Lexware Office ist nicht eingerichtet (lexware_api_key in der config.php).');
+    if(!yw_lexware_enabled())throw new DomainException('Lexware Office ist nicht verbunden (System → Schnittstellen).');
     return $contactId;
 }
 

@@ -478,3 +478,31 @@ Kein Datenbank-Update nötig: Dateien hochladen (immer überschreiben), fertig.
 - Mustershop und Probeshop auf der Website zeigen dasselbe Erscheinungsbild.
 
 Alle Funktionen, Preise, Budgets, Regeln und Freigaben sind unverändert.
+
+## 10.17.0 – Reiter „System“ aufgeräumt: alle Schnittstellen an einem Ort
+Kein Datenbank-Update nötig (wenn 10.15 schon eingespielt ist): Dateien hochladen (immer überschreiben), fertig. Enthält das neue Shop-Design aus 10.16.0.
+
+**Vorher:** Unter System gab es sieben Unterpunkte. Die Auftragszentrale war auf „Übergabe“ und „API-Zugänge“ verteilt, die API-Seite verwies wieder zurück auf „Übergabe“, der Systemstatus zeigte Mailversand und einen „Schnittstellenstatus“ mit Dauerwarnungen zu L-Shop (gibt es nicht) und einem Hinweis „Keine Textillagerpflicht“ (kein Status), Lexware stand doppelt (Systemstatus und eigene Seite), und eingeschaltet wurde alles nur über die config.php per FTP.
+
+**Jetzt: System hat fünf Unterpunkte**
+- **Systemstatus** – nur noch Betriebsprüfung, Datensicherung und Aufbewahrung. Offene Punkte stehen oben, jeder mit Knopf dorthin, wo er sich beheben lässt („Jetzt sichern“, „Einrichten“, „Ergänzen“, „Jetzt prüfen“ …).
+- **Schnittstellen** (neu) – jede Verbindung zu einem anderen System genau einmal, oben als Ampel-Übersicht:
+  - *Auftragszentrale*: Übergabe und Rückmeldung (Produktionsstand, Sendungsnummer) in einer Karte, mit Zählern, „Verbindung testen“, „Fehlgeschlagene erneut senden“ und dem Übergabeprotokoll darunter.
+  - *E-Mail-Versand*: Versandweg, Warteschlange, Testmail, fehlgeschlagene Mails.
+  - *Lexware Office*: nur die Verbindung.
+  - *Zugänge für andere Systeme (API)*: Schlüssel für Fan-Bande und Partner.
+  - *Daiber-Produktbilder*: Zustand, Verweis auf den Lieferantenkatalog.
+- **Administratoren**, **Aktivitäten**, **Anleitung** – unverändert.
+- **Abrechnung** (Lexware-Rechnungsentwürfe, Firmen verknüpfen, Monats-Sammelrechnung) ist ins Tagesgeschäft gewandert – das ist Arbeit, kein Systemthema.
+
+**Einrichten ohne FTP**
+- Auftragszentrale und Lexware Office lassen sich direkt in der Verwaltung verbinden: Schlüssel einfügen, eigenes Admin-Passwort bestätigen, speichern. Die Verbindung wird sofort geprüft; bei der Auftragszentrale gehen gesammelte Aufträge danach gleich raus (auch Aufträge, die vorher mit einem falschen Schlüssel gescheitert waren).
+- Zugangsdaten liegen verschlüsselt (AES-256-GCM) in der Datenbank, der Schlüssel dazu im privaten Datenordner (`schnittstellen.key`, nicht in der Datensicherung). Eine gestohlene Datenbanksicherung allein verrät sie nicht. Angezeigt werden sie nie wieder.
+- Jede Änderung braucht das eigene Admin-Passwort, steht im Aktivitätsprotokoll und wird allen Administratoren per E-Mail gemeldet.
+- Was in der config.php steht, gilt weiter und hat Vorrang (die Seite zeigt es dann nur an). Bestehende Installationen laufen also unverändert weiter.
+
+**Doppeltes entfernt**
+- Der alte Abholweg `/api/v1/auftraege` mit eigenem `handover_api_token` wird nicht mehr angeboten (läuft aus der config.php weiter, falls eingetragen); abholen geht mit einem normalen API-Zugang.
+- Alte Lesezeichen (`?tab=handover`, `?tab=api`) führen automatisch zur neuen Seite.
+
+**Getestet** gegen nachgebaute Auftragszentrale (Signaturprüfung wie channel.php) und Lexware-Testserver: falsches Passwort, http-Adresse, zu kurzer und falscher Schlüssel werden abgelehnt; richtiger Schlüssel verbindet, Aufträge kommen mit YT-Nummer zurück; signierte Statusrückmeldung mit dem in der Verwaltung hinterlegten Schlüssel setzt Produktionsstand und Sendungsnummer (Wiederholung 409, falsche Signatur 401); Lexware verbinden und trennen; API-Zugang anlegen und abfragen; config.php-Vorrang; fehlende Schlüsseldatei wird klar gemeldet; alle Verwaltungsseiten laden; Handy ohne seitliches Scrollen; Sicherheits-Regressionstests grün.

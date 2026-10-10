@@ -39,7 +39,7 @@ Auftragszentrale / Fan-Bande / Partner         WorkwearCenter
 
 ## 2. API-Schlüssel
 
-Schlüssel werden im WorkwearCenter unter **Verwaltung → Einstellungen → System → API-Zugänge** angelegt. Pro angebundenem System ein eigener Schlüssel (Auftragszentrale, Fan-Bande, Partner, Test).
+Schlüssel werden im WorkwearCenter unter **Verwaltung → Einstellungen → System → Schnittstellen → Zugänge für andere Systeme** angelegt. Pro angebundenem System ein eigener Schlüssel (Auftragszentrale, Fan-Bande, Partner, Test).
 
 * Der Schlüssel sieht so aus: `wwc_` + 48 Hex-Zeichen, z. B. `wwc_3f9a…` (52 Zeichen).
 * Er wird **genau einmal** angezeigt. Das WorkwearCenter speichert nur einen SHA-256-Hash. Verloren = neuen Schlüssel anlegen, alten löschen.

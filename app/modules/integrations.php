@@ -111,9 +111,16 @@ function yw_admin_integration_action(string $action): never {
             if(!$enabled){flash('success','Gespeichert. Die Übergabe ist ausgeschaltet – freigegebene Aufträge werden gesammelt und nach dem Einschalten übertragen.');redirect($target);}
             // Gleich nach dem Speichern prüfen, ob die Auftragszentrale erreichbar ist und den Schlüssel annimmt.
             [$ok,$message]=yw_handover_ping();
-            $waiting=0;try{$waiting=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='pending'")->fetchColumn();}catch(Throwable $ignored){}
-            flash($ok?'success':'error',$ok?'Gespeichert und verbunden: '.$message.($waiting?' '.$waiting.' gesammelte Auftr'.($waiting===1?'ag wird':'äge werden').' jetzt automatisch übertragen.':''):'Gespeichert, aber die Verbindung klappt noch nicht: '.$message.' Aufträge bleiben gesammelt, bis die Verbindung steht.');
-            if($ok && $waiting)try{yw_process_handover_queue(10);}catch(Throwable $e){error_log('Handover after save: '.$e->getMessage());}
+            if(!$ok){flash('error','Gespeichert, aber die Verbindung klappt noch nicht: '.$message.' Aufträge bleiben gesammelt, bis die Verbindung steht.');redirect($target);}
+            // Verbindung steht: gesammelte (auch zuvor fehlgeschlagene Versuche mit altem Schlüssel) sofort senden, Rest per Cronjob.
+            $sent=0;$left=0;
+            try{
+                set_site_setting('handover_pause_until','0');
+                db()->exec("UPDATE yw_handover SET available_at=NOW() WHERE status='pending' AND available_at>NOW() AND attempts>0"); // Sammelbestellungen (Stichtag, noch kein Versuch) bleiben unberührt
+                $sent=yw_process_handover_queue(20);
+                $left=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='pending' AND available_at<=NOW()")->fetchColumn();
+            }catch(Throwable $e){error_log('Handover after save: '.$e->getMessage());}
+            flash('success','Gespeichert und verbunden: '.$message.($sent?' '.$sent.' gesammelte'.($sent===1?'r Auftrag wurde':' Aufträge wurden').' gleich übertragen.':'').($left?' '.$left.' weitere folgen automatisch.':''));
             redirect($target);
         }
         if($action==='int_lexware_save'){

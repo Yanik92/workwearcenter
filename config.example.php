@@ -38,6 +38,8 @@ return [
     'install_key' => '',
 
     // Übergabe freigegebener Aufträge an die Auftragsverwaltung.
+    // Ab 10.17 einfacher in der Verwaltung: System → Schnittstellen → Auftragszentrale.
+    // Nur eintragen, wenn es fest in der Datei stehen soll (hat dann Vorrang).
     // 'off'  = aus (Aufträge werden trotzdem gesammelt und später übergeben)
     // 'push' = WorkwearCenter sendet an handover_url
     // 'pull' = Auftragsverwaltung holt über /api/v1/auftraege ab
@@ -50,7 +52,8 @@ return [
     'handover_secret' => '',       // Auftragszentrale: Schlüssel aus „Verkaufskanäle → WorkwearCenter“
     'handover_api_token' => '',    // mind. 32 Zeichen, nur für 'pull' / 'both'
 
-    // Lexware Office (Public API): Rechnungsentwürfe und Kundenkontakte. Leer = aus.
+    // Lexware Office (Public API): Rechnungsentwürfe und Kundenkontakte.
+    // Ab 10.17 einfacher in der Verwaltung: System → Schnittstellen → Lexware Office. Hier eingetragen hat Vorrang.
     // Schlüssel erzeugen: Lexware Office → Erweiterungen → Public API (https://app.lexware.de/addons/public-api)
     'lexware_api_key' => '',
     // Nur für Tests ändern (z. B. lokaler Testserver); Standard ist die offizielle Adresse.
