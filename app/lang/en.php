@@ -448,6 +448,7 @@ return [
     'people.usage_title' => 'Spending by organisational unit',
     'people.usage_current' => 'Company share including open reservations in the current budget year.',
     'people.usage_previous' => 'Company share including open reservations in the previous budget year.',
+    'people.usage_show' => 'Show all {count} groups',
     'people.department' => 'Department',
     'people.cost_center' => 'Cost centre',
     'people.location' => 'Location',

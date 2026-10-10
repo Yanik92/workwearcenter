@@ -52,12 +52,25 @@
   });
 
   // Sprungziele wie #mitarbeiter öffnen den passenden Aufklappbereich.
-  var openHashTarget = function () {
+  // 10.15: auch wenn das Ziel in einem zugeklappten Bereich liegt (z. B. #profil-3, #budget-12); nach dem
+  // Speichern steht die Rückmeldung direkt am Ziel statt oben auf der Seite.
+  var openHashTarget = function (afterSave) {
     if (!location.hash) return;
-    var el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
-    if (el instanceof HTMLDetailsElement) { el.open = true; el.scrollIntoView({ block: 'start' }); }
+    var el = null;
+    try { el = document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch (e) { return; }
+    if (!el) return;
+    var opened = false;
+    for (var d = el.closest('details'); d; d = d.parentElement ? d.parentElement.closest('details') : null) { if (!d.open) opened = true; d.open = true; }
+    var flash = afterSave === true ? document.querySelector('[data-flash]') : null;
+    if (flash && !el.contains(flash) && el.parentNode) {
+      // Rückmeldung direkt über das Ziel; der Abstand beim Springen schließt sie ein (auch beim Sprung des Browsers selbst).
+      el.parentNode.insertBefore(flash, el);
+      var gap = flash.offsetHeight + (parseFloat(window.getComputedStyle(flash).marginBottom) || 0);
+      el.style.scrollMarginTop = ((parseFloat(window.getComputedStyle(el).scrollMarginTop) || 0) + gap) + 'px';
+      el.scrollIntoView({ block: 'start' });
+    } else if (opened || el instanceof HTMLDetailsElement) el.scrollIntoView({ block: 'start' });
   };
-  openHashTarget();
+  openHashTarget(true);
   window.addEventListener('hashchange', openHashTarget);
 
   // 10.15: Lexware – nach abgelaufenem Zeitbudget die übrigen Rechnungsentwürfe automatisch weiter senden (app/modules/lexware.php).
@@ -71,6 +84,26 @@
     toggle.addEventListener('change', function () {
       document.querySelectorAll('input[name="order_ids[]"]').forEach(function (box) { box.checked = toggle.checked; });
     });
+  });
+
+  // 10.15: „Alle auf dieser Seite“ – setzt alle Kästchen mit dem genannten Namen im selben Formular
+  // (auch Kästchen, die per form="…" außerhalb des Formulars stehen).
+  document.querySelectorAll('[data-check-all]').forEach(function (toggle) {
+    toggle.addEventListener('change', function () {
+      var form = toggle.form || toggle.closest('form');
+      if (!form) return;
+      Array.prototype.forEach.call(form.elements, function (box) {
+        if (box.type === 'checkbox' && box.name === toggle.dataset.checkAll) box.checked = toggle.checked;
+      });
+    });
+  });
+
+  // 10.15: Ungespeicherte Häkchen (z. B. Kollektion) nicht durch Blättern oder Bearbeiten verlieren.
+  document.querySelectorAll('form[data-unsaved-warning]').forEach(function (form) {
+    var dirty = false;
+    document.addEventListener('change', function (event) { if (event.target === form || event.target.form === form) dirty = true; });
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (event) { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   });
 
   /* ---------- Firmenshop: Vorder-/Rückansicht ---------- */

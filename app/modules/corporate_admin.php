@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function yw_admin_action(): void {
     $action=(string)($_POST['action']??'');
-    if(!in_array($action,['yw_company','yw_employee','yw_limit','yw_profile_create','yw_profile_save','yw_profile_products','yw_production','yw_mail_process','yw_mail_test','yw_retention'],true)) return;
+    if(!in_array($action,['yw_company','yw_employee','yw_limit','yw_profile_create','yw_profile_save','yw_profile_products','yw_profile_bulk','yw_production','yw_mail_process','yw_mail_test','yw_retention'],true)) return;
     require_admin(); verify_csrf();
     if($action==='yw_retention')yw_retention_save_action(); // 10.15: Aufbewahrungsfrist des Aktivitätsprotokolls
     if($action==='yw_mail_process'){
@@ -16,7 +16,7 @@ function yw_admin_action(): void {
         catch(Throwable $e){error_log('Test mail action: '.$e->getMessage());flash('error','Testmail konnte nicht versendet werden. Bitte SMTP-Konfiguration und Mailwarteschlange prüfen.');}
         redirect('/admin?tab=system');
     }
-    $productionStatusChanged=false;
+    $productionStatusChanged=false;$anchor='';$message='Gespeichert.'; // 10.15: Sprungziel und Rückmeldung je Aktion
     try {
         db()->beginTransaction();
         $companyId=(int)($_POST['company_id']??0);
@@ -41,13 +41,13 @@ function yw_admin_action(): void {
             $q=db()->prepare('UPDATE companies SET budget_enabled=?,annual_budget_company_cents=?,budget_reset_month=?,registration_mode=?,registration_pin_hash=?,delivery_mode=?,delivery_address=? WHERE id=?');
             $q->execute([isset($_POST['budget_enabled'])?1:0,$budget,$month,$mode,$hash,$delivery,$address,$companyId]);
         } elseif($action==='yw_employee'){
-            $id=(int)($_POST['account_id']??0); $raw=trim((string)($_POST['budget_override']??''));
+            $id=(int)($_POST['account_id']??0);$anchor='budget-'.$id; $raw=trim((string)($_POST['budget_override']??''));
             $override=$raw===''?null:yw_money_input($raw);
             $q=db()->prepare('SELECT id FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$id,$companyId]);if(!$q->fetchColumn())throw new DomainException('Mitarbeiter nicht gefunden.');
             $q=db()->prepare('UPDATE employee_accounts SET budget_override_cents=? WHERE id=? AND company_id=?');
             $q->execute([$override,$id,$companyId]);
         } elseif($action==='yw_limit'){
-            $id=(int)($_POST['product_id']??0); $raw=trim((string)($_POST['yearly_limit_qty']??''));
+            $id=(int)($_POST['product_id']??0);$anchor='grenze-'.$id; $raw=trim((string)($_POST['yearly_limit_qty']??''));
             if($raw!=='' && (!ctype_digit($raw) || (int)$raw>100000)) throw new DomainException('Mengenlimit ungültig.');
             $q=db()->prepare('SELECT product_id FROM company_products WHERE company_id=? AND product_id=? FOR UPDATE');$q->execute([$companyId,$id]);if(!$q->fetchColumn())throw new DomainException('Firmenprodukt nicht gefunden.');
             $q=db()->prepare('UPDATE company_products SET yearly_limit_qty=? WHERE company_id=? AND product_id=?');
@@ -61,7 +61,7 @@ function yw_admin_action(): void {
             if($isDefault){$q=db()->prepare('UPDATE yw_equipment_profiles SET is_default=0 WHERE company_id=?');$q->execute([$companyId]);}
             $q=db()->prepare('INSERT INTO yw_equipment_profiles(company_id,name,description,active,is_default) VALUES(?,?,?,1,?)');$q->execute([$companyId,$name,$description,$isDefault]);
         } elseif($action==='yw_profile_save'){
-            $profileId=(int)($_POST['profile_id']??0);$name=trim((string)($_POST['profile_name']??''));$description=trim((string)($_POST['profile_description']??''));$active=isset($_POST['active'])?1:0;$isDefault=$active&&isset($_POST['is_default'])?1:0;
+            $profileId=(int)($_POST['profile_id']??0);$anchor='profil-'.$profileId;$name=trim((string)($_POST['profile_name']??''));$description=trim((string)($_POST['profile_description']??''));$active=isset($_POST['active'])?1:0;$isDefault=$active&&isset($_POST['is_default'])?1:0;
             if($name===''||mb_strlen($name)>120||mb_strlen($description)>500)throw new DomainException('Profilname fehlt oder Beschreibung ist zu lang.');
             $q=db()->prepare('SELECT id,is_default FROM yw_equipment_profiles WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$profileId,$companyId]);$existingProfile=$q->fetch();if(!$existingProfile)throw new DomainException('Ausstattungsprofil nicht gefunden.');
             $q=db()->prepare('SELECT id FROM yw_equipment_profiles WHERE company_id=? AND name=? AND id<>?');$q->execute([$companyId,$name,$profileId]);if($q->fetchColumn())throw new DomainException('Ein Ausstattungsprofil mit diesem Namen besteht bereits.');
@@ -71,13 +71,34 @@ function yw_admin_action(): void {
             $q=db()->prepare('UPDATE yw_equipment_profiles SET name=?,description=?,active=?,is_default=? WHERE id=? AND company_id=?');$q->execute([$name,$description,$active,$isDefault,$profileId,$companyId]);
             if(!$active && (int)$existingProfile['is_default']){$q=db()->prepare('UPDATE yw_equipment_profiles SET is_default=1 WHERE company_id=? AND active=1 ORDER BY id LIMIT 1');$q->execute([$companyId]);}
         } elseif($action==='yw_profile_products'){
-            $profileId=(int)($_POST['profile_id']??0);$selected=is_array($_POST['profile_products']??null)?$_POST['profile_products']:[];$starter=is_array($_POST['starter_qty']??null)?$_POST['starter_qty']:[];$targets=is_array($_POST['target_qty']??null)?$_POST['target_qty']:[];
+            $profileId=(int)($_POST['profile_id']??0);$anchor='profil-'.$profileId;$selected=is_array($_POST['profile_products']??null)?$_POST['profile_products']:[];$starter=is_array($_POST['starter_qty']??null)?$_POST['starter_qty']:[];$targets=is_array($_POST['target_qty']??null)?$_POST['target_qty']:[];
             $q=db()->prepare('SELECT id FROM yw_equipment_profiles WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$profileId,$companyId]);if(!$q->fetchColumn())throw new DomainException('Ausstattungsprofil nicht gefunden.');
             $allowed=[];$q=db()->prepare('SELECT product_id FROM company_products WHERE company_id=?');$q->execute([$companyId]);foreach($q as $row)$allowed[(int)$row['product_id']]=true;
             if(count($selected)>500)throw new DomainException('Ein Profil kann höchstens 500 Produkte enthalten.');
-            $rows=[];$seen=[];foreach($selected as $rawId){if(!is_scalar($rawId)||!preg_match('/^[1-9]\d*$/D',(string)$rawId))throw new DomainException('Profil enthält eine ungültige Produktkennung.');$productId=(int)$rawId;if(isset($seen[$productId]))continue;$seen[$productId]=true;if(!isset($allowed[$productId]))throw new DomainException('Profil enthält ein nicht freigegebenes Produkt.');$starterRaw=trim((string)($starter[$productId]??'0'));$targetRaw=trim((string)($targets[$productId]??''));if(!ctype_digit($starterRaw)||(int)$starterRaw>1000||($targetRaw!==''&&(!ctype_digit($targetRaw)||(int)$targetRaw>100000))||($targetRaw!==''&&(int)$starterRaw>(int)$targetRaw))throw new DomainException('Starter- oder Sollmenge ungültig. Die Startermenge darf die Sollmenge nicht überschreiten.');$rows[]=[$profileId,$productId,(int)$starterRaw,$targetRaw===''?null:(int)$targetRaw];}
-            $q=db()->prepare('DELETE FROM yw_equipment_profile_products WHERE profile_id=?');$q->execute([$profileId]);
+            // 10.15: Mit Blättern gilt das Formular nur für die angezeigten Produkte (scope_products); ohne Angabe wie bisher für alle.
+            $scope=null;
+            if(array_key_exists('scope_products',$_POST)){$rawScope=$_POST['scope_products'];if(!is_array($rawScope)||count($rawScope)>500)throw new DomainException('Profil enthält eine ungültige Produktkennung.');$scope=[];foreach($rawScope as $rawId){if(!is_scalar($rawId)||!preg_match('/^[1-9]\d*$/D',(string)$rawId))throw new DomainException('Profil enthält eine ungültige Produktkennung.');$scope[(int)$rawId]=true;}}
+            $rows=[];$seen=[];foreach($selected as $rawId){if(!is_scalar($rawId)||!preg_match('/^[1-9]\d*$/D',(string)$rawId))throw new DomainException('Profil enthält eine ungültige Produktkennung.');$productId=(int)$rawId;if(isset($seen[$productId]))continue;$seen[$productId]=true;if(!isset($allowed[$productId])||($scope!==null&&!isset($scope[$productId])))throw new DomainException('Profil enthält ein nicht freigegebenes Produkt.');$starterRaw=trim((string)($starter[$productId]??'0'));$targetRaw=trim((string)($targets[$productId]??''));if(!ctype_digit($starterRaw)||(int)$starterRaw>1000||($targetRaw!==''&&(!ctype_digit($targetRaw)||(int)$targetRaw>100000))||($targetRaw!==''&&(int)$starterRaw>(int)$targetRaw))throw new DomainException('Starter- oder Sollmenge ungültig. Die Startermenge darf die Sollmenge nicht überschreiten.');$rows[]=[$profileId,$productId,(int)$starterRaw,$targetRaw===''?null:(int)$targetRaw];}
+            if($scope===null){$q=db()->prepare('DELETE FROM yw_equipment_profile_products WHERE profile_id=?');$q->execute([$profileId]);}
+            elseif($scope){$q=db()->prepare('DELETE FROM yw_equipment_profile_products WHERE profile_id=? AND product_id IN ('.implode(',',array_fill(0,count($scope),'?')).')');$q->execute([$profileId,...array_keys($scope)]);}
             $q=db()->prepare('INSERT INTO yw_equipment_profile_products(profile_id,product_id,starter_qty,yearly_target_qty) VALUES(?,?,?,?)');foreach($rows as $row)$q->execute($row);
+            if($scope!==null){$q=db()->prepare('SELECT COUNT(*) FROM yw_equipment_profile_products WHERE profile_id=?');$q->execute([$profileId]);if((int)$q->fetchColumn()>500)throw new DomainException('Ein Profil kann höchstens 500 Produkte enthalten.');}
+        } elseif($action==='yw_profile_bulk'){
+            // 10.15: alle Treffer der Suche/Kategorie freigeben (Startermenge 0, Soll leer) oder die Freigabe entziehen
+            $profileId=(int)($_POST['profile_id']??0);$anchor='profil-'.$profileId;$bulk=(string)($_POST['bulk']??'');
+            if(!in_array($bulk,['add','remove'],true))throw new DomainException('Sammelaktion ist ungültig.');
+            $q=db()->prepare('SELECT id FROM yw_equipment_profiles WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$profileId,$companyId]);if(!$q->fetchColumn())throw new DomainException('Ausstattungsprofil nicht gefunden.');
+            $filter=yw_customer_list_state($_POST);
+            $ids=yw_customer_product_ids($companyId,'profil',$profileId,(string)($filter['profil_suche']??''),(string)($filter['profil_kategorie']??''),$bulk==='add'?'offen':'freigegeben');
+            if(!$ids)throw new DomainException('Keine passenden Produkte gefunden.');
+            if($bulk==='add'){
+                $q=db()->prepare('SELECT COUNT(*) FROM yw_equipment_profile_products WHERE profile_id=?');$q->execute([$profileId]);if((int)$q->fetchColumn()+count($ids)>500)throw new DomainException('Ein Profil kann höchstens 500 Produkte enthalten.');
+                $q=db()->prepare('INSERT INTO yw_equipment_profile_products(profile_id,product_id,starter_qty,yearly_target_qty) VALUES(?,?,0,NULL)');foreach($ids as $productId)$q->execute([$profileId,$productId]);
+                $message=count($ids).' Produkte freigegeben.';
+            }else{
+                foreach(array_chunk($ids,500) as $chunk){$q=db()->prepare('DELETE FROM yw_equipment_profile_products WHERE profile_id=? AND product_id IN ('.implode(',',array_fill(0,count($chunk),'?')).')');$q->execute([$profileId,...$chunk]);}
+                $message='Freigabe von '.count($ids).' Produkten entzogen.';
+            }
         } else {
             $id=(int)($_POST['order_id']??0);
             $status=(string)($_POST['production_status']??'');
@@ -92,14 +113,14 @@ function yw_admin_action(): void {
         db()->commit();
         audit_log($action,'company',$companyId,['company_id'=>$companyId]);
         if($action==='yw_production' && $productionStatusChanged) yw_notify_order_status($id,$status,(string)$company['slug']); // 10.12: in der Sprache der Person
-        flash('success','Gespeichert.');
+        flash('success',$message);
     } catch(Throwable $e){
         if(db()->inTransaction()) db()->rollBack();
         if(!$e instanceof DomainException && !$e instanceof InvalidArgumentException) error_log('Corporate action: '.$e->getMessage());
         flash('error',($e instanceof DomainException || $e instanceof InvalidArgumentException)?$e->getMessage():'Speichern fehlgeschlagen.');
     }
     // Früher tab=corporate: der Reiter leitet nur noch weiter – nach Ausgabe des Seitenkopfs scheitert das (leere Seite).
-    redirect($action==='yw_production'?'/admin?tab=production&company_id='.$companyId:yw_customer_return_url($companyId,'regeln'));
+    redirect($action==='yw_production'?'/admin?tab=production&company_id='.$companyId:yw_customer_return_url($companyId,'regeln',$anchor));
 }
 
 function yw_admin_corporate(): void {
@@ -123,25 +144,51 @@ function yw_customer_section_budget(array $company): void {
     echo '</select></label><label>Neue Firmen-PIN (leer = unverändert)<input type="password" name="registration_pin" minlength="6" maxlength="72" autocomplete="new-password"></label><label>Lieferart<select name="delivery_mode"><option value="company">Firmenlieferung</option><option value="pickup" '.($company['delivery_mode']==='pickup'?'selected':'').'>Abholung bei Yanik Textildruck</option></select></label><label>Firmenlieferadresse<textarea name="delivery_address" maxlength="1000">'.e($company['delivery_address']??'').'</textarea></label><button class="btn primary">Firmenregeln speichern</button></form></div></details>';
     // Großkunden: seitenweise mit Suche; Personen mit eigenem Budget zuerst.
     $list=yw_people_list($id,'budget_override_cents IS NULL,name,id');$employees=$list['rows'];
-    echo '<details class="card admin-toolbox"'.(isset($_GET['suche'])||isset($_GET['seite'])?' open':'').'><summary>Individuelle Mitarbeiterbudgets</summary><div class="admin-toolbox-body"><p>Leer = Firmenstandard; 0 = kein Arbeitgeberbudget. Wirkt nur bei aktiviertem Firmenbudget.</p>';
-    echo yw_people_list_nav($list,'/admin',['tab'=>'companies','company'=>$id,'bereich'=>'regeln'],['Person suchen','Name, E-Mail, Abteilung, Kostenstelle, Standort oder Personalnummer','Suchen','Zurück','Weiter','Seite '.$list['page'].' von '.$list['pages'],$list['total'].' Treffer','Seiten der Personenliste']);
+    echo '<details class="card admin-toolbox" id="budgets"'.(isset($_GET['suche'])||isset($_GET['seite'])?' open':'').'><summary>Individuelle Mitarbeiterbudgets</summary><div class="admin-toolbox-body"><p>Leer = Firmenstandard; 0 = kein Arbeitgeberbudget. Wirkt nur bei aktiviertem Firmenbudget.</p>';
+    echo yw_people_list_nav($list,'/admin',yw_customer_keep($id,'regeln',['suche','seite']),['Person suchen','Name, E-Mail, Abteilung, Kostenstelle, Standort oder Personalnummer','Suchen','Zurück','Weiter','Seite '.$list['page'].' von '.$list['pages'],$list['total'].' Treffer','Seiten der Personenliste']);
     if(!$employees)echo '<div class="empty compact">'.($list['search']!==''?'Keine Person gefunden.':'Noch keine Mitarbeiterkonten vorhanden.').'</div>';
-    foreach($employees as $p) echo '<form method="post" class="item">'.$base.'<input type="hidden" name="action" value="yw_employee"><input type="hidden" name="account_id" value="'.(int)$p['id'].'"><label>'.e($p['name']).'<input name="budget_override" type="number" min="0" max="9999999" step="0.01" value="'.($p['budget_override_cents']===null?'':e(number_format((int)$p['budget_override_cents']/100,2,'.',''))).'"></label><button class="btn">Speichern</button></form>';
-    echo '</div></details><details class="card admin-toolbox"><summary>Stückzahlgrenzen je Firmenprodukt</summary><div class="admin-toolbox-body"><p>Leer = unbegrenzt; 0 = keine weitere Bestellung. Gilt je Mitarbeiter und Budgetjahr.</p>';
-    $q=db()->prepare('SELECT cp.product_id,cp.yearly_limit_qty,COALESCE(NULLIF(cp.custom_name,""),p.name) name FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=?'); $q->execute([$id]);
-    $limitedProducts=$q->fetchAll();
-    if(!$limitedProducts)echo '<div class="empty compact">Dieser Firma sind noch keine Produkte zugeordnet.</div>';
-    foreach($limitedProducts as $p) echo '<form method="post" class="item">'.$base.'<input type="hidden" name="action" value="yw_limit"><input type="hidden" name="product_id" value="'.(int)$p['product_id'].'"><label>'.e($p['name']).'<input name="yearly_limit_qty" type="number" min="0" max="100000" value="'.e($p['yearly_limit_qty']??'').'"></label><button class="btn">Speichern</button></form>';
+    foreach($employees as $p) echo '<form method="post" class="item" id="budget-'.(int)$p['id'].'">'.$base.'<input type="hidden" name="action" value="yw_employee"><input type="hidden" name="account_id" value="'.(int)$p['id'].'"><label>'.e($p['name']).'<input name="budget_override" type="number" min="0" max="9999999" step="0.01" value="'.($p['budget_override_cents']===null?'':e(number_format((int)$p['budget_override_cents']/100,2,'.',''))).'"></label><button class="btn">Speichern</button></form>';
+    // 10.15: Großkunden – Stückzahlgrenzen seitenweise mit Suche und Kategorie (je Artikel weiter ein eigenes Formular).
+    $limitKeys=['q'=>'grenzen_suche','cat'=>'grenzen_kategorie','page'=>'grenzen_seite'];
+    $limits=yw_customer_product_list($id,$limitKeys,'firma');
+    $limitsOpen=(bool)array_intersect_key(yw_customer_list_state($_GET),array_flip($limitKeys));
+    echo '</div></details><details class="card admin-toolbox" id="stueckzahlen"'.($limitsOpen?' open':'').'><summary>Stückzahlgrenzen je Firmenprodukt <span class="muted">('.$limits['counts']['alle'].')</span></summary><div class="admin-toolbox-body"><p>Leer = unbegrenzt; 0 = keine weitere Bestellung. Gilt je Mitarbeiter und Budgetjahr.</p>';
+    if($limits['counts']['alle']||$limits['search']!==''||$limits['category']!=='')echo yw_customer_product_nav($limits,yw_customer_keep($id,'regeln',array_values($limitKeys)));
+    if(!$limits['rows'])echo '<div class="empty compact">'.($limits['search']!==''||$limits['category']!==''?'Keine Artikel gefunden.':'Dieser Firma sind noch keine Produkte zugeordnet.').'</div>';
+    foreach($limits['rows'] as $p) echo '<form method="post" class="item" id="grenze-'.(int)$p['id'].'">'.$base.'<input type="hidden" name="action" value="yw_limit"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><label>'.e(company_product_display_name($p)).(trim((string)($p['sku']??''))!==''?' <small class="muted">'.e((string)$p['sku']).'</small>':'').'<input name="yearly_limit_qty" type="number" min="0" max="100000" value="'.e($p['yearly_limit_qty']??'').'"></label><button class="btn">Speichern</button></form>';
+    if($limits['pages']>1)echo yw_customer_product_nav($limits,yw_customer_keep($id,'regeln',array_values($limitKeys)),[],false);
     echo '</div></details>';
     echo '<details class="card admin-toolbox"><summary>Neues Ausstattungsprofil anlegen</summary><div class="admin-toolbox-body"><p>Profile begrenzen das sichtbare Sortiment nach Tätigkeit. Die Startermenge ist eine Empfehlung; die Sollmenge ist zugleich das verbindliche Limit pro Budgetjahr.</p><form method="post" class="form-stack">'.$base.'<input type="hidden" name="action" value="yw_profile_create"><label>Neues Profil<input name="profile_name" maxlength="120" placeholder="z. B. Montage" required></label><label>Beschreibung<textarea name="profile_description" maxlength="500" placeholder="Einsatzbereich und Hinweise"></textarea></label><label class="check"><input type="checkbox" name="is_default"><span>Standardprofil für neue Registrierungen</span></label><button class="btn primary">Profil anlegen</button></form></div></details>';
-    $profiles=yw_equipment_profiles($id,false);$q=db()->prepare('SELECT cp.product_id,COALESCE(NULLIF(cp.custom_name,""),p.name) name FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=? ORDER BY name');$q->execute([$id]);$companyProducts=$q->fetchAll();
+    // 10.15: Das Produktsortiment wird nur für das geöffnete Profil (?profil=) geladen – seitenweise mit Suche,
+    // Kategorie und Ansicht; gespeichert werden nur die angezeigten Zeilen (scope_products).
+    $profiles=yw_equipment_profiles($id,false);
+    $state=yw_customer_list_state($_GET);$openProfile=(int)($state['profil']??0);
+    $profileKeys=['q'=>'profil_suche','cat'=>'profil_kategorie','page'=>'profil_seite','view'=>'profil_anzeige'];
     foreach($profiles as $profile){
-        $q=db()->prepare('SELECT product_id,starter_qty,yearly_target_qty FROM yw_equipment_profile_products WHERE profile_id=?');$q->execute([$profile['id']]);$assigned=[];foreach($q as $row)$assigned[(int)$row['product_id']]=$row;
-        echo '<details class="card admin-toolbox"><summary>'.e($profile['name']).' · '.(int)$profile['product_count'].' Produkte · '.((int)$profile['active']?'aktiv':'deaktiviert').((int)$profile['is_default']?' · Standardprofil':'').'</summary><div class="admin-toolbox-body">';
-        echo '<form method="post" class="form-stack">'.$base.'<input type="hidden" name="action" value="yw_profile_save"><input type="hidden" name="profile_id" value="'.(int)$profile['id'].'"><label>Name<input name="profile_name" maxlength="120" value="'.e($profile['name']).'" required></label><label>Beschreibung<textarea name="profile_description" maxlength="500">'.e($profile['description']??'').'</textarea></label><label class="check"><input type="checkbox" name="active" '.((int)$profile['active']?'checked':'').'><span>Profil aktiv</span></label><label class="check"><input type="checkbox" name="is_default" '.((int)$profile['is_default']?'checked':'').'><span>Standard für neue Registrierungen</span></label><button class="btn">Profileinstellungen speichern</button></form><hr>';
-        echo '<form method="post" class="form-stack">'.$base.'<input type="hidden" name="action" value="yw_profile_products"><input type="hidden" name="profile_id" value="'.(int)$profile['id'].'"><div class="table-wrap"><table class="table"><thead><tr><th>Freigabe</th><th>Firmenprodukt</th><th>Startermenge</th><th>Soll / Limit pro Jahr</th></tr></thead><tbody>';
-        foreach($companyProducts as $product){$productId=(int)$product['product_id'];$rule=$assigned[$productId]??null;echo '<tr><td><input type="checkbox" name="profile_products[]" value="'.$productId.'" '.($rule?'checked':'').'></td><td>'.e($product['name']).'</td><td><input type="number" name="starter_qty['.$productId.']" min="0" max="1000" value="'.(int)($rule['starter_qty']??0).'" aria-label="Startermenge '.e($product['name']).'"></td><td><input type="number" name="target_qty['.$productId.']" min="0" max="100000" value="'.e($rule['yearly_target_qty']??'').'" placeholder="leer = global" aria-label="Sollmenge '.e($product['name']).'"></td></tr>';}
-        echo '</tbody></table></div><button class="btn primary">Produktsortiment speichern</button></form></div></details>';
+        $profileId=(int)$profile['id'];$isOpen=$openProfile===$profileId;
+        echo '<details class="card admin-toolbox" id="profil-'.$profileId.'"'.($isOpen?' open':'').'><summary>'.e($profile['name']).' · '.(int)$profile['product_count'].' Produkte · '.((int)$profile['active']?'aktiv':'deaktiviert').((int)$profile['is_default']?' · Standardprofil':'').'</summary><div class="admin-toolbox-body">';
+        echo '<form method="post" class="form-stack">'.$base.'<input type="hidden" name="action" value="yw_profile_save"><input type="hidden" name="profile_id" value="'.$profileId.'"><label>Name<input name="profile_name" maxlength="120" value="'.e($profile['name']).'" required></label><label>Beschreibung<textarea name="profile_description" maxlength="500">'.e($profile['description']??'').'</textarea></label><label class="check"><input type="checkbox" name="active" '.((int)$profile['active']?'checked':'').'><span>Profil aktiv</span></label><label class="check"><input type="checkbox" name="is_default" '.((int)$profile['is_default']?'checked':'').'><span>Standard für neue Registrierungen</span></label><button class="btn">Profileinstellungen speichern</button></form><hr>';
+        if(!$isOpen){
+            echo '<div class="profile-products-closed"><p class="muted">'.(int)$profile['product_count'].' von '.$limits['counts']['alle'].' Firmenprodukten freigegeben.</p><a class="btn" href="'.e(yw_customer_state_url($id,'regeln',array_diff_key($state,array_flip([...array_values($profileKeys),'profil']))+['profil'=>(string)$profileId])).'#profil-'.$profileId.'">Produktsortiment bearbeiten</a></div></div></details>';
+            continue;
+        }
+        $plist=yw_customer_product_list($id,$profileKeys,'profil',$profileId);
+        $keep=yw_customer_keep($id,'regeln',array_values($profileKeys));
+        echo '<h4>Produktsortiment</h4>'.yw_customer_product_nav($plist,$keep,['alle'=>'Alle Firmenprodukte','freigegeben'=>'Freigegeben','offen'=>'Nicht freigegeben']);
+        $filter=($plist['search']!==''?'<input type="hidden" name="profil_suche" value="'.e($plist['search']).'">':'').($plist['category']!==''?'<input type="hidden" name="profil_kategorie" value="'.e($plist['category']).'">':'');
+        $scopeText=$plist['search']!==''||$plist['category']!==''?' (aktuelle Suche/Kategorie)':'';
+        if($plist['counts']['ohne']>0||$plist['counts']['mit']>0){
+            echo '<div class="list-bulk"><span class="muted">Alle Treffer'.e($scopeText).':</span>';
+            if($plist['counts']['ohne']>0)echo '<form method="post" class="inline-form" data-confirm="'.e($plist['counts']['ohne'].' Produkte'.$scopeText.' für „'.$profile['name'].'“ freigeben (Startermenge 0, Soll leer = global)?').'">'.$base.'<input type="hidden" name="action" value="yw_profile_bulk"><input type="hidden" name="bulk" value="add"><input type="hidden" name="profile_id" value="'.$profileId.'">'.$filter.'<button class="btn small">'.$plist['counts']['ohne'].' Produkte freigeben</button></form>';
+            if($plist['counts']['mit']>0)echo '<form method="post" class="inline-form" data-confirm="'.e('Freigabe von '.$plist['counts']['mit'].' Produkten'.$scopeText.' für „'.$profile['name'].'“ entziehen? Starter- und Sollmengen dieser Produkte werden gelöscht.').'">'.$base.'<input type="hidden" name="action" value="yw_profile_bulk"><input type="hidden" name="bulk" value="remove"><input type="hidden" name="profile_id" value="'.$profileId.'">'.$filter.'<button class="btn small danger">'.$plist['counts']['mit'].' Freigaben entziehen</button></form>';
+            echo '</div>';
+        }
+        if(!$plist['rows']){echo '<div class="empty compact">'.($plist['search']!==''||$plist['category']!==''?'Keine Artikel gefunden.':($plist['counts']['alle']?'In dieser Ansicht sind keine Produkte.':'Dieser Firma sind noch keine Produkte zugeordnet.')).'</div></div></details>';continue;}
+        echo '<form method="post" class="form-stack">'.$base.'<input type="hidden" name="action" value="yw_profile_products"><input type="hidden" name="profile_id" value="'.$profileId.'"><div class="table-wrap"><table class="table"><thead><tr><th><input type="checkbox" data-check-all="profile_products[]" title="Alle auf dieser Seite" aria-label="Alle auf dieser Seite freigeben" style="width:auto;vertical-align:middle"> Freigabe</th><th>Firmenprodukt</th><th>Startermenge</th><th>Soll / Limit pro Jahr</th></tr></thead><tbody>';
+        foreach($plist['rows'] as $product){$productId=(int)$product['id'];$name=company_product_display_name($product);$rule=$product['epp_product_id']!==null;echo '<tr><td><input type="hidden" name="scope_products[]" value="'.$productId.'"><input type="checkbox" name="profile_products[]" value="'.$productId.'" '.($rule?'checked':'').' aria-label="'.e($name).' freigeben"></td><td>'.e($name).(trim((string)($product['sku']??''))!==''?'<br><small class="muted">'.e((string)$product['sku']).'</small>':'').'</td><td><input type="number" name="starter_qty['.$productId.']" min="0" max="1000" value="'.(int)($rule?$product['starter_qty']:0).'" aria-label="Startermenge '.e($name).'"></td><td><input type="number" name="target_qty['.$productId.']" min="0" max="100000" value="'.e($rule?($product['yearly_target_qty']??''):'').'" placeholder="leer = global" aria-label="Sollmenge '.e($name).'"></td></tr>';}
+        echo '</tbody></table></div><p class="muted">Gespeichert werden die '.count($plist['rows']).' Produkte dieser Seite; Freigaben auf anderen Seiten bleiben unverändert.</p><button class="btn primary">Produktsortiment speichern</button></form>';
+        if($plist['pages']>1)echo yw_customer_product_nav($plist,$keep,[],false);
+        echo '</div></details>';
     }
 }
 

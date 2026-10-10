@@ -448,6 +448,7 @@ return [
     'people.usage_title' => 'Wydatki według jednostek organizacyjnych',
     'people.usage_current' => 'Udział firmy łącznie z otwartymi rezerwacjami w bieżącym roku budżetowym.',
     'people.usage_previous' => 'Udział firmy łącznie z otwartymi rezerwacjami w poprzednim roku budżetowym.',
+    'people.usage_show' => 'Pokaż wszystkie grupy ({count})',
     'people.department' => 'Dział',
     'people.cost_center' => 'Centrum kosztów',
     'people.location' => 'Lokalizacja',

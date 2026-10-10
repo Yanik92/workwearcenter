@@ -201,7 +201,7 @@ function handle_admin_action(): never {
             yw_manager_change_audit((int)$account['company_id'],$accountId,$account,['registration_status'=>$decision,'active'=>$decision==='approved'?1:0]+$account,'admin'); // 10.15
             flash('success',$decision==='approved'?'Mitarbeiter wurde freigegeben.':'Registrierung wurde abgelehnt.');
             $returnCompany=(int)($_POST['return_company']??0);
-            redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter'):'/admin');
+            redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter','person-'.$accountId):'/admin');
         }
 
         if ($action==='bulk_fulfillment') {
@@ -533,7 +533,7 @@ function handle_admin_action(): never {
             yw_manager_change_audit($companyId,$accountId,$currentAccount,['role'=>$role,'registration_status'=>$registrationStatus,'active'=>$active]+$currentAccount,'admin'); // 10.15: Rollenwechsel still protokollieren
 
             flash('success','Mitarbeiterrolle wurde gespeichert.');
-            redirect(yw_customer_return_url($companyId,'mitarbeiter'));
+            redirect(yw_customer_return_url($companyId,'mitarbeiter','person-'.$accountId));
         }
 
         if ($action==='update_shop_rules') {
@@ -664,7 +664,7 @@ function handle_admin_action(): never {
             audit_log('company_product.updated','product',$productId,['company_id'=>$companyId]);
 
             flash('success','Shop-Produkt „'.($customName!==''?$customName:$row['base_name']).'“ wurde individualisiert.');
-            redirect(yw_customer_return_url($companyId,'kollektion'));
+            redirect(yw_customer_return_url($companyId,'kollektion','produkt-'.$productId));
         }
 
         if ($action==='save_decoration_motif') {
@@ -702,7 +702,7 @@ function handle_admin_action(): never {
                 $stmt->execute([$companyId,...$values]);$savedId=(int)db()->lastInsertId();$auditAction='decoration_motif.created';
             }
             audit_log($auditAction,'decoration_motif',$savedId,['company_id'=>$companyId,'stock_qty'=>(int)$stockRaw]);
-            flash('success','Veredelungsmotiv wurde gespeichert.');redirect(yw_customer_return_url($companyId,'kollektion'));
+            flash('success','Veredelungsmotiv wurde gespeichert.');redirect(yw_customer_return_url($companyId,'kollektion','motive'));
         }
 
         if ($action==='save_print_zones') { yw_save_print_zones_action(); }
@@ -723,41 +723,56 @@ function handle_admin_action(): never {
             audit_log('order.note_updated','order',$orderId);flash('success','Notiz gespeichert.');redirect(yw_order_url($orderId));
         }
 
-        if ($action==='update_collection') {
+        if ($action==='update_collection' || $action==='collection_bulk') {
             $id=(int)($_POST['company_id']??0);
-            $productIds=yw_admin_product_ids($_POST['products']??null);
             $companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$id]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.');
+            // 10.15: Mit Blättern gilt die Auswahl nur für die angezeigten Artikel (scope_products); ohne Angabe wie bisher für den ganzen Katalog.
+            $scope=null;$bulk='';
+            if($action==='collection_bulk'){
+                $bulk=(string)($_POST['bulk']??'');if(!in_array($bulk,['add','remove'],true))throw new RuntimeException('Sammelaktion ist ungültig.');
+                $filter=yw_customer_list_state($_POST);
+                $scope=yw_customer_product_ids($id,'katalog',0,(string)($filter['artikel']??''),(string)($filter['kategorie']??''),$bulk==='add'?'katalog':'kollektion');
+                if(!$scope)throw new RuntimeException('Keine passenden Artikel gefunden.');
+                if(count($scope)>500)throw new RuntimeException('Höchstens 500 Artikel auf einmal – bitte Suche oder Kategorie eingrenzen.');
+                $productIds=$bulk==='add'?$scope:[];
+            }elseif(array_key_exists('scope_products',$_POST)){
+                $raw=$_POST['scope_products'];if(!is_array($raw)||count($raw)>500)throw new RuntimeException('Produktauswahl ist ungültig.');
+                $scope=[];foreach($raw as $value){if(!is_scalar($value)||!preg_match('/^[1-9]\d*$/D',(string)$value))throw new RuntimeException('Produktauswahl enthält eine ungültige Kennung.');$scope[]=(int)$value;}
+                $productIds=is_array($_POST['products']??null)&&$_POST['products']?array_values(array_intersect(yw_admin_product_ids($_POST['products']),$scope)):[];
+            }else $productIds=yw_admin_product_ids($_POST['products']??null);
 
             $stmt=db()->prepare('SELECT product_id,preview_front_path,preview_back_path FROM company_products WHERE company_id=?');
             $stmt->execute([$id]);
             $existingRows=$stmt->fetchAll();
             $existingIds=array_map('intval',array_column($existingRows,'product_id'));
-            $previewsToDelete=[];
+            $previewsToDelete=[];$added=0;$removed=0;
 
             db()->beginTransaction();
 
             foreach($existingRows as $row){
                 $pid=(int)$row['product_id'];
-                if(!in_array($pid,$productIds,true)){
+                if(!in_array($pid,$productIds,true) && ($scope===null || in_array($pid,$scope,true))){
                     $previewsToDelete[]=(string)($row['preview_front_path']??'');
                     $previewsToDelete[]=(string)($row['preview_back_path']??'');
                     $delProfile=db()->prepare('DELETE FROM yw_equipment_profile_products WHERE product_id=? AND profile_id IN (SELECT id FROM yw_equipment_profiles WHERE company_id=?)');
                     $delProfile->execute([$pid,$id]);
                     $del=db()->prepare('DELETE FROM company_products WHERE company_id=? AND product_id=?');
                     $del->execute([$id,$pid]);
+                    $removed++;
                 }
             }
 
             $insert=db()->prepare('INSERT INTO company_products(company_id,product_id) VALUES(?,?)');
             foreach($productIds as $pid){
-                if(!in_array($pid,$existingIds,true)) $insert->execute([$id,$pid]);
+                if(!in_array($pid,$existingIds,true)){$insert->execute([$id,$pid]);$added++;}
             }
+            if(count($existingIds)-$removed+$added<1)throw new RuntimeException('Die Kollektion braucht mindestens einen Artikel. Bitte zuerst andere Artikel aufnehmen.');
 
             db()->commit();
             foreach(array_unique($previewsToDelete) as $preview)delete_company_product_preview($preview);
-            audit_log('company.collection_updated','company',$id,['company_id'=>$id,'product_count'=>count($productIds)]);
-            flash('success','Firmenkollektion wurde gespeichert. Bestehende Individualisierungen wurden beibehalten.');
-            redirect(yw_customer_return_url($id,'kollektion'));
+            audit_log('company.collection_updated','company',$id,['company_id'=>$id,'product_count'=>count($existingIds)-$removed+$added,'added'=>$added,'removed'=>$removed]+($bulk!==''?['bulk'=>$bulk]:[]));
+            flash('success',$scope===null?'Firmenkollektion wurde gespeichert. Bestehende Individualisierungen wurden beibehalten.':'Firmenkollektion wurde gespeichert: '.$added.' aufgenommen, '.$removed.' entfernt.'.($bulk===''?' Individualisierungen der übrigen Artikel bleiben erhalten.':''));
+            redirect(yw_customer_return_url($id,'kollektion','kollektion'));
         }
         if ($action==='add_invite') {
             $name=trim((string)($_POST['employee_name']??'')); if(!$name||mb_strlen($name)>160)throw new RuntimeException('Bitte einen Mitarbeiternamen mit höchstens 160 Zeichen eingeben.');$companyId=(int)($_POST['company_id']??0);$companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$companyId]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.'); $stmt=db()->prepare('INSERT INTO invites(company_id,employee_name,token) VALUES(?,?,?)'); $stmt->execute([$companyId,$name,random_token()]);
@@ -829,7 +844,7 @@ function handle_admin_action(): never {
             $companyId=(int)($_POST['company_id']??0);$accountId=(int)($_POST['account_id']??0);
             try{yw_anonymize_employee($companyId,$accountId);}catch(DomainException $e){throw new RuntimeException($e->getMessage());}
             flash('success','Personenbezogene Daten wurden entfernt. Bestellungen bleiben für die Buchhaltung erhalten.');
-            redirect(yw_customer_return_url($companyId,'mitarbeiter'));
+            redirect(yw_customer_return_url($companyId,'mitarbeiter','personen'));
         }
         if ($action==='delete_inquiry') {
             $id=(int)($_POST['inquiry_id']??0);
@@ -980,6 +995,41 @@ function admin_backend_style(): string {
     .collection-decoration-labels,.collection-decoration-row{display:grid;grid-template-columns:140px 110px minmax(160px,1fr) minmax(200px,1fr) 100px;gap:8px}
     .collection-decoration-labels{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:#667085;font-weight:850;padding:0 3px}
     .collection-decoration-row select,.collection-decoration-row input{height:42px;border:1px solid #d8dee8;border-radius:9px;background:#fff;padding:0 10px;min-width:0}
+    /* 10.15: Artikellisten großer Kollektionen (Suche, Kategorie, Seiten) */
+    .list-views,.list-pager,.list-bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+    .list-views .btn span{font-weight:600;opacity:.75}
+    .list-filter{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:12px 0}
+    .list-filter label{display:grid;gap:5px;font-size:13px;font-weight:750;flex:1 1 200px;min-width:0}
+    .list-filter select,.list-filter input{min-width:0}
+    .collection-list{border:1px solid #e1e6ed;border-radius:14px;background:#fff;margin:10px 0}
+    .collection-list-head{display:flex;gap:14px;align-items:center;padding:9px 13px;background:#f7f8fa;border-bottom:1px solid #e8ebf0;border-radius:14px 14px 0 0}
+    .collection-list-head .check{background:transparent;border:0;padding:0;font-size:13px;font-weight:750}
+    .collection-row{display:grid;grid-template-columns:28px 52px minmax(0,1fr) auto 112px;gap:12px;align-items:center;padding:9px 13px;border-top:1px solid #eef1f4}
+    .collection-list-head+.collection-row{border-top:0}
+    .collection-row.is-open{background:#fff8f2}
+    .collection-pick input{width:20px;height:20px}
+    .collection-row-main{min-width:0}.collection-row-main strong{display:block;overflow-wrap:anywhere}
+    .collection-row-main small{display:block;color:#667085;margin-top:3px;overflow-wrap:anywhere}
+    .collection-row-meta{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+    .collection-row-price{font-size:13px;white-space:nowrap;color:#344054}
+    .collection-row-hint{font-size:12px;color:#98a2b3;text-align:center}
+    .collection-out{font-size:.75rem;font-weight:850;padding:6px 9px;border-radius:999px;background:#fff;border:1px dashed #d0d5dd;color:#98a2b3}
+    .collection-inline-editor{margin:0 13px 14px;border-color:#f6c9a6}
+    .collection-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 15px;background:#fff8f2}
+    .collection-savebar{position:sticky;bottom:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 14px;margin-top:8px;border:1px solid #e1e6ed;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 -6px 18px rgba(16,24,40,.06)}
+    .savebar-short{display:none}
+    .profile-products-closed{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .flash[data-flash],.collection-row,.employee-role-form,.admin-toolbox,.list-anchor,#kollektion,#motive{scroll-margin-top:110px}
+    @media(max-width:760px){
+      .collection-row{grid-template-columns:28px 44px minmax(0,1fr);row-gap:8px;padding:10px}
+      .collection-row>.collection-product-mini{width:44px;height:44px}
+      .collection-row-meta{grid-column:2/-1;justify-content:flex-start}
+      .collection-row>.btn,.collection-row-hint{grid-column:2/-1;justify-self:start}
+      .collection-inline-editor{margin:0 0 14px}
+      .collection-editor-head{flex-wrap:wrap}
+      .collection-mockup{padding:10px}
+      .collection-savebar{flex-wrap:nowrap;gap:10px;padding:8px 10px}.collection-savebar .muted{font-size:12px;line-height:1.3}.collection-savebar .btn{flex:0 0 auto}.savebar-long{display:none}.savebar-short{display:inline}
+    }
     .motif-list{display:grid;gap:10px;margin:16px 0}.motif-editor{border:1px solid #e1e6ed;border-radius:10px;background:#fbfcfd}.motif-editor>summary{cursor:pointer;padding:13px 15px;font-weight:800}.motif-editor-body{padding:16px;border-top:1px solid #e6eaf0}.motif-fields{display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(140px,.8fr) repeat(2,minmax(120px,.65fr));gap:10px}.motif-checks{display:flex;gap:18px;flex-wrap:wrap}
 
     .company-product-visual{position:relative}
@@ -1324,7 +1374,7 @@ function render_admin_decoration_motifs(array $company): void {
         foreach($methodOptions as $value=>$label)$html.='<option value="'.e($value).'" '.($selected===$value?'selected':'').'>'.e($label).'</option>';
         return $html.'</select>';
     };
-    echo '<details class="details"><summary>Veredelungsmotive & Druckbestand <span class="muted">('.count($motifs).')</span></summary><div class="details-inner">';
+    echo '<details class="details" id="motive"><summary>Veredelungsmotive & Druckbestand <span class="muted">('.count($motifs).')</span></summary><div class="details-inner">';
     echo '<p>Hier verwaltest du ausschließlich fertige Drucke, Transfers oder Motivdateien – keinen Textil-Wareneingang. Verknüpfte Motive werden bei freigegebenen Aufträgen automatisch gegen den hinterlegten Bestand geprüft.</p>';
     if($motifs){
         echo '<div class="motif-list">';

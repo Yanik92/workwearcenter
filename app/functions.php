@@ -50,16 +50,47 @@ function yw_old_input_script(): string {
  */
 function yw_admin_return_target(string $url): string {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || path_only() !== '/admin') return $url;
-    $back = (string)($_POST['return_to'] ?? '');
-    if (!preg_match('#^/admin\?tab=companies&company=(\d+)(?:&bereich=[a-z]+)?(?:&seite=\d{1,5})?$#D', $back, $m)) return $url;
+    // 10.15: return_to trägt auch Suche, Seite und Filter der Listen; wird nur bereinigt neu aufgebaut übernommen.
+    [$backCompany, $backTab, $back] = yw_customer_return_to((string)($_POST['return_to'] ?? ''));
+    if ($back === '') return $url;
     if (!str_starts_with($url, '/admin?tab=companies')) return $url;
     $anchor = (string)(parse_url($url, PHP_URL_FRAGMENT) ?? '');
     parse_str((string)(parse_url($url, PHP_URL_QUERY) ?? ''), $q);
-    $sameCompany = isset($q['company']) && (int)$q['company'] === (int)$m[1];
+    $sameCompany = isset($q['company']) && (int)$q['company'] === $backCompany;
     $isError = (($_SESSION['flash'][0] ?? '') === 'error') && !isset($q['company']);
     if (!$sameCompany && !$isError) return $url;
-    if ($sameCompany && isset($q['bereich'])) return $url; // Ziel nennt den Reiter schon ausdrücklich
+    // Ziel nennt einen anderen Reiter oder eigene Listenparameter: dann gilt das Ziel.
+    if ($sameCompany && isset($q['bereich']) && ((string)$q['bereich'] !== $backTab || array_diff_key($q, ['tab' => 1, 'company' => 1, 'bereich' => 1]))) return $url;
     return $back . ($anchor !== '' ? '#' . $anchor : '');
+}
+/**
+ * 10.15: Suche, Seite und Filter der Listen in der Kundenakte (Mitarbeiter, Kollektion, Regeln) –
+ * nur bekannte Parameter, bereinigt. Damit landet man nach dem Speichern wieder an derselben Stelle.
+ */
+function yw_customer_list_state(array $q): array {
+    $state = [];
+    $enums = ['anzeige' => ['kollektion', 'katalog', 'alle'], 'profil_anzeige' => ['alle', 'freigegeben', 'offen']];
+    foreach (['suche' => 's', 'seite' => 'p', 'artikel' => 's', 'kategorie' => 's', 'anzeige' => 'e', 'aseite' => 'p', 'produkt' => 'i', 'grenzen_suche' => 's', 'grenzen_kategorie' => 's', 'grenzen_seite' => 'p', 'profil' => 'i', 'profil_suche' => 's', 'profil_kategorie' => 's', 'profil_anzeige' => 'e', 'profil_seite' => 'p'] as $key => $type) {
+        $v = $q[$key] ?? null;
+        if (!is_string($v)) continue;
+        $v = trim($v);
+        if ($type === 's') { $v = trim(mb_substr($v, 0, 120)); if ($v !== '') $state[$key] = $v; }
+        elseif ($type === 'e') { if (in_array($v, $enums[$key], true)) $state[$key] = $v; }
+        elseif (preg_match('/^[1-9]\d{0,8}$/D', $v) && ($type === 'i' || $v !== '1')) $state[$key] = $v;
+    }
+    return $state;
+}
+/** Adresse eines Reiters der Kundenakte mit Listenzustand. */
+function yw_customer_state_url(int $companyId, string $tab = 'uebersicht', array $state = []): string {
+    return '/admin?' . http_build_query(['tab' => 'companies', 'company' => $companyId] + ($tab !== '' && $tab !== 'uebersicht' ? ['bereich' => $tab] : []) + ($tab !== '' && $tab !== 'uebersicht' ? yw_customer_list_state($state) : []));
+}
+/** return_to eines Formulars prüfen: [Firma, Reiter, bereinigte Adresse] oder [0, '', ''] – nie ein fremdes Ziel. */
+function yw_customer_return_to(string $back): array {
+    if (!str_starts_with($back, '/admin?') || strlen($back) > 2000) return [0, '', ''];
+    parse_str((string)parse_url($back, PHP_URL_QUERY), $b);
+    if (($b['tab'] ?? '') !== 'companies' || !is_string($b['company'] ?? null) || !preg_match('/^[1-9]\d{0,9}$/D', $b['company'])) return [0, '', ''];
+    $tab = is_string($b['bereich'] ?? null) && preg_match('/^[a-z]{1,30}$/D', $b['bereich']) ? $b['bereich'] : 'uebersicht';
+    return [(int)$b['company'], $tab, yw_customer_state_url((int)$b['company'], $tab, $b)];
 }
 function random_token(): string { return bin2hex(random_bytes(32)); }
 function yw_dummy_password_hash(): string {
@@ -136,8 +167,9 @@ function csrf_field(): string {
     $field = '<input type="hidden" name="csrf" value="' . e(csrf()) . '">';
     // In der Kundenakte merkt sich jedes Formular den aktuellen Reiter (siehe yw_admin_return_target()).
     if (path_only() === '/admin' && ($_GET['tab'] ?? '') === 'companies' && (int)($_GET['company'] ?? 0) > 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
-        $bereich = (string)($_GET['bereich'] ?? '');
-        $back = '/admin?tab=companies&company=' . (int)$_GET['company'] . (preg_match('/^[a-z]{1,30}$/D', $bereich) && $bereich !== 'uebersicht' ? '&bereich=' . $bereich : '') . ((int)($_GET['seite'] ?? 0) > 1 && $bereich !== '' ? '&seite=' . min(99999, (int)$_GET['seite']) : '');
+        // 10.15: mit Suche, Seite und Filtern der Liste
+        $bereich = is_string($_GET['bereich'] ?? null) ? $_GET['bereich'] : '';
+        $back = yw_customer_state_url((int)$_GET['company'], preg_match('/^[a-z]{1,30}$/D', $bereich) ? $bereich : 'uebersicht', $_GET);
         $field .= '<input type="hidden" name="return_to" value="' . e($back) . '">';
     }
     return $field;
@@ -659,5 +691,6 @@ function render_head(string $title, ?array $brand = null): void {
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
     echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
 }
-function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '">' . e($f[1]) . '</div>'; }
+// 10.15: data-flash – assets/app.js setzt die Rückmeldung nach dem Speichern an das Sprungziel (z. B. #person-12).
+function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '" data-flash>' . e($f[1]) . '</div>'; }
 function render_foot(): void { echo yw_old_input_script().'<script src="'.e(asset_url('assets/app.js')).'" defer></script></body></html>'; }

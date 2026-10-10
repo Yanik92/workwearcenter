@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-function render_company_product_customization_form(array $company,array $product): void {
+/** 10.15: $closeUrl gesetzt = geöffnet unter der Zeile der Artikelliste (Kundenakte), mit „Schließen“ statt Aufklappen. */
+function render_company_product_customization_form(array $company,array $product,?string $closeUrl=null): void {
     $decorations=company_product_decorations($product);
     $rows=min(20,max(5,count($decorations)));
     $positionOptions=decoration_position_options();
@@ -18,6 +19,9 @@ function render_company_product_customization_form(array $company,array $product
     $displayName=company_product_display_name($product);
     $override=$product['price_override_cents']===null ? '' : number_format((int)$product['price_override_cents']/100,2,',','');
 
+    if($closeUrl!==null){
+        echo '<div class="collection-product-editor collection-inline-editor" id="bearbeiten-'.(int)$product['id'].'"><div class="collection-editor-head"><strong>'.e($displayName).' bearbeiten</strong><a class="btn small" href="'.e($closeUrl).'#produkt-'.(int)$product['id'].'">Schließen</a></div>';
+    }else{
     echo '<details class="collection-product-editor"><summary>';
     echo '<div class="collection-product-summary">';
     echo '<div class="collection-product-mini">';
@@ -30,6 +34,7 @@ function render_company_product_customization_form(array $company,array $product
         echo '<span class="collection-standard">Standard</span>';
     }
     echo '</div></summary>';
+    }
 
     echo '<div class="collection-product-body"><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field();
     echo '<input type="hidden" name="action" value="update_company_product_customization">';
@@ -107,7 +112,7 @@ function render_company_product_customization_form(array $company,array $product
     echo '</div>';
     echo '<p class="muted">Eigene Vorschaubilder sind nur noch nötig, wenn das automatische Bild einmal nicht passt – sie haben dann Vorrang.</p>';
     echo '<button class="btn primary" type="submit">Shop-Produkt speichern</button>';
-    echo '</form></div></details>';
+    echo '</form></div>'.($closeUrl!==null?'</div>':'</details>');
 }
 
 function delete_company_product_preview(string $path): void {

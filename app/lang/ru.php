@@ -448,6 +448,7 @@ return [
     'people.usage_title' => 'Расходы по подразделениям',
     'people.usage_current' => 'Доля компании с учётом открытых резервирований в текущем бюджетном году.',
     'people.usage_previous' => 'Доля компании с учётом открытых резервирований в прошлом бюджетном году.',
+    'people.usage_show' => 'Показать все группы ({count})',
     'people.department' => 'Отдел',
     'people.cost_center' => 'Центр затрат',
     'people.location' => 'Площадка',

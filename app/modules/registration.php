@@ -98,7 +98,8 @@ function yw_registration_decision(array $company,array $actor,string $back='/mit
         if(db()->inTransaction()) db()->rollBack();
         flash('error',t('people.registration_failed'));
     }
-    redirect('/'.$company['slug'].($back==='/mitarbeiter'?'/mitarbeiter':''));
+    // 10.15: in der Personenliste mit derselben Suche und Seite zurück
+    redirect($back==='/mitarbeiter'?yw_people_return_url((string)$company['slug'],'personen'):'/'.$company['slug']);
 }
 
 function company_portal_people(array $company,array $account): void {

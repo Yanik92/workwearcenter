@@ -547,4 +547,31 @@ if(extension_loaded('pdo_sqlite')){
     $pdo=null;
 }
 
+// 10.15: Große Kunden – Listen mit Suche/Seite/Filter; nach dem Speichern zurück an dieselbe Stelle, nie auf fremde Ziele
+test_ok(yw_customer_list_state(['suche'=>' Neumann ','seite'=>'2','aseite'=>'1','produkt'=>'250','anzeige'=>'katalog','profil_anzeige'=>'boese','profil_seite'=>'01','artikel'=>['x'],'company'=>'9','tab'=>'orders','fremd'=>'1'])===['suche'=>'Neumann','seite'=>'2','anzeige'=>'katalog','produkt'=>'250'],'Kundenakte: Listenzustand nur aus bekannten, bereinigten Parametern (Seite 1, ungültige Ansicht/Seite, Arrays und fremde Schlüssel fallen weg)');
+test_ok(mb_strlen(yw_customer_list_state(['artikel'=>str_repeat('ä',300)])['artikel'])===120,'Kundenakte: Suchbegriff im Listenzustand ist begrenzt');
+test_ok(yw_customer_return_to('//evil.example/admin?tab=companies&company=3')===[0,'','']&&yw_customer_return_to('https://evil.example/admin?tab=companies&company=3')===[0,'','']&&yw_customer_return_to('/admin?tab=orders&company=3')===[0,'','']&&yw_customer_return_to('/admin?tab=companies&company=03')===[0,'','']&&yw_customer_return_to('/admin?tab=companies&company[]=3')===[0,'','']&&yw_customer_return_to('/admin?tab=companies&company=3&x='.str_repeat('a',2100))===[0,'',''],'Kundenakte: return_to fremder Hosts, anderer Bereiche, ungültiger Firmen-ID oder Überlänge wird verworfen');
+test_ok(yw_customer_return_to('/admin?tab=companies&company=3&bereich=kollektion&artikel=Hose&aseite=2&produkt=250&evil=%3Cscript%3E&action=delete')===[3,'kollektion','/admin?tab=companies&company=3&bereich=kollektion&artikel=Hose&aseite=2&produkt=250']&&yw_customer_return_to('/admin?tab=companies&company=3&bereich=Kollektion%3C&suche=x')===[3,'uebersicht','/admin?tab=companies&company=3'],'Kundenakte: return_to wird nur aus bekannten Parametern neu aufgebaut');
+$_SERVER['REQUEST_METHOD']='GET';$_SERVER['REQUEST_URI']='/admin?tab=companies&company=3&bereich=regeln&profil=5&profil_seite=2';$_GET=['tab'=>'companies','company'=>'3','bereich'=>'regeln','profil'=>'5','profil_seite'=>'2','x'=>'"><script>'];
+test_ok(str_contains(csrf_field(),'name="return_to" value="/admin?tab=companies&amp;company=3&amp;bereich=regeln&amp;profil=5&amp;profil_seite=2"'),'Kundenakte: Formulare merken Reiter, Profil und Seite der Liste (ohne fremde Parameter)');
+$_SERVER['REQUEST_METHOD']='POST';$_POST=['return_to'=>'/admin?tab=companies&company=3&bereich=kollektion&artikel=Hose&aseite=2&produkt=250'];$_SESSION['flash']=['success','Gespeichert.'];
+test_ok(yw_admin_return_target('/admin?tab=companies&company=3#produkt-250')==='/admin?tab=companies&company=3&bereich=kollektion&artikel=Hose&aseite=2&produkt=250#produkt-250','Kundenakte: nach dem Speichern zurück mit Suche, Seite und Artikel');
+test_ok(yw_admin_return_target('/admin?tab=companies&company=4')==='/admin?tab=companies&company=4'&&yw_admin_return_target('/admin?tab=companies&company=3&bereich=regeln')==='/admin?tab=companies&company=3&bereich=regeln'&&yw_admin_return_target('/admin?tab=orders')==='/admin?tab=orders','Kundenakte: return_to gilt nur für dieselbe Firma und überschreibt kein ausdrückliches anderes Ziel');
+$_SESSION['flash']=['error','Fehler'];
+test_ok(yw_admin_return_target('/admin?tab=companies')==='/admin?tab=companies&company=3&bereich=kollektion&artikel=Hose&aseite=2&produkt=250','Kundenakte: nach einer Fehlermeldung zurück in dieselbe Liste statt auf die Kundenliste');
+$_SERVER['REQUEST_URI']='/grossbau/mitarbeiter';$_POST=[];$_SESSION=[];
+require_once dirname(__DIR__).'/app/modules/customer_admin.php';
+$_GET=['suche'=>' Neu"mann ','seite'=>'3','jahr'=>'vorjahr','fremd'=>'x'];
+test_ok(yw_people_return_url('grossbau','person-12')==='/grossbau/mitarbeiter?jahr=vorjahr&suche=Neu%22mann&seite=3#person-12','Firmenshop Mitarbeiter: nach dem Speichern zurück mit Suche, Seite und Jahr zur Person');
+$_GET=['seite'=>'1e3','suche'=>['x'],'jahr'=>'2020'];
+test_ok(yw_people_return_url('grossbau','x" onmouseover')==='/grossbau/mitarbeiter','Firmenshop Mitarbeiter: ungültige Seite, Suche, Jahr und Sprungmarke werden verworfen');
+$_GET=[];$_SERVER['REQUEST_METHOD']='GET';$_SERVER['REQUEST_URI']='/';
+$adminSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin.php');$corpAdminSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/corporate_admin.php');$adminCustomerSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_customer.php');
+test_ok(str_contains($adminSrc,"\$_POST['scope_products']")&&str_contains($corpAdminSrc,"\$_POST['scope_products']")&&str_contains($adminCustomerSrc,'name="scope_products[]"'),'Kollektion und Profilsortiment speichern nur die Artikel der angezeigten Seite (scope_products)');
+test_ok(substr_count($adminCustomerSrc,'render_company_product_customization_form(')===2&&str_contains($adminCustomerSrc,'if($in && $openId===$pid)render_company_product_customization_form(')&&str_contains($adminCustomerSrc,' LIMIT $perPage OFFSET '),'Kundenakte Kollektion: seitenweise Liste, Bearbeitungsformular nur für den gewählten Artikel');
+test_ok(str_contains($adminSrc,'Höchstens 500 Artikel auf einmal')&&str_contains($corpAdminSrc,"'yw_profile_bulk'"),'Sammelaktionen für Kollektion und Profile sind begrenzt');
+test_ok(str_contains($customerSrc,'redirect(yw_people_return_url(')&&str_contains($regSrc,'yw_people_return_url((string)$company[\'slug\'],\'personen\')'),'Firmenshop Mitarbeiter: Speichern, Freigeben und Passwort-Link behalten Suche und Seite');
+$appJs=(string)file_get_contents(dirname(__DIR__).'/assets/app.js');
+test_ok(str_contains($appJs,'[data-check-all]')&&str_contains($appJs,'[data-flash]')&&str_contains($appJs,'data-unsaved-warning'),'app.js: „Alle auf dieser Seite“, Rückmeldung am Sprungziel und Hinweis auf ungespeicherte Häkchen');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

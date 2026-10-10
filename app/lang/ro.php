@@ -448,6 +448,7 @@ return [
     'people.usage_title' => 'Consum pe unități organizatorice',
     'people.usage_current' => 'Partea firmei, inclusiv rezervările deschise, în anul bugetar curent.',
     'people.usage_previous' => 'Partea firmei, inclusiv rezervările deschise, în anul bugetar anterior.',
+    'people.usage_show' => 'Afișează toate grupurile ({count})',
     'people.department' => 'Departament',
     'people.cost_center' => 'Centru de cost',
     'people.location' => 'Locație',

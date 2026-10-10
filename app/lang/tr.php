@@ -448,6 +448,7 @@ return [
     'people.usage_title' => 'Organizasyona göre harcama',
     'people.usage_current' => 'Mevcut bütçe yılında açık rezervasyonlar dahil firma payı.',
     'people.usage_previous' => 'Önceki bütçe yılında açık rezervasyonlar dahil firma payı.',
+    'people.usage_show' => '{count} grubun tümünü göster',
     'people.department' => 'Bölüm',
     'people.cost_center' => 'Masraf yeri',
     'people.location' => 'Lokasyon',

@@ -31,17 +31,22 @@ function yw_customer_url(int $companyId,string $tab='uebersicht'): string {
 /**
  * Ziel nach dem Speichern in der Kundenakte: derselbe Reiter, von dem das Formular kam
  * (Referer derselben Firma), sonst der übergebene Standardreiter.
+ * 10.15: mit Suche, Seite und Filtern der Liste (zuerst return_to des Formulars, dann Referer)
+ * und optionalem Sprungziel, z. B. „person-12“.
  */
-function yw_customer_return_url(int $companyId,string $fallbackTab='uebersicht'): string {
+function yw_customer_return_url(int $companyId,string $fallbackTab='uebersicht',string $anchor=''): string {
+    $hash=preg_match('/^[a-z][a-z0-9-]{0,40}$/D',$anchor)?'#'.$anchor:'';
+    [$backCompany,$backTab,$back]=yw_customer_return_to(is_string($_POST['return_to']??null)?$_POST['return_to']:'');
+    if($back!=='' && $backCompany===$companyId && array_key_exists($backTab,yw_customer_tabs()))return $back.$hash;
     $ref=(string)($_SERVER['HTTP_REFERER']??'');
     if($ref!=='' && (string)parse_url($ref,PHP_URL_PATH)==='/admin'){
         parse_str((string)parse_url($ref,PHP_URL_QUERY),$q);
         if(($q['tab']??'')==='companies' && (int)($q['company']??0)===$companyId){
-            $tab=(string)($q['bereich']??'uebersicht');
-            if(array_key_exists($tab,yw_customer_tabs()))return yw_customer_url($companyId,$tab);
+            $tab=is_string($q['bereich']??null)?$q['bereich']:'uebersicht';
+            if(array_key_exists($tab,yw_customer_tabs()))return yw_customer_state_url($companyId,$tab,$q).$hash;
         }
     }
-    return yw_customer_url($companyId,array_key_exists($fallbackTab,yw_customer_tabs())?$fallbackTab:'uebersicht');
+    return yw_customer_url($companyId,array_key_exists($fallbackTab,yw_customer_tabs())?$fallbackTab:'uebersicht').$hash;
 }
 
 /** Reiterleiste. */
@@ -67,13 +72,14 @@ function yw_customer_section_people(array $c): void {
         $nav=fn(bool $withSearch): string => yw_people_list_nav($list,'/admin',['tab'=>'companies','company'=>(int)$c['id'],'bereich'=>'mitarbeiter'],['Person suchen','Name, E-Mail, Abteilung, Kostenstelle, Standort oder Personalnummer','Suchen','Zurück','Weiter','Seite '.$list['page'].' von '.$list['pages'],$list['total'].' Treffer','Seiten der Personenliste'],$withSearch);
         echo '<section class="card"><h2>Mitarbeiter & Rollen <span class="muted">('.$list['total'].')</span></h2><div class="card-body">';
         echo '<form method="post" class="admin-add-person">'.csrf_field().'<input type="hidden" name="action" value="admin_add_manager"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><strong>Person direkt anlegen</strong><p class="muted">Die Person erhält per E-Mail einen Link, mit dem sie ihr Passwort selbst festlegt. Du siehst oder vergibst kein Passwort.</p><div class="grid3"><label>Name<input name="name" maxlength="160" required></label><label>E-Mail<input type="email" name="email" maxlength="190" required></label><label>Rolle<select name="role"><option value="manager">Verantwortlicher</option><option value="employee">Mitarbeiter</option></select></label></div><button class="btn small primary" type="submit">Anlegen und Einladung senden</button></form>';
+        echo '<div id="personen" class="list-anchor"></div>';
         if($list['total']>0||$list['search']!=='')echo $nav(true);
         if(!$companyAccounts){
             echo '<div class="empty">'.($list['search']!==''?'Keine Person gefunden.':'Noch keine registrierten Mitarbeiter.').'</div>';
         }else{
             foreach($companyAccounts as $account){
                 if(!empty($account['anonymized_at']))continue;
-                echo '<form method="post" class="employee-role-form">'.csrf_field()
+                echo '<form method="post" class="employee-role-form" id="person-'.(int)$account['id'].'">'.csrf_field()
                     .'<input type="hidden" name="action" value="update_employee_account">'
                     .'<input type="hidden" name="company_id" value="'.(int)$c['id'].'">'
                     .'<input type="hidden" name="account_id" value="'.(int)$account['id'].'">'
@@ -161,15 +167,166 @@ function yw_customer_section_rules(array $c): void {
             .'<button class="btn small" type="submit">Shopregeln speichern</button></form></div></section>';
 }
 
-function yw_customer_section_collection(array $c,array $products,array $assigned): void {
-        echo '<section class="card"><h2>Firmenkollektion</h2><div class="card-body"><p class="muted">Wähle hier die Stammprodukte aus, die in diesem Firmenshop angeboten werden.</p><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="update_collection"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><div class="checkboxes">';foreach($products as $p)if((int)$p['active'])echo '<label class="check"><input type="checkbox" name="products[]" value="'.(int)$p['id'].'" '.(in_array((int)$p['id'],$assigned,true)?'checked':'').'><span>'.e($p['name']).' · '.money((int)$p['price_cents']).' netto</span></label>';echo '</div><button class="btn small" type="submit">Kollektion speichern</button></form>';
+/* ---------- 10.15: Artikellisten für große Kollektionen (Suche, Kategorie, Seiten) ---------- */
 
-        $shopProducts=shop_company_products((int)$c['id']);
-        if($shopProducts){
-            echo '<div class="collection-config-section"><div class="collection-config-title"><h3>Shop-Produkte individualisieren</h3><p>Logo-/Mockup-Vorschauen, Shopname, eigener Preis und Veredelungspositionen gelten nur für diesen Kunden.</p></div>';
-            foreach($shopProducts as $shopProduct) render_company_product_customization_form($c,$shopProduct);
+/**
+ * Abfrageteile für die Artikellisten der Kundenakte. $mode: 'katalog' = aktive Stammprodukte mit
+ * Kollektionsstatus, 'firma' = alle Firmenprodukte (wie bisher in Regeln), 'profil' = Firmenprodukte
+ * mit Zuordnung zum Ausstattungsprofil $profileId. Suche in Name, Name im Shop, SKU und Farbe.
+ */
+function yw_customer_product_sql(int $companyId,string $mode,int $profileId,string $search,string $category): array {
+    $from='FROM products p LEFT JOIN product_categories pc ON pc.id=p.category_id '.($mode==='katalog'?'LEFT ':'').'JOIN company_products cp ON cp.company_id=? AND cp.product_id=p.id'.($mode==='profil'?' LEFT JOIN yw_equipment_profile_products epp ON epp.profile_id=? AND epp.product_id=p.id':'');
+    $params=$mode==='profil'?[$companyId,$profileId]:[$companyId];
+    $where=$mode==='katalog'?'p.active=1':'1=1';
+    if($search!==''){$like='%'.addcslashes($search,'%_\\').'%';$where.=' AND (p.name LIKE ? OR cp.custom_name LIKE ? OR p.sku LIKE ? OR p.color LIKE ?)';array_push($params,$like,$like,$like,$like);}
+    if($category==='-')$where.=" AND COALESCE(pc.name,NULLIF(p.category,'')) IS NULL";
+    elseif($category!==''){$where.=" AND COALESCE(pc.name,NULLIF(p.category,''))=?";$params[]=$category;}
+    return [$from,$where,$params];
+}
+
+/** Bedingung je Ansicht: Katalog (in der Kollektion / noch nicht / alle), Profil (freigegeben / offen / alle). */
+function yw_customer_product_view_sql(string $mode,string $view): string {
+    if($mode==='katalog')return ['kollektion'=>' AND cp.product_id IS NOT NULL','katalog'=>' AND cp.product_id IS NULL'][$view]??'';
+    if($mode==='profil')return ['freigegeben'=>' AND epp.product_id IS NOT NULL','offen'=>' AND epp.product_id IS NULL'][$view]??'';
+    return '';
+}
+
+/** Produkt-IDs aller Treffer (für Sammelaktionen „alle Treffer …“). */
+function yw_customer_product_ids(int $companyId,string $mode,int $profileId,string $search,string $category,string $view): array {
+    [$from,$where,$params]=yw_customer_product_sql($companyId,$mode,$profileId,$search,$category);
+    $q=db()->prepare("SELECT p.id $from WHERE $where".yw_customer_product_view_sql($mode,$view).' ORDER BY p.id');$q->execute($params);
+    return array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * Seitenweise Artikelliste. $keys benennt die GET-Parameter ['q','cat','page','view'], damit mehrere
+ * Listen auf einer Seite (Regeln: Stückzahlgrenzen und Profil) unabhängig blättern.
+ */
+function yw_customer_product_list(int $companyId,array $keys,string $mode,int $profileId=0,int $perPage=50): array {
+    $state=yw_customer_list_state($_GET);
+    $search=(string)($state[$keys['q']]??'');$category=(string)($state[$keys['cat']]??'');
+    [$from,$where,$params]=yw_customer_product_sql($companyId,$mode,$profileId,$search,$category);
+    $flag=$mode==='katalog'?'cp.product_id IS NOT NULL':($mode==='profil'?'epp.product_id IS NOT NULL':'1');
+    $q=db()->prepare("SELECT COUNT(*) n,COALESCE(SUM($flag),0) marked $from WHERE $where");$q->execute($params);$c=$q->fetch();
+    $counts=['alle'=>(int)$c['n'],'mit'=>(int)$c['marked'],'ohne'=>(int)$c['n']-(int)$c['marked']];
+    $views=$mode==='katalog'?['kollektion'=>'mit','katalog'=>'ohne','alle'=>'alle']:($mode==='profil'?['alle'=>'alle','freigegeben'=>'mit','offen'=>'ohne']:[]);
+    $view=(string)($state[$keys['view']??'']??'');
+    if(!isset($views[$view])){
+        $view=$mode==='profil'?'alle':'';
+        // Katalog: Firmen mit Kollektion sehen zuerst ihre Artikel, neue Firmen den Katalog zum Auswählen.
+        if($mode==='katalog'){$a=db()->prepare('SELECT COUNT(*) FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=? AND p.active=1');$a->execute([$companyId]);$view=(int)$a->fetchColumn()>0?'kollektion':'katalog';}
+    }
+    $total=$views?$counts[$views[$view]]:$counts['alle'];
+    $pages=max(1,(int)ceil($total/$perPage));$page=min(max(1,(int)($state[$keys['page']]??1)),$pages);
+    $cols='p.*,COALESCE(pc.name,NULLIF(p.category,\'\')) category_name,cp.product_id cp_product_id,cp.custom_name,cp.custom_description,cp.price_override_cents,cp.preview_front_path,cp.preview_back_path,cp.decorations_json,cp.yearly_limit_qty'.($mode==='profil'?',epp.product_id epp_product_id,epp.starter_qty,epp.yearly_target_qty':'');
+    $q=db()->prepare("SELECT $cols $from WHERE $where".yw_customer_product_view_sql($mode,$view)." ORDER BY category_name IS NULL,category_name,COALESCE(NULLIF(cp.custom_name,''),p.name),p.id LIMIT $perPage OFFSET ".(($page-1)*$perPage));$q->execute($params);
+    [$catFrom,$catWhere,$catParams]=yw_customer_product_sql($companyId,$mode,$profileId,'','');
+    $q2=db()->prepare("SELECT COALESCE(pc.name,NULLIF(p.category,'')) c,COUNT(*) n $catFrom WHERE $catWhere GROUP BY c ORDER BY c IS NULL,c");$q2->execute($catParams);
+    return ['rows'=>$q->fetchAll(),'total'=>$total,'page'=>$page,'pages'=>$pages,'search'=>$search,'category'=>$category,'view'=>$view,'views'=>$views,'counts'=>$counts,'categories'=>$q2->fetchAll(),'keys'=>$keys];
+}
+
+/**
+ * Suche, Kategorie, Ansicht und Blättern zur Artikelliste. $keep = übrige GET-Parameter (Reiter und
+ * Zustand der anderen Listen), $viewLabels = Ansicht => Beschriftung.
+ */
+function yw_customer_product_nav(array $list,array $keep,array $viewLabels=[],bool $withFilter=true): string {
+    $k=$list['keys'];
+    $own=fn(array $extra=[]): array => ($list['search']!==''?[$k['q']=>$list['search']]:[])+($list['category']!==''?[$k['cat']=>$list['category']]:[])+(isset($k['view'])&&$list['view']!==''?[$k['view']=>$list['view']]:[])+$extra;
+    $url=fn(array $params): string => '/admin?'.http_build_query($keep+$params);
+    $html='';
+    if($withFilter){
+        if($viewLabels){
+            $html.='<nav class="list-views" aria-label="Ansicht">';
+            foreach($viewLabels as $view=>$label)$html.='<a class="btn small'.($list['view']===$view?' primary':'').'" href="'.e($url(($list['search']!==''?[$k['q']=>$list['search']]:[])+($list['category']!==''?[$k['cat']=>$list['category']]:[])+[$k['view']=>$view])).'"'.($list['view']===$view?' aria-current="true"':'').'>'.e($label).' <span>('.(int)$list['counts'][$list['views'][$view]].')</span></a>';
+            $html.='</nav>';
+        }
+        $html.='<form method="get" action="/admin" class="list-filter" role="search">';
+        foreach($keep+(isset($k['view'])&&$list['view']!==''?[$k['view']=>$list['view']]:[]) as $name=>$value)$html.='<input type="hidden" name="'.e($name).'" value="'.e($value).'">';
+        $html.='<label>Artikel suchen<input type="search" name="'.e($k['q']).'" maxlength="80" value="'.e($list['search']).'" placeholder="Name, SKU oder Farbe"></label>';
+        $html.='<label>Kategorie<select name="'.e($k['cat']).'"><option value="">Alle Kategorien</option>';
+        foreach($list['categories'] as $cat){$value=$cat['c']===null?'-':(string)$cat['c'];$html.='<option value="'.e($value).'"'.($list['category']===$value?' selected':'').'>'.e($cat['c']===null?'Ohne Kategorie':(string)$cat['c']).' ('.(int)$cat['n'].')</option>';}
+        $html.='</select></label><button class="btn small" type="submit">Filtern</button>';
+        if($list['search']!==''||$list['category']!=='')$html.='<a class="btn small" href="'.e($url(isset($k['view'])&&$list['view']!==''?[$k['view']=>$list['view']]:[])).'">Filter zurücksetzen</a>';
+        $html.='</form>';
+    }
+    if($list['pages']>1){
+        $html.='<nav class="list-pager" aria-label="Seiten der Artikelliste">';
+        if($list['page']>1)$html.='<a class="btn small" href="'.e($url($own($list['page']>2?[$k['page']=>$list['page']-1]:[]))).'">← Zurück</a>';
+        $html.='<span>Seite '.$list['page'].' von '.$list['pages'].' · '.$list['total'].' Artikel</span>';
+        if($list['page']<$list['pages'])$html.='<a class="btn small" href="'.e($url($own([$k['page']=>$list['page']+1]))).'">Weiter →</a>';
+        $html.='</nav>';
+    }
+    return $html;
+}
+
+/** Bisherige GET-Parameter des Reiters ohne die eigenen Schlüssel einer Liste (zum Blättern/Filtern). */
+function yw_customer_keep(int $companyId,string $tab,array $ownKeys): array {
+    return ['tab'=>'companies','company'=>$companyId,'bereich'=>$tab]+array_diff_key(yw_customer_list_state($_GET),array_flip($ownKeys));
+}
+
+/** Ein Firmenprodukt mit allen Feldern für das Bearbeitungsformular (wie shop_company_products()). */
+function yw_company_product_row(int $companyId,int $productId): ?array {
+    $q=db()->prepare("SELECT p.*,COALESCE(pc.name,NULLIF(p.category,'')) category_name,cp.product_id cp_product_id,cp.custom_name,cp.custom_description,cp.price_override_cents,cp.preview_front_path,cp.preview_back_path,cp.decorations_json,cp.yearly_limit_qty FROM company_products cp JOIN products p ON p.id=cp.product_id LEFT JOIN product_categories pc ON pc.id=p.category_id WHERE cp.company_id=? AND cp.product_id=? AND p.active=1");
+    $q->execute([$companyId,$productId]);return $q->fetch()?:null;
+}
+
+/**
+ * Firmenkollektion: kompakte Liste (50 je Seite) mit Suche, Kategorie und Ansicht; das vollständige
+ * Bearbeitungsformular erscheint nur für den gewählten Artikel (?produkt=) direkt unter seiner Zeile.
+ * Die Häkchen speichern nur die Artikel der angezeigten Seite (scope_products), andere bleiben unverändert.
+ */
+function yw_customer_section_collection(array $c): void {
+        $id=(int)$c['id'];
+        $keys=['q'=>'artikel','cat'=>'kategorie','page'=>'aseite','view'=>'anzeige'];
+        $list=yw_customer_product_list($id,$keys,'katalog');
+        $keep=yw_customer_keep($id,'kollektion',['artikel','kategorie','aseite','anzeige','produkt']);
+        $state=yw_customer_list_state($_GET);
+        $openId=(int)($state['produkt']??0);
+        $listState=array_intersect_key($state,array_flip(['artikel','kategorie','aseite','anzeige']));
+        $listUrl=fn(array $extra=[]): string => yw_customer_state_url($id,'kollektion',$listState+$extra);
+        $q=db()->prepare('SELECT COUNT(*) FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=? AND p.active=1');$q->execute([$id]);$inShop=(int)$q->fetchColumn();
+        echo '<section class="card" id="kollektion"><h2>Firmenkollektion <span class="muted">('.$inShop.' Artikel im Shop)</span></h2><div class="card-body"><p class="muted">Häkchen = Artikel wird in diesem Firmenshop angeboten. „Bearbeiten“ öffnet Name, Preis, Bilder und Veredelung – das gilt nur für diesen Kunden, das Stammprodukt bleibt unverändert.</p>';
+        echo yw_customer_product_nav($list,$keep,['kollektion'=>'In der Kollektion','katalog'=>'Weitere Katalogartikel','alle'=>'Alle']);
+        // Sammelaktionen für alle Treffer der Suche/Kategorie (nicht nur diese Seite)
+        $filter=($list['search']!==''?'<input type="hidden" name="artikel" value="'.e($list['search']).'">':'').($list['category']!==''?'<input type="hidden" name="kategorie" value="'.e($list['category']).'">':'');
+        $scopeText=$list['search']!==''||$list['category']!==''?' (aktuelle Suche/Kategorie)':'';
+        if($list['counts']['ohne']>0||$list['counts']['mit']>0){
+            echo '<div class="list-bulk"><span class="muted">Alle Treffer'.e($scopeText).':</span>';
+            if($list['counts']['ohne']>0)echo '<form method="post" class="inline-form" data-confirm="'.e($list['counts']['ohne'].' Artikel'.$scopeText.' in die Kollektion aufnehmen?').'">'.csrf_field().'<input type="hidden" name="action" value="collection_bulk"><input type="hidden" name="bulk" value="add"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'">'.$filter.'<button class="btn small" type="submit">'.$list['counts']['ohne'].' Artikel aufnehmen</button></form>';
+            if($list['counts']['mit']>0)echo '<form method="post" class="inline-form" data-confirm="'.e($list['counts']['mit'].' Artikel'.$scopeText.' aus der Kollektion entfernen? Eigene Namen, Preise, Bilder, Veredelungen und Profilfreigaben dieser Artikel werden gelöscht.').'">'.csrf_field().'<input type="hidden" name="action" value="collection_bulk"><input type="hidden" name="bulk" value="remove"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'">'.$filter.'<button class="btn small danger" type="submit">'.$list['counts']['mit'].' Artikel entfernen</button></form>';
             echo '</div>';
         }
+        $rows=$list['rows'];
+        $onPage=in_array($openId,array_map('intval',array_column($rows,'id')),true);
+        // Gewählter Artikel nicht auf dieser Seite (z. B. direkter Link): Formular über der Liste
+        // (Sprungmarke produkt-ID, damit „#produkt-ID“ nach dem Speichern auch hier landet – z. B. nach Umbenennen auf anderer Seite)
+        if($openId && !$onPage && ($open=yw_company_product_row($id,$openId))){echo '<div class="list-anchor" id="produkt-'.$openId.'"></div>';render_company_product_customization_form($c,$open,$listUrl());}
+        echo '<form method="post" id="kollektion-auswahl" data-unsaved-warning>'.csrf_field().'<input type="hidden" name="action" value="update_collection"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'"></form>';
+        if(!$rows){
+            echo '<div class="empty compact">'.($list['search']!==''||$list['category']!==''?'Keine Artikel gefunden.':($list['view']==='katalog'?'Alle aktiven Stammprodukte sind bereits in der Kollektion.':'Noch keine Artikel – oben „Weitere Katalogartikel“ wählen und Häkchen setzen.')).'</div>';
+        }else{
+            echo '<div class="collection-list"><div class="collection-list-head"><label class="check"><input type="checkbox" form="kollektion-auswahl" data-check-all="products[]"><span>Alle auf dieser Seite</span></label></div>';
+            foreach($rows as $p){
+                $pid=(int)$p['id'];$in=$p['cp_product_id']!==null;$name=company_product_display_name($p);
+                $img=$in?company_product_front_image($p):yw_local_image_path((string)($p['image_path']??''),['products'],true);
+                $configured=$in && (yw_local_image_path((string)($p['preview_front_path']??''),['company-products'])!=='' || company_product_back_image($p)!=='' || company_product_decorations($p) || $p['price_override_cents']!==null);
+                $meta=array_filter([(string)($p['sku']??''),(string)($p['color']??''),(string)($p['category_name']??''),$name!==(string)$p['name']?'Stammprodukt: '.$p['name']:''],fn($v)=>$v!=='');
+                $price=$in&&$p['price_override_cents']!==null?(int)$p['price_override_cents']:(int)$p['price_cents'];
+                echo '<div class="collection-row'.($openId===$pid&&$in?' is-open':'').'" id="produkt-'.$pid.'">'
+                    .'<input type="hidden" form="kollektion-auswahl" name="scope_products[]" value="'.$pid.'">'
+                    .'<label class="collection-pick"><input type="checkbox" form="kollektion-auswahl" name="products[]" value="'.$pid.'"'.($in?' checked':'').' aria-label="'.e($name).' im Firmenshop anbieten"></label>'
+                    .'<span class="collection-product-mini">'.($img!==''?'<img src="/'.e($img).'" alt="" loading="lazy">':'<span class="collection-product-fallback">'.wc_public_icon('shirt').'</span>').'</span>'
+                    .'<div class="collection-row-main"><strong>'.e($name).'</strong><small>'.e(implode(' · ',$meta)).'</small></div>'
+                    .'<div class="collection-row-meta"><span class="collection-row-price">'.money($price).' netto</span>'
+                    .'<span class="'.($in?($configured?'collection-configured':'collection-standard'):'collection-out').'">'.($in?($configured?'Individualisiert':'Standard'):'Nicht im Shop').'</span></div>'
+                    .($in?($openId===$pid?'<a class="btn small" href="'.e($listUrl()).'#produkt-'.$pid.'">Schließen</a>':'<a class="btn small" href="'.e($listUrl(['produkt'=>(string)$pid])).'#produkt-'.$pid.'">Bearbeiten</a>'):'<span class="collection-row-hint">erst aufnehmen</span>')
+                    .'</div>';
+                if($in && $openId===$pid)render_company_product_customization_form($c,$p,$listUrl());
+            }
+            echo '</div>';
+            echo '<div class="collection-savebar"><span class="muted"><span class="savebar-long">Die Häkchen gelten für die '.count($rows).' Artikel dieser Seite – Artikel auf anderen Seiten bleiben unverändert.</span><span class="savebar-short">Gilt nur für diese Seite ('.count($rows).' Artikel).</span></span><button class="btn primary" type="submit" form="kollektion-auswahl">Auswahl speichern</button></div>';
+        }
+        if($list['pages']>1)echo yw_customer_product_nav($list,$keep,[],false);
         echo '</div></section>';
 }
 
@@ -255,10 +412,8 @@ function yw_customer_file(array $company,array $products): void {
     echo '<div class="customer-body">';
     switch($tab){
         case 'kollektion':
-            $q=db()->prepare('SELECT product_id FROM company_products WHERE company_id=?');$q->execute([$id]);
-            $assigned=array_map('intval',array_column($q->fetchAll(),'product_id'));
             yw_customer_section_design($company);
-            yw_customer_section_collection($company,$products,$assigned);
+            yw_customer_section_collection($company); // 10.15: Liste mit Suche und Seiten statt aller Formulare
             render_admin_decoration_motifs($company);
             break;
         case 'mitarbeiter': yw_customer_section_people($company); break;

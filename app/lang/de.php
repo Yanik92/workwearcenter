@@ -474,6 +474,7 @@ return [
     'people.usage_title' => 'Verbrauch nach Organisation',
     'people.usage_current' => 'Firmenanteil inklusive offener Reservierungen im aktuellen Budgetjahr.',
     'people.usage_previous' => 'Firmenanteil inklusive offener Reservierungen im vorherigen Budgetjahr.',
+    'people.usage_show' => 'Alle {count} Gruppen anzeigen',
     'people.department' => 'Abteilung',
     'people.cost_center' => 'Kostenstelle',
     'people.location' => 'Standort',

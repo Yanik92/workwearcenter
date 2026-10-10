@@ -172,7 +172,9 @@ function yw_customer_employee_action(array $company,array $actor,string $action)
     }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();if(!$e instanceof DomainException)error_log('Customer employee action: '.$e->getMessage());
         if($e instanceof DomainException && $e->getCode()===403)audit_log('employee.manager_change_blocked','employee',(int)($_POST['account_id']??0),['company_id'=>(int)$company['id'],'via'=>'shop','by'=>'manager','by_id'=>(int)$actor['id'],'attempt'=>$action]); // 10.15: abgewiesener Versuch
         flash('error',$e instanceof DomainException?$e->getMessage():t('people.err.save_failed'));}
-    redirect('/'.$company['slug'].'/mitarbeiter');
+    // 10.15: zurück auf dieselbe Seite der Personenliste (Suche, Seite, Jahr) und zur bearbeiteten Person
+    $personAnchor='person-'.(int)($_POST['account_id']??0);$failed=($_SESSION['flash'][0]??'')==='error';
+    redirect(yw_people_return_url((string)$company['slug'],match($action){'customer_employee_save','customer_employee_link'=>$personAnchor,'customer_employee_anonymize'=>$failed?$personAnchor:'personen',default=>''}));
 }
 
 /**
@@ -338,6 +340,18 @@ function yw_people_list_nav(array $list,string $path,array $keep,array $texts,bo
     return $html;
 }
 
+/**
+ * 10.15: Rücksprung auf die Personenliste im Firmenshop mit derselben Suche, Seite und Jahresauswahl.
+ * Die Formulare senden an die aktuelle Adresse, daher stehen ?suche=&seite=&jahr= auch beim Speichern bereit.
+ */
+function yw_people_return_url(string $slug,string $anchor=''): string {
+    $q=[];
+    if(($_GET['jahr']??'')==='vorjahr')$q['jahr']='vorjahr';
+    $search=trim(mb_substr(is_string($_GET['suche']??null)?$_GET['suche']:'',0,80));if($search!=='')$q['suche']=$search;
+    if(is_string($_GET['seite']??null) && preg_match('/^[1-9]\d{0,5}$/D',$_GET['seite']) && $_GET['seite']!=='1')$q['seite']=$_GET['seite'];
+    return '/'.$slug.'/mitarbeiter'.($q?'?'.http_build_query($q):'').(preg_match('/^[a-z][a-z0-9-]{0,40}$/D',$anchor)?'#'.$anchor:'');
+}
+
 function yw_people_list_texts_shop(array $list): array {
     return [t('people.search'),t('people.search_placeholder'),t('people.search_button'),t('pager.prev'),t('pager.next'),t('pager.page',['page'=>$list['page'],'pages'=>$list['pages']]),t('people.search_result',['count'=>$list['total']]),t('pager.people_aria')];
 }
@@ -354,9 +368,11 @@ function yw_customer_people_page(array $company,array $account): void {
     $q=db()->prepare("SELECT NULLIF(ea.department,'') department,NULLIF(ea.cost_center,'') cost_center,NULLIF(ea.location,'') location,COUNT(DISTINCT ea.id) employees,COALESCE(SUM(os.company_spend),0) company_spend FROM employee_accounts ea LEFT JOIN (SELECT employee_account_id,SUM(company_total_cents) company_spend FROM orders WHERE company_id=? AND status IN ('pending','approved') AND created_at>=? AND created_at<? GROUP BY employee_account_id) os ON os.employee_account_id=ea.id WHERE ea.company_id=? AND ea.active=1 GROUP BY ea.department,ea.cost_center,ea.location ORDER BY department,cost_center,location");$q->execute([$company['id'],$periodStart,$periodEnd,$company['id']]);$groups=$q->fetchAll();
     echo '<div class="cp-section-head"><div><h1>'.e(t('people.title')).'</h1><p>'.e(t('people.intro')).'</p></div><strong>'.e(t('people.head_counts',['active'=>$active,'pending'=>$pending])).'</strong></div>';
     echo '<section class="cp-kpis"><article class="cp-kpi"><div class="icon">'.wc_public_icon('user').'</div><strong>'.$active.'</strong><span>'.e(t('people.kpi_active')).'</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('check').'</div><strong>'.$openOrders.'</strong><span>'.e(t('people.kpi_orders')).'</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('lock').'</div><strong>'.$pending.'</strong><span>'.e(t('people.kpi_registrations')).'</span></article></section>';
-    echo '<section class="cp-card"><h2>'.e(t('people.usage_title')).'</h2><p>'.e($previous?t('people.usage_previous'):t('people.usage_current')).'</p><div style="overflow:auto"><table><thead><tr><th>'.e(t('people.department')).'</th><th>'.e(t('people.cost_center')).'</th><th>'.e(t('people.location')).'</th><th>'.e(t('people.employees')).'</th><th>'.e(t('report.company_share')).'</th></tr></thead><tbody>';
+    // 10.15: Großkunden – viele Gruppen zugeklappt, damit die Personenliste nicht weit unten verschwindet.
+    $collapse=count($groups)>20;
+    echo '<section class="cp-card"><h2>'.e(t('people.usage_title')).'</h2><p>'.e($previous?t('people.usage_previous'):t('people.usage_current')).'</p>'.($collapse?'<details><summary>'.e(t('people.usage_show',['count'=>count($groups)])).'</summary>':'').'<div style="overflow:auto"><table><thead><tr><th>'.e(t('people.department')).'</th><th>'.e(t('people.cost_center')).'</th><th>'.e(t('people.location')).'</th><th>'.e(t('people.employees')).'</th><th>'.e(t('report.company_share')).'</th></tr></thead><tbody>';
     foreach($groups as $group)echo '<tr><td>'.e($group['department']??t('people.no_department')).'</td><td>'.e($group['cost_center']??t('people.no_cost_center')).'</td><td>'.e($group['location']??t('people.no_location')).'</td><td>'.(int)$group['employees'].'</td><td>'.money((int)$group['company_spend']).'</td></tr>';
-    echo '</tbody></table></div></section>';
+    echo '</tbody></table></div>'.($collapse?'</details>':'').'</section>';
     yw_customer_report_card($company);
     yw_payroll_manager_card($company);
     $fields=fn(array $p=[],string $lock=''): string => '<label>'.e(t('people.department')).'<input name="department" maxlength="120" value="'.e($p['department']??'').'"></label><label>'.e(t('people.cost_center')).'<input name="cost_center" maxlength="120" value="'.e($p['cost_center']??'').'"></label><label>'.e(t('people.location')).'<input name="location" maxlength="120" value="'.e($p['location']??'').'"></label><label>'.e(t('people.employee_number')).'<input name="employee_number" maxlength="80" value="'.e($p['employee_number']??'').'"></label><label>'.e(t('people.start')).'<input type="date" name="employment_start" value="'.e($p['employment_start']??'').'"'.$lock.'></label><label>'.e(t('people.end')).'<input type="date" name="employment_end" value="'.e($p['employment_end']??'').'"'.$lock.'></label>';
@@ -371,7 +387,7 @@ function yw_customer_people_page(array $company,array $account): void {
         $status=(string)($person['registration_status']??'approved');
         // 10.15: Vier-Augen-Schutz – andere Verantwortliche ändert nur die Verwaltung; Ernennen nur mit Firmen-Einstellung (serverseitig: yw_customer_role_guard)
         $self=(int)$person['id']===(int)$account['id'];$protected=!$self && (string)$person['role']==='manager';$roleLocked=$protected||(!$self&&!$canAppoint);$lock=$protected?' disabled':'';
-        echo '<details class="cp-card"><summary><strong>'.e($person['name']).'</strong> · '.e($person['email']).' · '.e($statusLabels[$status]??$status).((string)$person['role']==='manager'?' · '.e(t('people.role_manager')):'').'</summary>';
+        echo '<details class="cp-card" id="person-'.(int)$person['id'].'"><summary><strong>'.e($person['name']).'</strong> · '.e($person['email']).' · '.e($statusLabels[$status]??$status).((string)$person['role']==='manager'?' · '.e(t('people.role_manager')):'').'</summary>';
         if($status==='pending'){
             echo '<div class="cp-action-row"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="registration_decision"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="rejected"><button class="cp-btn reject" type="submit">'.e(t('approvals.reject')).'</button></form>';
             echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="registration_decision"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="approved"><button class="cp-btn approve" type="submit">'.e(t('people.approve_access')).'</button></form></div>';
