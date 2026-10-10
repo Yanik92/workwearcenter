@@ -385,7 +385,8 @@ function yw_process_mail_queue(int $limit=3): void {
     if(!$locked) return;
     try{
         db()->exec("UPDATE yw_mail_queue SET status='pending' WHERE status='sending' AND available_at<=NOW()");
-        $ids=db()->query("SELECT id FROM yw_mail_queue WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
+        // Index (status,id,available_at) statt Durchlauf aller Mails in id-Reihenfolge (der Optimierer schätzt das bei kleinem LIMIT falsch).
+        $ids=db()->query("SELECT id FROM yw_mail_queue IGNORE INDEX FOR ORDER BY (PRIMARY) WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
         $GLOBALS['yw_mail_failed']=false;
         foreach($ids as $id){yw_deliver_queued_mail((int)$id);if(!empty($GLOBALS['yw_mail_failed']))break;}
     }finally{
@@ -576,9 +577,21 @@ function yw_asset_integrity_notice(): string {
 
 /** Letzter Datenbankstand, den dieses Programmpaket braucht (siehe app/migrations.php). */
 const YW_SCHEMA_REQUIRED='10.14.0';
+/**
+ * Datenbankstand in einer Abfrage je Anfrage: Ist YW_SCHEMA_REQUIRED eingetragen (roter Hinweis), und für welche
+ * Prüfliste wurde diese Datenbank zuletzt vollständig geprüft (Schnellweg in yw_schema_ready)? Fehlt eine Tabelle,
+ * gilt beides als nicht erfüllt. $refresh liest neu (nach dem Setzen der Marke).
+ */
+function yw_schema_state(bool $refresh=false): array {
+    static $state=null;
+    if($state!==null&&!$refresh)return $state;
+    $state=['required'=>false,'signature'=>''];
+    try{$q=db()->prepare("SELECT (SELECT COUNT(*) FROM yw_schema_versions WHERE version=?) required,(SELECT setting_value FROM site_settings WHERE setting_key='schema_checked') signature");$q->execute([YW_SCHEMA_REQUIRED]);$row=$q->fetch();$state=['required'=>(int)($row['required']??0)>0,'signature'=>(string)($row['signature']??'')];}catch(Throwable $e){}
+    return $state;
+}
 /** Roter Hinweis in der Verwaltung, solange nach einem Upload der Update-Assistent noch nicht gelaufen ist. */
 function yw_schema_notice(): string {
-    try{$q=db()->prepare('SELECT COUNT(*) FROM yw_schema_versions WHERE version=?');$q->execute([YW_SCHEMA_REQUIRED]);if((int)$q->fetchColumn()>0)return '';}catch(Throwable $e){}
+    if(yw_schema_state()['required'])return '';
     return '<div class="flash error"><strong>Datenbank-Update fehlt.</strong> Die neuen Programmdateien sind hochgeladen, die Datenbank aber noch nicht angepasst. Bitte jetzt den <a href="/update.php">Update-Assistenten</a> ausführen, sonst funktionieren einzelne Bereiche nicht.</div>';
 }
 

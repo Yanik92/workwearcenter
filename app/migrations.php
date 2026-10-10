@@ -543,6 +543,15 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_column($pdo,'inquiries','confirmation_sent_at','DATETIME NULL',$changes);
     schema_add_index($pdo,'inquiries','idx_yw_inquiries_confirm','`confirmation_key`,`confirmation_sent_at`',$changes);
     schema_add_index($pdo,'inquiries','idx_yw_inquiries_confirm_sent','`confirmation_sent_at`',$changes);
+    // 10.15 – Tempo bei großen Datenmengen: Indizes für Warteschlangen, Übergabeprotokoll und Lohnabzug
+    // Mail- und Übergabewarteschlange: nächste fällige Einträge in id-Reihenfolge ohne Durchlauf der versendeten;
+    // Übergabeprotokoll: je Status die neuesten.
+    schema_add_index($pdo,'yw_mail_queue','idx_yw_mail_next','`status`,`id`,`available_at`',$changes);
+    schema_add_index($pdo,'yw_handover','idx_yw_handover_next','`status`,`id`,`available_at`',$changes);
+    // „Letzte erfolgreiche Übergabe“ ohne Durchlauf aller Übergaben (samt Auftragsdaten).
+    schema_add_index($pdo,'yw_handover','idx_yw_handover_done','`acknowledged_at`,`delivered_at`',$changes);
+    // Lohnabzug: Freigabezeitpunkt bzw. (ohne Freigabe) Bestellzeitpunkt im Monat je Firma.
+    schema_add_index($pdo,'orders','idx_yw_orders_payroll','`company_id`,`status`,`decided_at`,`created_at`',$changes);
     schema_mark_version($pdo,'10.14.0',$changes);
 
     return $changes;

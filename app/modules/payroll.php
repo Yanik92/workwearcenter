@@ -34,15 +34,24 @@ function yw_payroll_has_share(array $company): bool {
 /** Freigegebene Bestellungen mit Eigenanteil im Monat (eine Zeile je Bestellung). */
 function yw_payroll_orders(int $companyId,string $month): array {
     [$start,$end]=yw_payroll_range($month);
-    $q=db()->prepare("SELECT o.id,o.employee_account_id,o.invite_id,o.employee_total_cents,o.delivery_snapshot_json,
+    return yw_payroll_orders_between($companyId,$start,$end);
+}
+
+/**
+ * Wie yw_payroll_orders für [Beginn, Ende); payroll_at = maßgeblicher Zeitpunkt COALESCE(decided_at,created_at).
+ * Bedingung als zwei Bereiche (Freigabezeitpunkt bzw. ohne Freigabe der Bestellzeitpunkt) statt COALESCE(...) im WHERE,
+ * damit der Index idx_yw_orders_payroll greift. $details=false: ohne Namen/Lieferdaten (Monatsübersicht zählt nur).
+ */
+function yw_payroll_orders_between(int $companyId,string $start,string $end,bool $details=true): array {
+    $q=db()->prepare("SELECT o.id,o.employee_account_id,o.invite_id,o.employee_total_cents,COALESCE(o.decided_at,o.created_at) payroll_at".($details?",o.delivery_snapshot_json,
             ea.name,ea.employee_number,ea.cost_center,iv.employee_name invite_name
         FROM orders o
         LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id AND ea.company_id=o.company_id
-        LEFT JOIN invites iv ON iv.id=o.invite_id AND iv.company_id=o.company_id
+        LEFT JOIN invites iv ON iv.id=o.invite_id AND iv.company_id=o.company_id":' FROM orders o')."
         WHERE o.company_id=? AND o.status='approved' AND o.employee_total_cents>0
-          AND COALESCE(o.decided_at,o.created_at)>=? AND COALESCE(o.decided_at,o.created_at)<?
+          AND ((o.decided_at>=? AND o.decided_at<?) OR (o.decided_at IS NULL AND o.created_at>=? AND o.created_at<?))
         ORDER BY o.id");
-    $q->execute([$companyId,$start,$end]);
+    $q->execute([$companyId,$start,$end,$start,$end]);
     return $q->fetchAll();
 }
 
@@ -97,9 +106,13 @@ function yw_payroll_send_csv(array $company,string $month): never {
 /** Übersicht der letzten Monate: Monat => ['sum','persons','orders']. */
 function yw_payroll_overview(int $companyId,int $months=6): array {
     $result=[];$now=new DateTimeImmutable('first day of this month',new DateTimeZone('Europe/Berlin'));
+    if($months<1)return $result;
+    // Eine Abfrage für alle Monate, dann je Monat (JJJJ-MM des maßgeblichen Zeitpunkts) wie bisher zusammenfassen.
+    $byMonth=[];
+    foreach(yw_payroll_orders_between($companyId,yw_payroll_range($now->modify('-'.($months-1).' month')->format('Y-m'))[0],yw_payroll_range($now->format('Y-m'))[1],false) as $o)$byMonth[substr((string)$o['payroll_at'],0,7)][]=$o;
     for($i=0;$i<$months;$i++){
         $month=$now->modify('-'.$i.' month')->format('Y-m');
-        $rows=yw_payroll_aggregate(yw_payroll_orders($companyId,$month));
+        $rows=yw_payroll_aggregate($byMonth[$month]??[]);
         $result[$month]=['sum'=>array_sum(array_column($rows,'employee_cents')),'persons'=>count($rows),'orders'=>array_sum(array_map(fn($r)=>count($r['orders']),$rows))];
     }
     return $result;

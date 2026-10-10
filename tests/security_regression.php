@@ -431,4 +431,71 @@ test_ok(yw_inquiry_recipient_key('Opfer+Spam@Example.org')===yw_inquiry_recipien
 $probeSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/probeshop.php');$publicSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
 test_ok(YW_INQUIRY_CONFIRM_PER_HOUR===30 && str_contains($probeSrc,'confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 24 HOUR)') && str_contains($probeSrc,"confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 1 HOUR)')->fetchColumn()>=YW_INQUIRY_CONFIRM_PER_HOUR") && str_contains($publicSrc,"if(\$confirmation==='ok')yw_inquiry_confirmation_mail(\$email,\$probeshopToken);") && strpos($publicSrc,'send_inquiry_mail([')<strpos($publicSrc,"if(\$confirmation==='ok')yw_inquiry_confirmation_mail("),'Anfrage: höchstens 1 Bestätigung je Adresse in 24 h und 30 je Stunde; Anfrage und interne Mail an Yanik bleiben');
 
+// 10.15: Tempo bei großen Datenmengen – gleiche Ergebnisse mit weniger Abfragen (SQLite im Speicher statt MySQL)
+$adminSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin.php');$handoverSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/handover.php');$migrationSrc=(string)file_get_contents(dirname(__DIR__).'/app/migrations.php');
+test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/functions.php'),"FROM yw_mail_queue IGNORE INDEX FOR ORDER BY (PRIMARY) WHERE status='pending'") && str_contains($migrationSrc,"'idx_yw_mail_next','`status`,`id`,`available_at`'"),'Mailwarteschlange: nächste Mails über Index (status,id) statt Durchlauf aller versendeten');
+test_ok(str_contains($handoverSrc,"FROM yw_handover h IGNORE INDEX FOR ORDER BY (PRIMARY) \$join WHERE h.status=\$status ORDER BY h.id DESC LIMIT 100") && !str_contains($handoverSrc,'SELECT MAX(COALESCE(acknowledged_at,delivered_at)) FROM yw_handover') && str_contains($migrationSrc,"'idx_yw_handover_next'") && str_contains($migrationSrc,"'idx_yw_handover_done'"),'Übergabeprotokoll: je Status höchstens 100 über den Index statt alle Übergaben sortieren');
+test_ok(!str_contains($adminSrc,'(SELECT COUNT(*) FROM invites i WHERE i.company_id=c.id)') && str_contains($adminSrc,'COUNT(*) amount,SUM(o.created_at<?) overdue') && !str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/payroll.php'),'COALESCE(o.decided_at,o.created_at)>=?') && str_contains($migrationSrc,"'idx_yw_orders_payroll'"),'Kundenakte, Übersicht und Lohnabzug ohne Unterabfragen je Firma, ohne alle offenen Aufträge, ohne COALESCE im WHERE');
+if(extension_loaded('pdo_sqlite')){
+    require_once dirname(__DIR__).'/app/modules/admin.php';
+    $sqlite=static fn(): PDO => new PDO('sqlite::memory:',null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+    // Schema-Prüfung: Seitenaufrufe vergleichen nur die Marke; neue Prüfliste, fehlende Spalte und update.php wirken sofort.
+    $pdo=$sqlite();$tables=[];
+    foreach(yw_schema_probes() as $probe){preg_match('/^SELECT (.+) FROM (\w+) LIMIT 0$/',$probe,$pm);foreach(explode(',',$pm[1]) as $col)$tables[$pm[2]][$col]=$col;}
+    unset($tables['companies']['shop_languages']);
+    foreach($tables as $table=>$cols)$pdo->exec('CREATE TABLE '.$table.' ('.implode(',',$cols).')');
+    $pdo->exec('CREATE TABLE yw_schema_versions (version TEXT PRIMARY KEY)');$pdo->exec('CREATE TABLE site_settings (setting_key TEXT PRIMARY KEY,setting_value TEXT NOT NULL)');$pdo->exec("INSERT INTO yw_schema_versions VALUES('10.12.0')");
+    yw_schema_state(true);
+    test_ok(!yw_schema_ready() && str_contains(yw_schema_problem(),'shop_languages') && yw_schema_state()['signature']==='','Schema: neue Programmdateien mit fehlender Spalte → sofort „Update erforderlich“, keine Marke');
+    $pdo->exec('ALTER TABLE companies ADD COLUMN shop_languages');
+    test_ok(yw_schema_ready() && yw_schema_state()['signature']===yw_schema_signature() && strlen(yw_schema_signature())===40,'Schema: direkt nach update.php bereit, Marke für diese Prüfliste gesetzt');
+    $pdo->exec('ALTER TABLE yw_probeshops RENAME TO yw_probeshops_weg');
+    test_ok(!yw_schema_ready(true) && yw_schema_ready(),'Schema: update.php und Systemstatus prüfen vollständig, Seitenaufrufe nur die Marke (eine Abfrage)');
+    $pdo->exec("UPDATE site_settings SET setting_value='andere-pruefliste' WHERE setting_key='schema_checked'");yw_schema_state(true);
+    test_ok(!yw_schema_ready(true) && !yw_schema_ready() && str_contains(yw_schema_problem(),'yw_probeshops'),'Schema: andere Prüfliste (neue Dateien) oder zurückgespielte Sicherung → wieder volle Prüfung');
+    $pdo->exec('ALTER TABLE yw_probeshops_weg RENAME TO yw_probeshops');
+    test_ok(yw_schema_ready() && yw_schema_state()['signature']===yw_schema_signature(),'Schema: nach dem Update wieder bereit, Marke erneuert');
+    test_ok(str_contains(yw_schema_notice(),'Datenbank-Update fehlt'),'Roter Hinweis, solange der Datenbankstand '.YW_SCHEMA_REQUIRED.' fehlt');
+    $pdo->exec("INSERT INTO yw_schema_versions VALUES('".YW_SCHEMA_REQUIRED."')");yw_schema_state(true);
+    test_ok(yw_schema_notice()==='','Roter Hinweis verschwindet direkt nach update.php');
+    // Firmenliste/Kundenakte: gruppierte Teilabfragen = bisherige Unterabfragen je Firma (auch Firma ohne Daten)
+    $pdo=$sqlite();
+    $pdo->exec('CREATE TABLE companies (id INTEGER PRIMARY KEY,legal_name,shop_name,slug,active,delivery_mode,delivery_address,registration_mode,approval_required,logo_path)');
+    $pdo->exec('CREATE TABLE invites (id INTEGER PRIMARY KEY,company_id INTEGER,employee_name)');$pdo->exec('CREATE TABLE company_products (company_id INTEGER,product_id INTEGER)');
+    $pdo->exec('CREATE TABLE employee_accounts (id INTEGER PRIMARY KEY,company_id INTEGER,active INTEGER,registration_status,role,name,employee_number,cost_center)');
+    $pdo->exec('CREATE TABLE orders (id INTEGER PRIMARY KEY,company_id INTEGER,status,fulfillment_status,gross_total_cents INTEGER,total_cents INTEGER,employee_total_cents INTEGER,employee_account_id INTEGER,invite_id INTEGER,delivery_snapshot_json,decided_at,created_at)');
+    $pdo->exec("INSERT INTO companies VALUES(1,'A GmbH','A','a',1,'pickup','',NULL,1,NULL),(2,'B KG','B','b',1,'company','',NULL,1,NULL),(3,'Leer','L','l',0,'company','Str. 1','open',0,NULL)");
+    $pdo->exec("INSERT INTO invites(company_id,employee_name) VALUES(1,'X'),(1,'Y'),(2,'Z')");$pdo->exec('INSERT INTO company_products VALUES(1,5),(1,6),(2,5)');
+    $pdo->exec("INSERT INTO employee_accounts(company_id,active,registration_status,role) VALUES(1,1,'approved','manager'),(1,1,'approved','employee'),(1,1,'pending','employee'),(1,0,'approved','employee'),(2,1,'approved','employee'),(2,1,'approved','manager'),(2,0,'approved','manager')");
+    $pdo->exec("INSERT INTO orders(company_id,status,fulfillment_status,gross_total_cents,total_cents) VALUES(1,'approved','completed',1190,1000),(1,'approved','new',0,500),(1,'pending','new',900,900),(2,'approved','completed',0,700),(2,'cancelled','new',300,300),(1,'approved','shipped',2380,2000)");
+    $old=$pdo->query("SELECT c.id,(SELECT COUNT(*) FROM invites i WHERE i.company_id=c.id) invite_count,(SELECT COUNT(*) FROM employee_accounts ea WHERE ea.company_id=c.id AND ea.active=1) registered_count,(SELECT COUNT(*) FROM orders o WHERE o.company_id=c.id AND o.status='approved') approved_order_count,(SELECT COUNT(*) FROM orders o WHERE o.company_id=c.id AND o.status='approved' AND o.fulfillment_status='completed') completed_order_count,(SELECT COALESCE(SUM(CASE WHEN o.gross_total_cents>0 THEN o.gross_total_cents ELSE o.total_cents END),0) FROM orders o WHERE o.company_id=c.id AND o.status='approved') revenue_cents FROM companies c ORDER BY c.id DESC")->fetchAll();
+    $kpi=static fn(array $rows): array => array_map(static fn(array $r): array => array_map('intval',[$r['id'],$r['invite_count'],$r['registered_count'],$r['approved_order_count'],$r['completed_order_count'],$r['revenue_cents']]),$rows);
+    $single=array_merge(...array_map(static fn(array $r): array => yw_admin_companies((int)$r['id']),$old));
+    test_ok($kpi(yw_admin_companies())===$kpi($old) && $kpi($single)===$kpi($old) && $kpi(yw_admin_companies(0,true,2))===array_slice($kpi($old),0,2) && yw_admin_companies(9)===[] && !isset(yw_admin_companies(2,false)[0]['revenue_cents']),'Übersicht, Kundenliste und Kundenakte: Kennzahlen gleich wie mit Unterabfragen je Firma (auch leere und unbekannte Firma)');
+    $steps=static fn(array $c): array => array_map(static fn(array $s): bool => $s[2],yw_company_setup_steps($c));$same=true;
+    foreach(yw_admin_companies() as $c){$plain=$c;unset($plain['setup_products'],$plain['setup_managers'],$plain['setup_employees']);if($steps($c)!==$steps($plain))$same=false;}
+    test_ok($same,'Einrichtungsschritte: mitgelieferte Zähler ergeben dieselben Haken wie Einzelabfragen');
+    // Lohnabzug: zwei Bereiche statt COALESCE im WHERE, Übersicht in einer Abfrage – gleiche Bestellungen, Summen und Personen
+    $pdo->exec("INSERT INTO employee_accounts(id,company_id,active,registration_status,role,name,employee_number,cost_center) VALUES(50,7,1,'approved','employee','Anna','100','KS1'),(51,7,1,'approved','employee','Bert','200','KS2')");$pdo->exec("INSERT INTO invites(id,company_id,employee_name) VALUES(60,7,'Gast')");
+    $month0=(new DateTimeImmutable('first day of this month',new DateTimeZone('Europe/Berlin')))->setTime(0,0);$insert=$pdo->prepare("INSERT INTO orders(company_id,status,employee_total_cents,employee_account_id,invite_id,decided_at,created_at) VALUES(?,?,?,?,?,?,?)");
+    mt_srand(1015);$fmt=static fn(DateTimeImmutable $d): string => $d->format('Y-m-d H:i:s');
+    for($i=0;$i<600;$i++){
+        $created=$month0->modify('-'.mt_rand(0,7).' month')->modify('+'.mt_rand(0,30).' day')->modify('+'.mt_rand(0,86399).' second');
+        if($i%9===0)$created=$month0->modify('-'.mt_rand(0,7).' month')->modify($i%2?'-1 second':'+0 second'); // genau an der Monatsgrenze
+        $decided=$i%4===0?null:($i%7===0?$fmt($month0->modify('-'.mt_rand(0,6).' month')->modify($i%2?'-1 second':'+0 second')):$fmt($created->modify('+'.mt_rand(0,20).' day')));
+        $insert->execute([$i%10===0?8:7,['approved','approved','approved','pending','cancelled','rejected'][$i%6],$i%11===0?0:mt_rand(1,5000),$i%5===0?0:50+$i%2,$i%5===0?60:null,$decided,$fmt($created)]);
+    }
+    $all=$pdo->query('SELECT * FROM orders WHERE company_id IN (7,8) ORDER BY id')->fetchAll();
+    $expectedOrders=static fn(string $month): array => array_values(array_filter($all,static function(array $o)use($month): bool {[$s,$e]=yw_payroll_range($month);$at=$o['decided_at']??$o['created_at'];return (int)$o['company_id']===7&&$o['status']==='approved'&&(int)$o['employee_total_cents']>0&&$at>=$s&&$at<$e;}));
+    $same=true;$expected=[];$counted=0;
+    for($i=-1;$i<8;$i++){
+        $month=$month0->modify('-'.$i.' month')->format('Y-m');$want=$expectedOrders($month);$counted+=count($want);
+        if(array_map('intval',array_column(yw_payroll_orders(7,$month),'id'))!==array_map('intval',array_column($want,'id')))$same=false;
+        if($i>=0&&$i<6){$rows=yw_payroll_aggregate(array_map(static function(array $o): array {$o['name']=['50'=>'Anna','51'=>'Bert'][(string)$o['employee_account_id']]??'';return $o;},$want));$expected[$month]=['sum'=>array_sum(array_column($rows,'employee_cents')),'persons'=>count($rows),'orders'=>array_sum(array_map(fn($r)=>count($r['orders']),$rows))];}
+    }
+    test_ok($same && $counted>100,'Lohnabzug: je Monat dieselben Bestellungen wie mit COALESCE(Freigabe, Bestellung), auch genau an Monatsgrenzen ('.$counted.')');
+    test_ok(yw_payroll_overview(7)===$expected && yw_payroll_overview(7,0)===[],'Lohnabzug-Übersicht: eine Abfrage für sechs Monate, gleiche Summen, Personen und Bestellungen');
+    $pdo=null;
+}
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

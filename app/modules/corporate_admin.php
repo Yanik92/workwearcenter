@@ -318,7 +318,7 @@ function yw_system(): void {
         ['Zwei-Faktor für alle Admins',$adminsWithout2fa===0,$adminsWithout2fa===null?'Datenbankschema aktualisieren':$adminsWithout2fa.' aktive Administrator(en) ohne Zwei-Faktor-Anmeldung'],
         ['Impressum vollständig',$imprintMissing===[],'Unter Website → Inhalte ergänzen: '.implode(', ',$imprintMissing)],
         ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint],
-        ['Datenbankschema '.app_version(),yw_schema_ready(),'Update-Assistent ausführen'],
+        ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren'],
         ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren'],
         ['Mailtransport',$mailConfigured && $mail['failed']===0,$mailIssues?implode(' · ',$mailIssues):'Fehlgeschlagene E-Mails prüfen'],

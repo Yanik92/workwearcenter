@@ -85,33 +85,33 @@ function admin_page(): void {
     if($tab==='corporate') yw_admin_corporate(); // alte Links: Weiterleitung vor jeder Ausgabe
 
     $companies=[];$products=[];$orders=[];$inquiries=[];$auditLogs=[];
+    // Kundenakte: nur diese Firma, Kennzahlen nur für den Reiter Übersicht; Produkte nur für Kollektion.
+    $selectedCompany=$tab==='companies'?(int)($_GET['company']??0):0;
     $needsCompanies=in_array($tab,['dashboard','companies'],true);
-    $needsProducts=in_array($tab,['dashboard','companies','products','new'],true);
+    $needsProducts=in_array($tab,['products','new'],true) || ($selectedCompany!==0 && yw_customer_tab()==='kollektion');
     $needsOrders=in_array($tab,['dashboard','orders'],true) && empty($_GET['auftrag']);
 
-    if($needsCompanies){
-        $companies=db()->query("SELECT c.*,
-            (SELECT COUNT(*) FROM invites i WHERE i.company_id=c.id) invite_count,
-            (SELECT COUNT(*) FROM employee_accounts ea WHERE ea.company_id=c.id AND ea.active=1) registered_count,
-            (SELECT COUNT(*) FROM orders o WHERE o.company_id=c.id AND o.status='approved') approved_order_count,
-            (SELECT COUNT(*) FROM orders o WHERE o.company_id=c.id AND o.status='approved' AND o.fulfillment_status='completed') completed_order_count,
-            (SELECT COALESCE(SUM(CASE WHEN o.gross_total_cents>0 THEN o.gross_total_cents ELSE o.total_cents END),0) FROM orders o WHERE o.company_id=c.id AND o.status='approved') revenue_cents
-            FROM companies c ORDER BY c.id DESC")->fetchAll();
-    }
+    if($needsCompanies)$companies=$tab==='dashboard'?yw_admin_companies(0,true,8):yw_admin_companies($selectedCompany,$selectedCompany===0 || yw_customer_tab()==='uebersicht'); // Übersicht zeigt die 8 neuesten
     if($needsProducts)$products=db()->query('SELECT * FROM products ORDER BY active DESC, category, name')->fetchAll();
-    if($needsOrders){
-        $orderWhere=$tab==='dashboard'?"WHERE o.status='approved' AND o.fulfillment_status NOT IN ('shipped','picked_up','completed')":'';
-        $orderLimit=$tab==='orders'?' LIMIT 500':'';
+    if($needsOrders && $tab==='orders'){
         $orders=db()->query("SELECT o.*,c.legal_name,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name
             FROM orders o
             JOIN companies c ON c.id=o.company_id
             LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id
             LEFT JOIN invites i ON i.id=o.invite_id
-            $orderWhere
-            ORDER BY o.id DESC$orderLimit")->fetchAll();
+            ORDER BY o.id DESC LIMIT 500")->fetchAll();
     }
-    if(in_array($tab,['dashboard','inquiries'],true)){
+    if($needsOrders && $tab==='dashboard'){
+        // Übersicht braucht nur Zähler je Produktionsstand (statt aller offenen Aufträge mit allen Spalten); überfällig = älter als 7 Tage.
+        $q=db()->prepare("SELECT o.fulfillment_status,COUNT(*) amount,SUM(o.created_at<?) overdue FROM orders o JOIN companies c ON c.id=o.company_id WHERE o.status='approved' AND o.fulfillment_status NOT IN ('shipped','picked_up','completed') GROUP BY o.fulfillment_status");
+        $q->execute([date('Y-m-d H:i:s',strtotime('-7 days'))]);$orders=$q->fetchAll();
+    }
+    if($tab==='inquiries'){
         try{$inquiries=db()->query("SELECT * FROM inquiries ORDER BY FIELD(status,'new','contacted','done'), id DESC")->fetchAll();}
+        catch(Throwable $e){$inquiries=[];}
+    }
+    if($tab==='dashboard'){ // Übersicht zählt nur neue Anfragen
+        try{$inquiries=db()->query("SELECT id,status FROM inquiries WHERE status='new'")->fetchAll();}
         catch(Throwable $e){$inquiries=[];}
     }
     if($tab==='audit'){
@@ -1110,9 +1110,11 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     try{$pendingEmployeeCount=(int)db()->query("SELECT COUNT(*) FROM employee_accounts WHERE registration_status='pending'")->fetchColumn();$pendingEmployees=db()->query("SELECT ea.id,ea.name,ea.email,c.legal_name FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.registration_status='pending' ORDER BY ea.created_at LIMIT 8")->fetchAll();}catch(Throwable $e){}
     try{$failedMails=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
     $failedHandovers=0;try{$failedHandovers=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
-    $newOrders=count(array_filter($orders,fn($o)=>$o['status']==='approved' && in_array((string)$o['fulfillment_status'],['new','accepted'],true)));
-    $production=count(array_filter($orders,fn($o)=>$o['status']==='approved' && in_array((string)$o['fulfillment_status'],['goods_received','processing','production','quality_check'],true)));
-    $overdue=count(array_filter($orders,fn($o)=>$o['status']==='approved' && !in_array((string)$o['fulfillment_status'],['shipped','picked_up','completed'],true) && strtotime((string)$o['created_at'])<strtotime('-7 days')));
+    // $orders: je offenem Produktionsstand freigegebener Aufträge die Anzahl (amount) und davon überfällige (overdue), siehe admin_page().
+    $stageCount=fn(array $keys): int => (int)array_sum(array_map(fn($o)=>in_array((string)$o['fulfillment_status'],$keys,true)?(int)$o['amount']:0,$orders));
+    $newOrders=$stageCount(['new','accepted']);
+    $production=$stageCount(['goods_received','processing','production','quality_check']);
+    $overdue=(int)array_sum(array_map(fn($o)=>(int)$o['overdue'],$orders));
 
     echo '<div class="control-head"><div><h2>Heute im Blick</h2><p>Offene Aufgaben und der aktuelle Auftragsfluss.</p></div><div class="actions"><a class="btn" href="/admin?tab=orders">Aufträge öffnen</a><a class="btn primary" href="/admin?tab=new">Neuen Firmen-Shop anlegen</a></div></div>';
     echo '<div class="admin-dashboard-grid">'
@@ -1137,8 +1139,8 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     if(!$failedMails&&!$overdue&&!$pendingEmployees&&!$failedHandovers&&!$roleChanges&&(!$me||(int)($me['totp_enabled']??0))) echo '<div class="empty compact">Keine dringenden Aufgaben. Das System ist aufgeräumt.</div>';
     echo '</section><section class="card"><div class="title-row"><div><h2>Auftragsfluss</h2><p class="muted">Freigegebene Bestellungen.</p></div><a class="btn small" href="/admin?tab=production">Öffnen</a></div>';
     $stages=['new'=>'Neu','accepted'=>'Angenommen','goods_ordered'=>'Material offen','goods_received'=>'Material da','production'=>'Produktion','quality_check'=>'Qualitätskontrolle','ready'=>'Fertig'];
-    $max=1;foreach($stages as $key=>$label)$max=max($max,count(array_filter($orders,fn($o)=>$o['status']==='approved' && $o['fulfillment_status']===$key)));
-    foreach($stages as $key=>$label){$count=count(array_filter($orders,fn($o)=>$o['status']==='approved' && $o['fulfillment_status']===$key));echo '<div class="flow-row"><span>'.e($label).'</span><span class="flow-bar"><i style="width:'.(int)round($count/$max*100).'%"></i></span><strong>'.$count.'</strong></div>';}
+    $max=1;foreach($stages as $key=>$label)$max=max($max,$stageCount([$key]));
+    foreach($stages as $key=>$label){$count=$stageCount([$key]);echo '<div class="flow-row"><span>'.e($label).'</span><span class="flow-bar"><i style="width:'.(int)round($count/$max*100).'%"></i></span><strong>'.$count.'</strong></div>';}
     echo '</section></div>';
 
     echo '<section class="card shop-performance"><div class="title-row"><div><h2>Firmen im Blick</h2><p class="muted">Aktive Konten, Aufträge und Bestellvolumen.</p></div><a class="btn small" href="/admin?tab=companies">Alle Firmen</a></div>';
@@ -1336,6 +1338,26 @@ function render_admin_decoration_motifs(array $company): void {
     }else echo '<div class="empty compact">Noch kein Veredelungsmotiv hinterlegt.</div>';
     echo '<details class="motif-editor"><summary>Neues Motiv anlegen</summary><div class="motif-editor-body"><form method="post" class="form-stack" enctype="multipart/form-data">'.csrf_field().'<input type="hidden" name="action" value="save_decoration_motif"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$companyId.'"><div class="motif-fields"><label>Motivname<input name="motif_name" maxlength="190" placeholder="z. B. Firmenlogo Brust 9 cm" required></label><label>Verfahren'.$methodSelect('dtf').'</label><label>Bestand<input type="number" name="stock_qty" min="0" max="1000000" value="0" required></label><label>Mindestbestand<input type="number" name="reorder_level" min="0" max="1000000" value="0" required></label></div><label>Interne Notiz<input name="motif_notes" maxlength="500" placeholder="z. B. Ablagefach oder Dateiname"></label><label>Logo-Datei <small>SVG oder PNG, transparent</small><input type="file" name="motif_file" accept=".svg,image/svg+xml,image/png"></label><div class="motif-checks"><label class="check"><input type="checkbox" name="track_stock" value="1" checked><span>Mengenbestand prüfen</span></label><label class="check"><input type="checkbox" name="active" value="1" checked><span>Motiv aktiv</span></label></div><button class="btn primary small" type="submit">Motiv anlegen</button></form></div></details>';
     echo '</div></details>';
+}
+
+/**
+ * Firmen mit Kennzahlen für Übersicht, Kundenliste und Kundenakte: gruppierte Teilabfragen statt fünf Unterabfragen je Firma,
+ * dazu die Zähler der Einrichtungsschritte (yw_company_setup_steps). $companyId≠0: nur diese Firma; $stats=false: ohne Kennzahlen;
+ * $newest>0: nur die neuesten Firmen (Übersicht), die Teilabfragen rechnen dann auch nur für diese.
+ */
+function yw_admin_companies(int $companyId=0,bool $stats=true,int $newest=0): array {
+    if($companyId!==0&&!$stats){$q=db()->prepare('SELECT * FROM companies WHERE id=?');$q->execute([$companyId]);return $q->fetchAll();}
+    $one=$companyId!==0?' AND company_id=?':($newest>0?' AND company_id IN (SELECT id FROM (SELECT id FROM companies ORDER BY id DESC LIMIT '.$newest.') newest)':'');
+    $q=db()->prepare("SELECT c.*,COALESCE(iv.amount,0) invite_count,COALESCE(ea.amount,0) registered_count,COALESCE(o.approved,0) approved_order_count,COALESCE(o.completed,0) completed_order_count,COALESCE(o.revenue,0) revenue_cents,
+            COALESCE(cp.amount,0) setup_products,COALESCE(ea.managers,0) setup_managers,COALESCE(ea.approved,0) setup_employees
+        FROM companies c
+        LEFT JOIN (SELECT company_id,COUNT(*) amount FROM invites WHERE 1=1$one GROUP BY company_id) iv ON iv.company_id=c.id
+        LEFT JOIN (SELECT company_id,COUNT(*) amount,SUM(registration_status='approved') approved,SUM(role='manager' AND registration_status='approved') managers FROM employee_accounts WHERE active=1$one GROUP BY company_id) ea ON ea.company_id=c.id
+        LEFT JOIN (SELECT company_id,COUNT(*) approved,SUM(fulfillment_status='completed') completed,SUM(CASE WHEN gross_total_cents>0 THEN gross_total_cents ELSE total_cents END) revenue FROM orders WHERE status='approved'$one GROUP BY company_id) o ON o.company_id=c.id
+        LEFT JOIN (SELECT company_id,COUNT(*) amount FROM company_products WHERE 1=1$one GROUP BY company_id) cp ON cp.company_id=c.id
+        ".($companyId!==0?'WHERE c.id=? ':'').'ORDER BY c.id DESC'.($companyId===0&&$newest>0?' LIMIT '.$newest:''));
+    $q->execute($companyId!==0?array_fill(0,5,$companyId):[]);
+    return $q->fetchAll();
 }
 
 function render_admin_companies(array $companies,array $products): void {

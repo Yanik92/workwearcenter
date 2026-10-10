@@ -15,7 +15,8 @@ declare(strict_types=1);
 function yw_orders_schema_ready(): bool {
     static $ready=null;
     if($ready!==null)return $ready;
-    try{$ready=(bool)db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.11.0'")->fetchColumn();}
+    // Vollständiger Stand (yw_schema_ready: 10.12 und alle Spalten) schließt 10.11 ein – dann ohne eigene Abfrage.
+    try{$ready=(function_exists('yw_schema_ready')&&yw_schema_ready()) || (bool)db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.11.0'")->fetchColumn();}
     catch(Throwable $e){$ready=false;}
     return $ready;
 }
