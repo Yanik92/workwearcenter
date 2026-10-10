@@ -395,14 +395,13 @@ function yw_process_mail_queue(int $limit=3): void {
 
 function yw_cleanup_expired_security_rows(): void {
     // Diese Tabellen sind reine Sicherheits-/Transportdaten und dürfen nicht
-    // unbegrenzt wachsen. Fach-, Bestell- und Auditdaten werden nicht berührt.
+    // unbegrenzt wachsen. Fach- und Bestelldaten werden nicht berührt; Mailwarteschlange und
+    // Aktivitätsprotokoll räumt yw_retention_prune() stapelweise auf (10.15, app/modules/admin_tools.php).
     try {
         db()->exec("DELETE FROM yw_login_attempts WHERE started_at<DATE_SUB(NOW(),INTERVAL 1 DAY)");
         db()->exec("DELETE FROM yw_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
         db()->exec("DELETE FROM yw_admin_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
-        // Datensparsamkeit (DSGVO Art. 5): versendete Mails enthalten Namen und Bestelldaten
-        // und werden nach 90 Tagen entfernt; erledigte Anfragen nach 24 Monaten.
-        db()->exec("DELETE FROM yw_mail_queue WHERE status='sent' AND sent_at<DATE_SUB(NOW(),INTERVAL 90 DAY)");
+        // Datensparsamkeit (DSGVO Art. 5): erledigte Anfragen nach 24 Monaten.
         db()->exec("DELETE FROM inquiries WHERE status='done' AND created_at<DATE_SUB(NOW(),INTERVAL 24 MONTH)");
     } catch(Throwable $e) {
         error_log('WorkwearCenter security cleanup failed: '.$e->getMessage());

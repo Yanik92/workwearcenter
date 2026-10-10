@@ -63,8 +63,8 @@ if ($path === '/robots.txt') {
 // larger employee imports moving without requiring a separately configured cron job.
 register_shutdown_function(static function(): void {
     if(function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
-    // Erinnerungen höchstens einmal täglich, falls kein Cronjob eingerichtet ist.
-    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup();} } catch(Throwable $e) {}
+    // Erinnerungen und Aufbewahrungsfristen höchstens einmal täglich, falls kein Cronjob eingerichtet ist.
+    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup(); yw_retention_prune();} } catch(Throwable $e) {}
     try { yw_process_mail_queue(2); }
     catch(Throwable $e) { error_log('WorkwearCenter background mail queue: '.$e->getMessage()); }
     // Übergabe an die Auftragsverwaltung als Rückfallebene zum Cronjob.

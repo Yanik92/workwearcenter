@@ -1407,6 +1407,7 @@ function yw_audit_labels(): array {
         'company.note_updated'=>'Kundennotiz geändert',
         'company.preview_started'=>'Shop-Vorschau geöffnet',
         'system.backup_downloaded'=>'Datensicherung heruntergeladen',
+        'system.retention_saved'=>'Aufbewahrungsfrist geändert',
         'api.key_created'=>'API-Schlüssel angelegt','api.key_toggled'=>'API-Schlüssel gesperrt/freigegeben','api.key_deleted'=>'API-Schlüssel gelöscht','api.ip_rejected'=>'API-Zugriff von fremder IP abgelehnt','order.status_from_api'=>'Status über API übernommen','katalog.updated'=>'Daiber-Liste eingelesen','product.images_assigned'=>'Produktbilder aus Katalog zugeordnet',
         'handover.acknowledged'=>'Auftrag von Auftragsverwaltung übernommen',
         'handover.retry'=>'Übergabe erneut gesendet',
@@ -1451,7 +1452,7 @@ function yw_audit_labels(): array {
 
 function render_admin_audit(array $logs): void {
     $labels=yw_audit_labels();
-    echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge.</p></div></div>';
+    echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge. Einträge werden nach '.yw_audit_retention_months().' Monaten automatisch gelöscht, Lexware- und Lohnabzug-Einträge bleiben (<a href="/admin?tab=system">einstellbar unter Systemstatus</a>).</p></div></div>';
     if(!$logs){echo '<div class="empty">Noch keine protokollierten Vorgänge.</div></section>';return;}
     $people=yw_actor_people($logs);
     echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Wer</th><th>Objekt</th></tr></thead><tbody>';

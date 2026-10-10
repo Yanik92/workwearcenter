@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 function yw_admin_action(): void {
     $action=(string)($_POST['action']??'');
-    if(!in_array($action,['yw_company','yw_employee','yw_limit','yw_profile_create','yw_profile_save','yw_profile_products','yw_production','yw_mail_process','yw_mail_test'],true)) return;
+    if(!in_array($action,['yw_company','yw_employee','yw_limit','yw_profile_create','yw_profile_save','yw_profile_products','yw_production','yw_mail_process','yw_mail_test','yw_retention'],true)) return;
     require_admin(); verify_csrf();
+    if($action==='yw_retention')yw_retention_save_action(); // 10.15: Aufbewahrungsfrist des Aktivitätsprotokolls
     if($action==='yw_mail_process'){
         try{db()->exec("UPDATE yw_mail_queue SET status='pending',attempts=0,available_at=NOW() WHERE status='failed' ORDER BY id LIMIT 20");yw_process_mail_queue(20);audit_log('mail.queue_processed','system',null);flash('success','Bis zu 20 fällige E-Mails wurden verarbeitet.');}
         catch(Throwable $e){error_log('Mail queue action: '.$e->getMessage());flash('error','Mailwarteschlange konnte nicht verarbeitet werden.');}
@@ -285,6 +286,7 @@ function yw_private_exposure_check(bool $force=false): array {
 function yw_system(): void {
     $age=yw_backup_age_days();
     echo '<section class="card"><div class="title-row"><div><h2>Datensicherung</h2><p class="muted">Lädt Datenbank und hochgeladene Dateien als ZIP herunter. Bitte wöchentlich und vor jedem Update, und die Datei außerhalb des Webspace aufbewahren.</p></div><a class="btn primary" href="/admin/sicherung">Sicherung herunterladen</a></div><p>'.($age===null?'Noch keine Sicherung heruntergeladen.':'Letzte Sicherung: vor '.$age.' Tag'.($age===1?'':'en').' ('.e(current_site_setting('last_backup_at','')).').').'</p></section>';
+    echo yw_retention_card(); // 10.15: Aufbewahrungsfristen und letzte automatische Bereinigung
     $mail=['pending'=>0,'failed'=>0];$failedMails=[];
     try{
         foreach(db()->query("SELECT status,COUNT(*) amount FROM yw_mail_queue WHERE status IN ('pending','failed') GROUP BY status") as $r)$mail[$r['status']]=(int)$r['amount'];

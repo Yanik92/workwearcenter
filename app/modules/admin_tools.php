@@ -260,27 +260,179 @@ function yw_backup_age_days(): ?int {
 
 /* ---------- Erinnerungen an Verantwortliche ---------- */
 
-/** Offene Freigaben und Registrierungen, die länger als $days Tage liegen: einmalig erinnern. Rückgabe: Anzahl Mails. */
+/** 10.15: Spalte für die Sammel-Erinnerung vorhanden? (vor update.php keine Erinnerungen statt einer Mail je Vorgang) */
+function yw_reminder_digest_ready(): bool {
+    static $ready=null;
+    if($ready===null){try{db()->query('SELECT reminder_digest_at FROM employee_accounts LIMIT 0');$ready=true;}catch(Throwable $e){$ready=false;}}
+    return $ready;
+}
+
+/**
+ * Ist ein fälliger Vorgang neu seit der letzten Sammel-Erinnerung dieser Person? Wie bisher ist jeder Vorgang nur
+ * einmal Anlass: fällig (angelegt + $days Tage) nach der letzten Sammel-Erinnerung. Ohne frühere Sammel-Erinnerung
+ * zählt nur, woran noch nie erinnert wurde.
+ */
+function yw_reminder_is_new(?string $lastDigest,string $createdAt,?string $reminderSentAt,int $days): bool {
+    if($lastDigest===null||$lastDigest==='')return $reminderSentAt===null||$reminderSentAt==='';
+    $due=strtotime($createdAt.' +'.max(1,$days).' days');
+    return $due!==false && date('Y-m-d H:i:s',$due)>$lastDigest;
+}
+
+/**
+ * Betreff und Text der Sammel-Erinnerung in der aktuellen Sprache. $orders/$regs: fällige Vorgänge (älteste zuerst),
+ * je Liste höchstens $limit Einträge mit Name, Datum und Betrag; $new: Schlüssel 'o<ID>' bzw. 'r<ID>' neuer Vorgänge.
+ * @return array{0:string,1:string}
+ */
+function yw_reminder_digest_mail(array $person,array $company,array $orders,array $regs,int $days,array $new=[],int $limit=20): array {
+    // Freitexte einzeilig und ohne Doppelpunkt: das Mail-Layout macht aus „Bezeichnung: Wert“ Tabellen und Schaltflächen.
+    $clean=static fn(string $s): string => trim((string)preg_replace('/[\x00-\x1F\x7F:]+/u',' ',$s));
+    $slug=(string)$company['slug'];$total=count($orders)+count($regs);
+    $mark=count($new)<$total?' · '.t('mail.digest.new'):''; // „neu“ nur, wenn auch Bekanntes in der Liste steht
+    // Neue Vorgänge zuerst (sonst lägen sie bei vielen offenen Vorgängen hinter den ersten 20), danach die ältesten.
+    $pick=static fn(array $list,string $p): array => array_slice(array_merge(array_filter($list,fn(array $x)=>isset($new[$p.(int)$x['id']])),array_filter($list,fn(array $x)=>!isset($new[$p.(int)$x['id']]))),0,max(1,$limit));
+    $text=t('mail.hello',['name'=>$clean((string)($person['name']??''))])."\n\n".tn('mail.digest.intro',$total,['company'=>$clean((string)($company['legal_name']??'')),'days'=>$days])."\n\n";
+    if($orders)$text.=t('mail.digest.orders').': '.count($orders)."\n";
+    if($regs)$text.=t('mail.digest.regs').': '.count($regs)."\n";
+    if($orders){
+        $text.="\n".t('mail.digest.orders_head')."\n";
+        foreach($pick($orders,'o') as $o){
+            $name=$clean((string)($o['employee_name']??''));$gross=(int)($o['gross_total_cents']??0)>0?(int)$o['gross_total_cents']:(int)($o['total_cents']??0);
+            $text.=yw_order_number((int)$o['id']).': '.($name!==''?$name:t('common.unknown')).' · '.yw_date((string)$o['created_at']).' · '.money($gross).(isset($new['o'.(int)$o['id']])?$mark:'')."\n";
+        }
+        if(count($orders)>$limit)$text.=tn('mail.digest.more',count($orders)-$limit)."\n";
+        $text.="\n".t('mail.remind_order.open').': '.workwearcenter_url($slug.'/freigaben')."\n";
+    }
+    if($regs){
+        $text.="\n".t('mail.digest.regs_head')."\n";
+        foreach($pick($regs,'r') as $r){
+            $name=mb_strimwidth($clean((string)($r['name']??'')),0,32,'…');
+            $text.=($name!==''?$name:t('common.unknown')).': '.yw_date((string)$r['created_at']).(isset($new['r'.(int)$r['id']])?$mark:'')."\n";
+        }
+        if(count($regs)>$limit)$text.=tn('mail.digest.more',count($regs)-$limit)."\n";
+        $text.="\n".t('mail.remind_reg.open').': '.workwearcenter_url($slug.'/mitarbeiter')."\n";
+    }
+    return [tn('mail.digest.subject',$total),$text."\n".t('mail.digest.once')];
+}
+
+/**
+ * 10.15: Sammel-Erinnerung statt einer Mail je Vorgang und verantwortlicher Person. Jede verantwortliche Person
+ * bekommt höchstens eine Mail in 24 Stunden mit allem, was länger als $days Tage auf sie wartet (offene Freigaben
+ * ohne eigene Bestellungen beim Vier-Augen-Prinzip, offene Registrierungen ihrer Firma) – und nur, wenn seit ihrer
+ * letzten Sammel-Erinnerung etwas Neues fällig geworden ist. Die Sofort-Mail bei neuer Bestellung bleibt unverändert.
+ * Rückgabe: Anzahl versendeter Mails.
+ */
 function yw_send_reminders(int $days=3): int {
-    $sent=0;
+    $sent=0;$days=max(1,$days);
+    if(!yw_reminder_digest_ready())return 0;
     try{
-        $q=db()->prepare("SELECT o.id,o.company_id,c.slug,c.shop_name,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o JOIN companies c ON c.id=o.company_id LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.status='pending' AND o.reminder_sent_at IS NULL AND o.created_at<DATE_SUB(NOW(),INTERVAL ? DAY) AND c.active=1 LIMIT 50");
-        $q->execute([$days]);
-        foreach($q as $o){
-            // 10.12: je verantwortlicher Person in deren Sprache
-            notify_company_managers((int)$o['company_id'],fn(array $m)=>[t('mail.remind_order.subject',['order'=>yw_order_number((int)$o['id'])]),
-                t('mail.hello_plain')."\n\n".t('mail.remind_order.body',['order'=>yw_order_number((int)$o['id']),'name'=>$o['employee_name'],'days'=>$days])."\n\n".t('mail.remind_order.open').': '.workwearcenter_url($o['slug'].'/freigaben')."\n\n".t('mail.remind_order.once')]);
-            db()->prepare('UPDATE orders SET reminder_sent_at=NOW() WHERE id=?')->execute([(int)$o['id']]);$sent++;
+        // Ein Zeitpunkt für den ganzen Lauf: was bis $now fällig ist, steht in der Mail; der Merker bekommt genau $now.
+        [$now,$cutoff]=array_map('strval',db()->query('SELECT NOW(),DATE_SUB(NOW(),INTERVAL '.$days.' DAY)')->fetch(PDO::FETCH_NUM));
+        $cq=db()->prepare("SELECT c.id,c.slug,c.legal_name FROM companies c WHERE c.active=1 AND (EXISTS(SELECT 1 FROM orders o WHERE o.company_id=c.id AND o.status='pending' AND o.created_at<=?) OR EXISTS(SELECT 1 FROM employee_accounts p WHERE p.company_id=c.id AND p.registration_status='pending' AND p.anonymized_at IS NULL AND p.created_at<=?)) ORDER BY c.id");
+        $cq->execute([$cutoff,$cutoff]);$companies=$cq->fetchAll();
+    }catch(Throwable $e){error_log('WorkwearCenter reminders: '.$e->getMessage());return 0;}
+    foreach($companies as $company)try{
+        $companyId=(int)$company['id'];
+        // Nur Personen, deren letzte Sammel-Erinnerung mindestens 24 Stunden zurückliegt.
+        $mq=db()->prepare("SELECT ea.id,ea.name,ea.email,ea.language,ea.reminder_digest_at,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.company_id=? AND ea.role='manager' AND ea.active=1 AND ea.registration_status='approved' AND ea.anonymized_at IS NULL AND (ea.employment_start IS NULL OR ea.employment_start<=CURDATE()) AND (ea.employment_end IS NULL OR ea.employment_end>=CURDATE()) AND (ea.reminder_digest_at IS NULL OR ea.reminder_digest_at<=DATE_SUB(NOW(),INTERVAL 24 HOUR)) ORDER BY ea.id");
+        $mq->execute([$companyId]);$managers=$mq->fetchAll();
+        if(!$managers)continue;
+        $oq=db()->prepare("SELECT o.id,o.created_at,o.reminder_sent_at,o.employee_account_id,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending' AND o.created_at<=? ORDER BY o.created_at,o.id");
+        $oq->execute([$companyId,$cutoff]);$orders=$oq->fetchAll();
+        $rq=db()->prepare("SELECT id,name,created_at,reminder_sent_at FROM employee_accounts WHERE company_id=? AND registration_status='pending' AND anonymized_at IS NULL AND created_at<=? ORDER BY created_at,id");
+        $rq->execute([$companyId,$cutoff]);$regs=$rq->fetchAll();
+        $remindedOrders=[];$remindedRegs=[];
+        foreach($managers as $m){
+            $managerId=(int)$m['id'];
+            // Vier-Augen-Prinzip: eigene Bestellungen gibt eine andere verantwortliche Person frei.
+            $mine=yw_other_manager_count($companyId,$managerId)>0?array_values(array_filter($orders,fn(array $o)=>(int)$o['employee_account_id']!==$managerId)):$orders;
+            if(!$mine && !$regs)continue;
+            $last=$m['reminder_digest_at']!==null?(string)$m['reminder_digest_at']:null;
+            $new=[];
+            foreach($mine as $o)if(yw_reminder_is_new($last,(string)$o['created_at'],$o['reminder_sent_at']!==null?(string)$o['reminder_sent_at']:null,$days))$new['o'.(int)$o['id']]=true;
+            foreach($regs as $r)if(yw_reminder_is_new($last,(string)$r['created_at'],$r['reminder_sent_at']!==null?(string)$r['reminder_sent_at']:null,$days))$new['r'.(int)$r['id']]=true;
+            if(!$new)continue; // nichts Neues seit der letzten Sammel-Erinnerung
+            // Atomar vormerken: parallele Läufe (Cronjob, Seitenaufruf) verschicken nie zwei Sammel-Erinnerungen in 24 Stunden.
+            $claim=db()->prepare('UPDATE employee_accounts SET reminder_digest_at=? WHERE id=? AND reminder_digest_at<=>? AND (reminder_digest_at IS NULL OR reminder_digest_at<=DATE_SUB(NOW(),INTERVAL 24 HOUR))');
+            $claim->execute([$now,$managerId,$last]);
+            if($claim->rowCount()!==1)continue;
+            if(!yw_mail_to_person($m,fn(array $p)=>yw_reminder_digest_mail($p,$company,$mine,$regs,$days,$new))){
+                db()->prepare('UPDATE employee_accounts SET reminder_digest_at=? WHERE id=? AND reminder_digest_at=?')->execute([$last,$managerId,$now]);continue;
+            }
+            $sent++;
+            foreach($mine as $o)$remindedOrders[]=(int)$o['id'];
+            foreach($regs as $r)$remindedRegs[]=(int)$r['id'];
         }
-        $r=db()->prepare("SELECT ea.id,ea.company_id,ea.name,c.slug FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.registration_status='pending' AND ea.reminder_sent_at IS NULL AND ea.anonymized_at IS NULL AND ea.created_at<DATE_SUB(NOW(),INTERVAL ? DAY) AND c.active=1 LIMIT 50");
-        $r->execute([$days]);
-        foreach($r as $a){
-            notify_company_managers((int)$a['company_id'],fn(array $m)=>[t('mail.remind_reg.subject',['name'=>$a['name']]),
-                t('mail.hello_plain')."\n\n".t('mail.remind_reg.body',['name'=>$a['name'],'days'=>$days])."\n\n".t('mail.remind_reg.open').': '.workwearcenter_url($a['slug'].'/mitarbeiter')."\n\n".t('mail.remind_reg.once')]);
-            db()->prepare('UPDATE employee_accounts SET reminder_sent_at=NOW() WHERE id=?')->execute([(int)$a['id']]);$sent++;
-        }
-    }catch(Throwable $e){error_log('WorkwearCenter reminders: '.$e->getMessage());}
+        // Merker je Vorgang wie bisher (Grundlage für Personen ohne frühere Sammel-Erinnerung).
+        foreach(['orders'=>$remindedOrders,'employee_accounts'=>$remindedRegs] as $table=>$ids)
+            foreach(array_chunk(array_values(array_unique($ids)),500) as $chunk)
+                db()->exec('UPDATE '.$table.' SET reminder_sent_at=NOW() WHERE reminder_sent_at IS NULL AND id IN ('.implode(',',array_map('intval',$chunk)).')');
+    }catch(Throwable $e){error_log('WorkwearCenter reminders (Firma '.(int)$company['id'].'): '.$e->getMessage());} // eine gestörte Firma hält die anderen nicht auf
     return $sent;
+}
+
+/* ---------- 10.15: Aufbewahrungsfristen (Aktivitätsprotokoll, Mailwarteschlange) ---------- */
+
+const YW_AUDIT_RETENTION_DEFAULT = 24; // Monate
+const YW_AUDIT_RETENTION_MIN = 6;
+const YW_AUDIT_RETENTION_MAX = 120;
+const YW_RETENTION_BATCH = 5000; // Zeilen je Art und Cronlauf: große Tabellen schrumpfen schrittweise, der Lauf bleibt kurz
+
+/** Aufbewahrungsfrist des Aktivitätsprotokolls in Monaten (Einstellung unter System, sonst 24; nie unter 6). */
+function yw_audit_retention_months(?string $value=null): int {
+    $value=$value??current_site_setting('audit_retention_months','');
+    return preg_match('/^\d{1,4}$/D',$value)?max(YW_AUDIT_RETENTION_MIN,min(YW_AUDIT_RETENTION_MAX,(int)$value)):YW_AUDIT_RETENTION_DEFAULT;
+}
+
+/** Index auf audit_log.created_at vorhanden? Ohne ihn (vor update.php) würde jeder Lauf die ganze Tabelle lesen. */
+function yw_audit_created_index_ready(): bool {
+    static $ready=null;
+    if($ready===null){try{$ready=(bool)db()->query("SHOW INDEX FROM audit_log WHERE Key_name='idx_audit_created'")->fetch();}catch(Throwable $e){$ready=false;}}
+    return $ready;
+}
+
+/**
+ * Löscht stapelweise nur Protokoll- und Warteschlangenzeilen (je Art höchstens $batch pro Lauf): Aktivitätsprotokoll
+ * nach der eingestellten Frist (Einträge zu Lexware/Rechnungen und Lohnabzug bleiben), versendete Mails nach 90 Tagen,
+ * fehlgeschlagene nach 180 Tagen. Aufträge, Positionen, Umtausch und Lexware-Belege werden nie berührt.
+ * @return array{audit:int,mail_sent:int,mail_failed:int}
+ */
+function yw_retention_prune(int $batch=YW_RETENTION_BATCH): array {
+    $batch=max(1,min(50000,$batch));$done=['audit'=>0,'mail_sent'=>0,'mail_failed'=>0];
+    $run=static function(string $key,string $sql,array $params) use(&$done): void {
+        try{$q=db()->prepare($sql);$q->execute($params);$done[$key]=$q->rowCount();}
+        catch(Throwable $e){error_log('WorkwearCenter retention '.$key.': '.$e->getMessage());}
+    };
+    // Datensparsamkeit (DSGVO Art. 5): versendete Mails enthalten Namen und Bestelldaten.
+    $run('mail_sent',"DELETE FROM yw_mail_queue WHERE status='sent' AND sent_at<DATE_SUB(NOW(),INTERVAL 90 DAY) ORDER BY sent_at LIMIT ".$batch,[]);
+    $run('mail_failed',"DELETE FROM yw_mail_queue WHERE status='failed' AND created_at<DATE_SUB(NOW(),INTERVAL 180 DAY) ORDER BY id LIMIT ".$batch,[]);
+    if(yw_audit_created_index_ready())
+        $run('audit',"DELETE FROM audit_log WHERE created_at<DATE_SUB(NOW(),INTERVAL ? MONTH) AND action NOT LIKE 'lexware.%' AND action NOT LIKE 'payroll.%' ORDER BY created_at LIMIT ".$batch,[yw_audit_retention_months()]);
+    try{
+        $now=date('Y-m-d H:i:s');$prev=json_decode(current_site_setting('retention_status',''),true);
+        set_site_setting('retention_status',(string)json_encode(['at'=>$now,'last'=>array_sum($done)>0?['at'=>$now]+$done:(is_array($prev['last']??null)?$prev['last']:null)]));
+    }catch(Throwable $e){error_log('WorkwearCenter retention status: '.$e->getMessage());}
+    return $done;
+}
+
+/** Karte „Aufbewahrung“ im Systemstatus: Frist des Aktivitätsprotokolls und letzte Bereinigung. */
+function yw_retention_card(): string {
+    $status=json_decode(current_site_setting('retention_status',''),true);$status=is_array($status)?$status:[];
+    $last=is_array($status['last']??null)?$status['last']:null;$n=static fn($v): string => number_format((int)$v,0,',','.');
+    $when=static fn($v): string => ($ts=strtotime((string)$v))?date('d.m.Y H:i',$ts):'–';
+    $info=!empty($status['at'])?'Letzte Bereinigung: '.e($when($status['at'])).' Uhr':'Noch keine Bereinigung – sie läuft automatisch mit dem Cronjob';
+    if($last)$info.=' · zuletzt gelöscht am '.e($when($last['at']??'')).': '.$n($last['audit']??0).' Protokolleinträge, '.$n($last['mail_sent']??0).' versendete und '.$n($last['mail_failed']??0).' fehlgeschlagene E-Mails';
+    return '<section class="card"><h2>Aufbewahrung</h2><form method="post" class="filter-bar">'.csrf_field().'<input type="hidden" name="action" value="yw_retention"><label>Aktivitätsprotokoll aufbewahren (Monate)<input type="number" name="audit_retention_months" min="'.YW_AUDIT_RETENTION_MIN.'" max="'.YW_AUDIT_RETENTION_MAX.'" step="1" value="'.yw_audit_retention_months().'" required></label><button class="btn primary">Speichern</button></form>'
+        .'<p class="muted">Der Cronjob löscht automatisch Protokolleinträge nach dieser Frist (mindestens '.YW_AUDIT_RETENTION_MIN.' Monate), versendete E-Mails nach 90 und fehlgeschlagene nach 180 Tagen. Aufträge, Rechnungen/Lexware und Lohnabzug-Einträge bleiben immer erhalten.</p><p>'.$info.'.</p></section>';
+}
+
+/** Speichern der Aufbewahrungsfrist (Verwaltung → System). */
+function yw_retention_save_action(): never {
+    $months=filter_var($_POST['audit_retention_months']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>YW_AUDIT_RETENTION_MIN,'max_range'=>YW_AUDIT_RETENTION_MAX]]);
+    if(!is_int($months)){flash('error','Aufbewahrung: bitte eine ganze Zahl zwischen '.YW_AUDIT_RETENTION_MIN.' und '.YW_AUDIT_RETENTION_MAX.' Monaten angeben.');redirect('/admin?tab=system');}
+    set_site_setting('audit_retention_months',(string)$months);
+    audit_log('system.retention_saved','system',null,['months'=>$months]);
+    flash('success','Aufbewahrungsfrist gespeichert: Aktivitätsprotokoll '.$months.' Monate.');
+    redirect('/admin?tab=system');
 }
 
 /* ---------- 10.11: Verlauf lesbar machen ---------- */

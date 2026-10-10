@@ -530,6 +530,11 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_index($pdo,'yw_exchange_requests','idx_yw_exchange_item','`order_item_id`',$changes);
     // ---- Version 10.14: API-Schlüssel auf eine Firma beschränken (NULL = alle Firmen) ----
     schema_add_column($pdo,'yw_api_keys','company_id','INT UNSIGNED NULL',$changes);
+    // 10.15 – Sammel-Erinnerung und Aufbewahrungsfristen
+    // Letzte Sammel-Erinnerung je verantwortlicher Person (höchstens eine in 24 Stunden; NULL = noch keine).
+    schema_add_column($pdo,'employee_accounts','reminder_digest_at','DATETIME NULL',$changes);
+    // Stapelweises Löschen alter Protokolleinträge nach Datum, ohne die ganze Tabelle zu lesen.
+    schema_add_index($pdo,'audit_log','idx_audit_created','`created_at`',$changes);
     schema_mark_version($pdo,'10.14.0',$changes);
 
     return $changes;

@@ -23,7 +23,8 @@ try{
     yw_process_mail_queue(50);
     $handed=yw_process_handover_queue(25);
     yw_cleanup_expired_security_rows();
-    $reminded=yw_send_reminders(3);
+    $pruned=yw_retention_prune(); // 10.15: Aufbewahrungsfristen für Aktivitätsprotokoll und Mailwarteschlange, stapelweise
+    $reminded=yw_send_reminders(3); // 10.15: Sammel-Erinnerung, höchstens eine Mail je verantwortlicher Person in 24 Stunden
     $budgetMails=yw_send_budget_year_mails(500);
     yw_orders_cleanup();
     require_once __DIR__.'/app/modules/shop.php';
@@ -38,7 +39,8 @@ try{
     fwrite(STDOUT,"Mails zum neuen Budgetjahr: ".$budgetMails."\n");
     $probeshops=yw_probeshop_cleanup(); // abgelaufene Probeshops samt Logo löschen (DSGVO)
     fwrite(STDOUT,"Abgelaufene Probeshops gelöscht: ".$probeshops."\n");
-    fwrite(STDOUT,"Erinnerungen an Verantwortliche: ".$reminded."\n");
+    fwrite(STDOUT,"Sammel-Erinnerungen an Verantwortliche: ".$reminded."\n");
+    fwrite(STDOUT,"Aufbewahrung gelöscht: ".$pruned['audit']." Protokolleinträge, ".$pruned['mail_sent']." versendete und ".$pruned['mail_failed']." fehlgeschlagene Mails\n");
     fwrite(STDOUT,"Übergaben an die Auftragsverwaltung: ".$handed."\n");
     fwrite(STDOUT,"WorkwearCenter-Mailwarteschlange und Sicherheitsbereinigung verarbeitet.\n");
 }catch(Throwable $e){
