@@ -263,6 +263,44 @@ $payload=yw_lexware_invoice_payload('be9475f4-ef80-442b-8ab9-3ab8b1a2aeb9',$buil
 test_ok($payload['taxConditions']['taxType']==='net' && $payload['address']['contactId']==='be9475f4-ef80-442b-8ab9-3ab8b1a2aeb9' && mb_strlen($payload['title'])===25 && !isset($payload['remark']) && !isset($payload['voucherStatus']),'Rechnungsentwurf: Nettopreise, Kontakt-ID, Titel ≤ 25 Zeichen, kein Finalisieren');
 test_ok(yw_lexware_month_batches([['id'=>1,'cost_center'=>'B'],['id'=>2,'cost_center'=>''],['id'=>3,'cost_center'=>'B']],'split')===['Kostenstelle: B'=>[1,3],'Ohne Kostenstelle'=>[2]],'je Kostenstelle eine eigene Rechnung');
 
+// 10.15: Sammelrechnung automatisch aufteilen – höchstens N Positionen je Entwurf, ein Auftrag nie geteilt, jeder Auftrag genau einmal
+$lxOrders=[];$lxItems=[];
+foreach([1=>['A',3],2=>['A',2],3=>['B',4],4=>['C',3],5=>['C',3],6=>['C',3],7=>['C',3],8=>['C',3],9=>['C',12],10=>['',2]] as $lxId=>[$lxCc,$lxN]){
+    $lxOrders[]=['id'=>$lxId,'employee_name'=>'','cost_center'=>$lxCc,'shipping_net_cents'=>495,'shipping_rate'=>19.0];
+    for($k=1;$k<=$lxN;$k++)$lxItems[$lxId][]=['product_name'=>'Artikel '.$lxId.'-'.$k,'size'=>'M','quantity'=>1,'unit_net_cents'=>1000,'vat_rate'=>'19.00'];
+}
+$lxById=array_column($lxOrders,null,'id');
+$lxCheck=static function(array $plan,int $max) use ($lxById,$lxItems): bool {
+    $seen=[];
+    foreach($plan['parts'] as $p){
+        if($p['lines']>$max || $p['lines']!==count(yw_lexware_build_lines(array_map(fn($id)=>$lxById[$id],$p['ids']),$lxItems,['grouping'=>$plan['grouping']])['lineItems']))return false;
+        foreach($p['ids'] as $id){if(isset($seen[$id]))return false;$seen[$id]=true;}
+    }
+    return count($seen)+count($plan['too_big'])===count($lxById) && !array_intersect_key($seen,$plan['too_big']);
+};
+$lxPlan=yw_lexware_month_plan($lxOrders,$lxItems,'none',10);
+test_ok($lxCheck($lxPlan,10) && array_column($lxPlan['parts'],'ids')===[[1,2,3],[4,5,6],[7,8,10]] && array_column($lxPlan['parts'],'lines')===[10,10,9],'Aufteilung: ganze Kostenstellen A+B zusammen, zu große Kostenstelle C in aufeinanderfolgende Teile, gleiche Versandposition zählt je Entwurf einmal');
+test_ok(array_column($lxPlan['parts'],'part')===[1,2,3] && array_column($lxPlan['parts'],'of')===[3,3,3] && array_column($lxPlan['parts'],'label')===['Kostenstellen: A, B','Kostenstelle: C','Kostenstelle: C und ohne Kostenstelle'],'Aufteilung: „Teil 1 von 3“ mit den enthaltenen Kostenstellen');
+test_ok($lxPlan['too_big']===[9=>13] && str_contains(yw_lexware_too_big_message(9,13),'WWC-000009 hat allein 13 Positionen'),'Auftrag, der allein zu groß ist, wird nicht verplant und klar gemeldet (Rest wird trotzdem abgerechnet)');
+$lxGrouped=yw_lexware_month_plan($lxOrders,$lxItems,'cost_center',10);
+test_ok($lxCheck($lxGrouped,10) && $lxGrouped['grouping']==='cost_center' && count(array_filter($lxGrouped['parts'],fn($p)=>array_intersect([1,2],$p['ids'])))===1,'Aufteilung mit Zwischenüberschriften: Überschriften zählen als Position, Kostenstelle A bleibt in einem Entwurf');
+$lxSplit=yw_lexware_month_plan($lxOrders,$lxItems,'split',10);
+test_ok($lxCheck($lxSplit,10) && array_map(fn($p)=>[$p['label'],$p['part'],$p['of']],$lxSplit['parts'])===[['Kostenstelle: A',0,0],['Kostenstelle: B',0,0],['Kostenstelle: C',1,2],['Kostenstelle: C',2,2],['Ohne Kostenstelle',0,0]],'je Kostenstelle: nur die zu große Kostenstelle wird in „Teil 1 von 2“ geteilt');
+$lxNoCc=yw_lexware_month_plan(array_map(fn($o)=>['cost_center'=>'']+$o,$lxOrders),$lxItems,'none',10);
+test_ok($lxCheck($lxNoCc,10) && array_unique(array_column($lxNoCc['parts'],'label'))===[''] && count($lxNoCc['parts'])>1 && $lxNoCc['parts'][0]['part']===1,'ohne Kostenstellen: aufeinanderfolgende Teile nach Auftragsnummer, nur „Teil x von y“');
+$lxFit=yw_lexware_month_plan($lxOrders,$lxItems,'none');
+test_ok(count($lxFit['parts'])===1 && $lxFit['parts'][0]['part']===0 && $lxFit['parts'][0]['label']==='' && count($lxFit['parts'][0]['ids'])===10 && !$lxFit['too_big'],'passt alles in eine Rechnung, bleibt es bei einem ungeteilten Entwurf');
+test_ok(yw_lexware_plan_hash($lxPlan,'2025-10','none')!==yw_lexware_plan_hash(yw_lexware_month_plan(array_slice($lxOrders,1),$lxItems,'none',10),'2025-10','none'),'Vorschau-Prüfsumme ändert sich, sobald sich die Aufträge ändern');
+$lxMeta=yw_lexware_month_meta(['shop_name'=>'Grossbau Shop'],'2025-10',107,'Kostenstellen: A, B','none',2,7);
+$lxPay=yw_lexware_invoice_payload('be9475f4-ef80-442b-8ab9-3ab8b1a2aeb9',[],$lxMeta+['settings'=>['title'=>'Rechnung','introduction'=>'','remark'=>'']]);
+test_ok($lxPay['title']==='Rechnung (Teil 2 von 7)' && str_contains($lxPay['introduction'],'Teil 2 von 7: 107 Aufträge') && str_contains($lxPay['introduction'],'Kostenstellen: A, B'),'Teilrechnung: „Teil 2 von 7“ in Titel und Einleitung');
+test_ok(yw_lexware_invoice_payload('be9475f4-ef80-442b-8ab9-3ab8b1a2aeb9',[],$lxMeta+['settings'=>['title'=>'Arbeitskleidung Rechnung','introduction'=>'','remark'=>'']])['title']==='Arbeitskleidung Rechnung','Teilrechnung: zu langer Titel bleibt unverändert (höchstens 25 Zeichen), Teil steht in der Einleitung');
+$lxCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/lexware.php');
+test_ok(str_contains($lxCode,"SET status='creating',last_error=NULL WHERE id=? AND status IN ('planned','failed')") && str_contains($lxCode,"SET status='failed',last_error=? WHERE id=? AND status='creating'"),'Teil wird nur von einer Anfrage gesendet; sicherer Fehler bleibt „fehlgeschlagen“ mit denselben Aufträgen (erneut sendbar, keine Doppelanlage)');
+test_ok(str_contains($lxCode,"\$doc['status']==='creating' && strtotime((string)\$doc['updated_at'])>=time()-300)throw") && !str_contains($lxCode,'Bitte „Je Kostenstelle eine eigene Rechnung“ wählen'),'Entwurf im Versand kann nicht freigegeben werden; alter Hinweis „je Kostenstelle wählen“ entfernt');
+$lxMig=(string)file_get_contents(dirname(__DIR__).'/app/migrations.php');
+test_ok(preg_match("/\/\/ 10\.15 – Lexware[^\n]*\n(?:[^\n]*\n)*?\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_no'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_count'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','line_grouping'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.14\.0'/u",$lxMig)===1,'Datenbank-Update 10.15: Teil-Spalten idempotent vor der Versionsmarke 10.14.0');
+
 // 10.11: Lohnabzug-Export
 $rows=yw_payroll_aggregate([
     ['id'=>5,'employee_account_id'=>7,'invite_id'=>1,'employee_total_cents'=>900,'name'=>'Zoe Berg','employee_number'=>'P-7','cost_center'=>'','delivery_snapshot_json'=>'{"cost_center":"KST9"}'],

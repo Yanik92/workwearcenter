@@ -552,6 +552,12 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_index($pdo,'yw_handover','idx_yw_handover_done','`acknowledged_at`,`delivered_at`',$changes);
     // Lohnabzug: Freigabezeitpunkt bzw. (ohne Freigabe) Bestellzeitpunkt im Monat je Firma.
     schema_add_index($pdo,'orders','idx_yw_orders_payroll','`company_id`,`status`,`decided_at`,`created_at`',$changes);
+    // 10.15 – Lexware: Sammelrechnungen automatisch in Entwürfe mit höchstens 300 Positionen aufteilen
+    // part_no/part_count: „Teil 2 von 3“ (NULL = ungeteilt); line_grouping: Zwischenüberschriften je Kostenstelle,
+    // damit ein fehlgeschlagener Teil später mit denselben Aufträgen genauso erneut gesendet wird.
+    schema_add_column($pdo,'yw_lexware_documents','part_no','SMALLINT UNSIGNED NULL',$changes);
+    schema_add_column($pdo,'yw_lexware_documents','part_count','SMALLINT UNSIGNED NULL',$changes);
+    schema_add_column($pdo,'yw_lexware_documents','line_grouping','VARCHAR(16) NULL',$changes);
     schema_mark_version($pdo,'10.14.0',$changes);
 
     return $changes;
