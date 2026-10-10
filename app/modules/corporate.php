@@ -100,6 +100,9 @@ function yw_schema_probes(): array {
             'SELECT language FROM employee_accounts LIMIT 0',
             'SELECT shop_languages FROM companies LIMIT 0',
             'SELECT language FROM yw_mail_queue LIMIT 0',
+            // 10.15: Sammel-Erinnerung an Verantwortliche, Vier-Augen-Schutz
+            'SELECT reminder_digest_at FROM employee_accounts LIMIT 0',
+            'SELECT managers_can_appoint FROM companies LIMIT 0',
         ];
 }
 
