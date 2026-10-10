@@ -1,6 +1,6 @@
 # Go-Live-Checkliste WorkwearCenter (Großkunde)
 
-Stand: Version 10.15.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was hier steht, kann das Programm nicht selbst einstellen – es hängt am Hoster, an der config.php oder an deiner Einrichtung.
+Stand: Version 10.17.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was hier steht, kann das Programm nicht selbst einstellen – es hängt am Hoster, an der config.php oder an deiner Einrichtung.
 
 ## 1. Hoster / Server (einmalig, ggf. Hoster-Support fragen)
 
@@ -33,7 +33,8 @@ Stand: Version 10.15.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was
 - [ ] **`app_secret`** setzen: zufällige 64 Zeichen, z. B. `php -r "echo bin2hex(random_bytes(32));"`.
 - [ ] `private_dir` möglichst **außerhalb** des Webroots (Lieferantenlisten mit Einkaufspreisen).
 - [ ] `install_key` leeren; `install.php` kann nach der Einrichtung gelöscht werden.
-- [ ] Testmail aus Verwaltung → System senden und ankommen lassen.
+- [ ] Testmail aus Verwaltung → System → Schnittstellen → E-Mail-Versand senden und ankommen lassen.
+- [ ] Auftragszentrale und (optional) Lexware Office unter System → Schnittstellen verbinden; beide Karten zeigen „Aktiv“ bzw. „Verbunden“.
 
 ## 4. Zugänge
 

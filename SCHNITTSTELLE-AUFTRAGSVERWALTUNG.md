@@ -11,14 +11,14 @@ Der Datensatz wird auch dann erzeugt, wenn die Schnittstelle noch ausgeschaltet 
 Die Auftragszentrale hat ein eigenes Empfangsprotokoll (`channel.php`), das das WorkwearCenter direkt spricht:
 
 1. In der Auftragszentrale unter **Verkaufskanäle → WorkwearCenter** auf **„Schlüssel erzeugen“** klicken und den Schlüssel kopieren. Er wird nur einmal angezeigt.
-2. In der `config.php` des WorkwearCenters eintragen:
+2. Im WorkwearCenter unter **System → Schnittstellen → Auftragszentrale** den Schlüssel einfügen, „Übergabe einschalten“ anhaken, das eigene Admin-Passwort bestätigen und speichern (ab 10.17). Die Adresse ist vorausgefüllt. Die Verbindung wird sofort geprüft, gesammelte Aufträge gehen danach automatisch raus.
+3. Alternativ wie bisher in der `config.php` (hat dann Vorrang):
    ```php
    'handover_mode'   => 'push',
    'handover_format' => 'auftragszentrale',
    'handover_url'    => 'https://auftraege.yanik-textildruck.de/channel.php',
    'handover_secret' => 'DER-KOPIERTE-SCHLÜSSEL',
    ```
-3. Im WorkwearCenter-Admin unter **„Übergabe“** auf **„Verbindung testen“** klicken.
 
 Danach erscheint jede freigegebene Bestellung automatisch als Auftrag „YT-JJJJ-NNNNN“ mit der Quelle „WorkwearCenter“ in der Auftragszentrale. Die YT-Nummer wird im WorkwearCenter beim Auftrag angezeigt. Artikel, Größen, Farben und Veredelung landen in den Auftragsfeldern. Mitarbeiter, Kostenstelle, Freigabe, Lieferadresse und Beträge stehen in den Notizen. Der vollständige Originaldatensatz liegt zusätzlich im Auftrag (`order.workwearcenter`, Schema v1 unten).
 
@@ -48,7 +48,7 @@ Läuft die Auftragsverwaltung **auf demselben Server bzw. derselben Datenbank**,
 
 Schlüssel erzeugen: `php -r "echo bin2hex(random_bytes(32));"`
 
-Danach im Admin unter **„Übergabe“** auf **„Verbindung testen“** klicken. Ältere, bereits freigegebene Aufträge (vor Version 10) lassen sich dort mit einem Klick nachträglich für die Übergabe vorbereiten.
+Danach im Admin unter **System → Schnittstellen** auf **„Verbindung testen“** klicken. Für `pull` empfiehlt sich ab 10.17 statt `handover_api_token` ein API-Zugang mit dem Recht `orders:write` (System → Schnittstellen → Zugänge für andere Systeme); `/api/v1/auftraege` nimmt beide an. Ältere, bereits freigegebene Aufträge (vor Version 10) lassen sich dort mit einem Klick nachträglich für die Übergabe vorbereiten.
 
 Für zuverlässige, zeitnahe Übergaben sollte der Cronjob `cron.php` alle 5 Minuten laufen (er erledigt auch den Mailversand). Ohne Cron wird nach Seitenaufrufen nachgearbeitet.
 

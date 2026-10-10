@@ -95,6 +95,11 @@ $config['handover_url']='https://auftraege.example.org/eingang';
 test_ok(yw_handover_config_issues()===[],'HTTPS-Übergabe-Adresse mit langem Schlüssel wird akzeptiert');
 $config['handover_secret']='kurz';
 test_ok(yw_handover_config_issues()!==[],'zu kurzer Übergabe-Schlüssel wird abgelehnt');
+// 10.17: config.php hat Vorrang vor der Einrichtung in der Verwaltung; ohne Angabe bleibt das bisherige Format
+test_ok(yw_az_from_config() && yw_handover_config()['source']==='config','handover_mode push in der config.php gilt (nur Anzeige in der Verwaltung)');
+unset($config['handover_format']);test_ok(yw_handover_config()['format']==='workwearcenter','config.php ohne handover_format bleibt beim Schema v1');
+$config['handover_mode']='off';test_ok(!yw_az_from_config(),'handover_mode off: Einrichtung in der Verwaltung möglich');
+$config['handover_mode']='push';$config['handover_secret']=str_repeat('a',40);
 
 // 10.1: Übersetzung in das Format der Auftragszentrale
 $v1=['order'=>['number'=>'WWC-000009','note'=>'Eilt','approved_by'=>['name'=>'Maria'],'approved_at'=>'2026-09-26T10:00:00+02:00','totals'=>['net_cents'=>1000,'gross_cents'=>1190,'company_share_cents'=>1190,'employee_share_cents'=>0,'shipping'=>['gross_cents'=>0]]],'customer'=>['legal_name'=>'Musterbau GmbH','slug'=>'musterbau','shop_name'=>'Shop'],'employee'=>['name'=>'Max','email'=>'max@musterbau.de','cost_center'=>'120'],'delivery'=>['mode'=>'delivery','address_lines'=>['Musterbau GmbH','Weg 1']],'items'=>[['name'=>'Polo','sku'=>'P1','quantity'=>2,'color'=>'Navy','size'=>'L','unit_net_cents'=>500,'unit_gross_cents'=>595,'vat_rate'=>19,'decorations'=>[['position_label'=>'Brust links','method_label'=>'Stick','text'=>'Logo']]]]];

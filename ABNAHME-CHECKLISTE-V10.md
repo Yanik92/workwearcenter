@@ -23,7 +23,7 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 
 ## Übergabe an die Auftragsverwaltung (neu in 10)
 
-- [ ] `handover_*` in der config.php eingetragen (sobald die Auftragsverwaltung bereit ist).
+- [ ] Auftragszentrale unter System → Schnittstellen verbunden (oder `handover_*` in der config.php), „Verbindung testen“ grün.
 - [ ] Admin → Übergabe → „Verbindung testen“ erfolgreich.
 - [ ] Testbestellung freigegeben → erscheint in der Auftragsverwaltung, Referenznummer kommt zurück.
 - [ ] Ausfall simuliert (Auftragsverwaltung kurz nicht erreichbar) → Auftrag wird automatisch nachgeliefert.
