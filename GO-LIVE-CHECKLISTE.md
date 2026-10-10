@@ -51,7 +51,7 @@ Stand: Version 10.15.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was
 - [ ] Kollektion, Ausstattungsprofile, Budgets und Mengenlimits festlegen. Produktbilder (vorne, hinten, Ärmel) und Druckzonen kommen automatisch; einmal in der Vorschau („Shop ansehen“) prüfen.
 - [ ] Mitarbeitende per **CSV-Import** anlegen. Einrichtungslinks gelten 7 Tage; der Cronjob verschickt sie nach und nach.
 - [ ] **Probelauf:** eine Testperson bestellt, Verantwortliche/r gibt frei (auch per Mail-Link), Auftrag kommt in der Auftragszentrale an, Status kommt zurück, Umtausch einmal durchspielen. Danach Testbestellung stornieren.
-- [ ] **Lexware:** Bei vielen Bestellungen je Monat „je Kostenstelle eine Rechnung“ wählen (eine Rechnung darf höchstens 300 Positionen haben).
+- [ ] **Lexware:** API-Schlüssel eintragen und Verbindung testen. Große Monats-Sammelrechnungen (mehr als 300 Positionen) teilt das System selbst in mehrere Entwürfe auf; die Vorschau zeigt vorher, welche entstehen.
 
 ## 6. Rechtliches (vor dem ersten echten Auftrag)
 

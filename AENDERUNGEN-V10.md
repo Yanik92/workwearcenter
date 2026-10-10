@@ -419,3 +419,40 @@ Vor dem ersten Großkunden wurde das System in drei Richtungen geprüft: Zugriff
 - Datenbankausfall zeigt einen verständlichen Hinweis statt einer leeren Seite.
 - Volle Festplatte hinterlässt keine abgeschnittenen Uploads.
 - Einrichtungslinks neuer Konten gelten 7 Tage (große Importe).
+
+## 10.15.0 – Produktbilder automatisch, Vier-Augen-Schutz, Großkunden-Tauglichkeit
+**Nach dem Hochladen unbedingt `/update.php` ausführen** (neue Spalten und Indizes). Bis dahin zeigt die Verwaltung den roten Hinweis „Datenbank-Update fehlt“ und der Firmenshop „Update erforderlich“.
+
+**Produktbilder kommen automatisch aus dem Daiber-Shop**
+- Nach dem Anlegen von Katalogprodukten lädt das System die Bilder jeder Farbe selbst von daiber.shop: vorne, hinten und Ärmel (Ärmel und Rücken nur bei Oberteilen bzw. Hosen). Kein Login, keine Dateinamen, kein Hochladen nötig.
+- Der Cronjob ergänzt alle 5 Minuten, was noch fehlt – auch für alle schon vorhandenen Produkte (Rückseiten- und Ärmelfotos inklusive). Druckzonen werden danach automatisch erkannt.
+- Katalog → Produktbilder: Knopf „Fehlende Bilder jetzt laden“, Schalter „Automatisch laden“ und Stand des letzten Abgleichs; beim Artikel „Bilder von Daiber laden“ für einzelne Artikel.
+- Eigene Fotos haben immer Vorrang. Artikel, die der Daiber-Shop nicht führt, werden genannt (dann wie bisher hochladen).
+- Das Logo am linken Ärmel erscheint auf dem Ärmelfoto, das rechte bleibt vorne – zwei Ärmel-Logos liegen nie übereinander.
+- Sicher: Verbindungen nur per HTTPS zu den drei festen Daiber-Adressen, nur echte Bilder werden gespeichert (verkleinert auf 1.400 px), bei Störungen pausiert der Abgleich 15 Minuten.
+
+**Vier-Augen-Schutz für Verantwortliche**
+- Verantwortliche können andere Verantwortliche nicht herabstufen, sperren, löschen oder deren Ein-/Austritt ändern – auch nicht per CSV oder manipuliertem Formular. Das macht nur die Verwaltung.
+- Neue Einstellung je Firma (Kundenakte → Regeln): „Verantwortliche dürfen weitere Verantwortliche ernennen“. Standard: aus.
+- Eigene Bestellungen und Umtausch-Anträge gibt immer eine andere verantwortliche Person frei (im Shop und per Mail-Link). Gibt es nur eine, darf sie selbst freigeben; das wird protokolliert.
+- Rollenänderungen und abgewiesene Versuche stehen 14 Tage im Dashboard unter „Heute zu erledigen“ und in der Kundenakte.
+- Menü-Zähler, Startseite und Freigabeseite zählen nur, was wirklich auf die eigene Entscheidung wartet.
+
+**Erinnerungen und Aufbewahrung**
+- Statt einer Mail je offener Bestellung bekommen Verantwortliche höchstens einmal am Tag eine Sammel-Erinnerung (offene Freigaben und Registrierungen, neue markiert, in ihrer Sprache) – und nur, wenn seit der letzten etwas Neues dazugekommen ist.
+- Das Aktivitätsprotokoll wird nach 24 Monaten automatisch gelöscht (einstellbar 6–120 Monate unter System → Systemstatus), versendete Mails nach 90, fehlgeschlagene nach 180 Tagen. Aufträge, Lexware- und Lohnabzug-Einträge bleiben immer.
+- Anfrageformular: Die Eingangsbestätigung geht höchstens einmal in 24 Stunden an dieselbe Adresse (auch mit +Zusatz oder Gmail-Punkten) und höchstens 30-mal je Stunde. Die Anfrage selbst kommt immer bei Yanik an.
+
+**Lexware**
+- Monats-Sammelrechnungen mit mehr als 300 Positionen werden automatisch in mehrere Entwürfe aufgeteilt (nach ganzen Kostenstellen, eine allein zu große Kostenstelle in „Teil 1 von 3“). Die Vorschau zeigt vorher genau, welche Entwürfe entstehen.
+- Ein Auftrag steht immer komplett in einem Entwurf und wird genau einmal berechnet. Scheitert ein Teil, wird nur dieser mit „Erneut senden“ nachgeholt.
+- Viele Entwürfe (z. B. 31 bei „je Kostenstelle“) gehen mit einem Klick raus; die Seite sendet den Rest selbst weiter.
+
+**Großkunden (1.500 Mitarbeitende, 20.000 Aufträge)**
+- Kundenakte „Kollektion & Design“: kompakte Artikelliste mit Suche, Kategorie und Seiten; das Bearbeitungsformular öffnet sich nur für den gewählten Artikel (Grossbau: 3,1 MB → 113 KB).
+- „Regeln & Budget“: Produktfreigaben je Profil öffnen sich auf Klick, mit Seiten und Sammelaktionen (926 KB → 131 KB).
+- Nach dem Speichern bleibt man in der Kundenakte und im Firmenshop unter „Mitarbeiter“ auf derselben Seite mit derselben Suche; die Rückmeldung steht direkt am bearbeiteten Eintrag.
+- Schneller: Verwaltungs-Startseite etwa 3×, Übergabe etwa 4×, Kundenakte etwa 2× so schnell; die Datenbankprüfung läuft nicht mehr bei jedem Seitenaufruf vollständig. Neue Indizes für Mail- und Übergabewarteschlange und Lohnabzug.
+
+**Übersetzungen**
+- Englisch, Polnisch, Türkisch, Russisch und Rumänisch gegengelesen und vereinheitlicht (z. B. Anrede in Mails, Mengen- und Budgettexte, Passwort-Seiten).
