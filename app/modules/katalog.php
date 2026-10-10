@@ -235,7 +235,8 @@ function yw_katalog_image_index(): array {
     $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir,FilesystemIterator::SKIP_DOTS));
     foreach($it as $file){
         if(!$file->isFile())continue;
-        $name=strtolower($file->getFilename());
+        // Schlüssel: Pfad im Bilderordner (gleichnamige Dateien in Unterordnern, z. B. daiber/, überschreiben sich nicht)
+        $name=strtolower(ltrim(substr(str_replace('\\','/',$file->getPathname()),strlen(str_replace('\\','/',$dir))),'/'));
         if(!preg_match('/\.(jpe?g|png|webp)$/',$name))continue;
         $index[$name]=$file->getPathname();
     }
@@ -341,8 +342,9 @@ function yw_katalog_image_map(bool $fresh=false): array {
         $known[yw_katalog_color_key((string)$sku,(string)$color)]=true;
         if(!empty($c['img']))$known[yw_katalog_image_key((string)$c['img'])]=true;
     }
-    $map=[];$rank=[];$unknown=[];$views=['back'=>[],'sleeve'=>[]];
+    $map=[];$rank=[];$unknown=[];$views=['back'=>[],'sleeve'=>[]];$viewFrom=[];
     foreach(yw_katalog_image_index() as $name=>$path){
+        $daiber=str_starts_with($name,'daiber/'); // automatisch geladene Bilder: eigene Fotos haben Vorrang
         $parts=explode('_',yw_katalog_image_key($name));$hit=null;
         for($n=count($parts);$n>=2;$n--){$try=implode('_',array_slice($parts,0,$n));if(isset($known[$try])){$hit=$try;break;}}
         if($hit===null&&$catalog){
@@ -352,9 +354,9 @@ function yw_katalog_image_map(bool $fresh=false): array {
         }else $rest=implode('_',array_slice($parts,$n));
         if($hit===null){$unknown[]=$name;continue;}
         // Zusatz hinter Artikel_Farbe: Rückansicht (back, rueck, hinten) bzw. Ärmel/Seite (side, sleeve, arm, seite)
-        if(preg_match('/(^|_)(back|rueck|ruecken|hinten|rear)(_|$)/',$rest)){$views['back'][$hit]??=$path;continue;}
-        if(preg_match('/(^|_)(side|sleeve|arm|aermel|seite)(_|$)/',$rest)){$views['sleeve'][$hit]??=$path;continue;}
-        $r=[count($parts)-$n,strlen($name)];
+        $view=preg_match('/(^|_)(back|rueck|ruecken|hinten|rear)(_|$)/',$rest)?'back':(preg_match('/(^|_)(side|sleeve|arm|aermel|seite)(_|$)/',$rest)?'sleeve':null);
+        if($view!==null){if(!isset($views[$view][$hit])||($viewFrom[$view][$hit]&&!$daiber)){$views[$view][$hit]=$path;$viewFrom[$view][$hit]=$daiber;}continue;}
+        $r=[$daiber?1:0,count($parts)-$n,strlen(basename($name))];
         if(!isset($rank[$hit])||$r<$rank[$hit]){$rank[$hit]=$r;$map[$hit]=$path;}
     }
     sort($unknown);
@@ -544,7 +546,7 @@ function yw_admin_katalog_action(string $action): void {
     if($action==='katalog_images_rename'){
         $catalog=yw_katalog_load();$index=yw_katalog_image_index();$done=0;$bad=[];
         foreach((array)($_POST['rename']??[]) as $row){
-            $to=trim((string)($row['to']??''));$file=strtolower(basename((string)($row['file']??'')));
+            $to=trim((string)($row['to']??''));$file=strtolower(str_replace('\\','/',trim((string)($row['file']??'')))); // nur Schlüssel in den Bilderindex
             if($to===''||!isset($index[$file])||!$catalog)continue;
             $guess=yw_katalog_guess_key(explode('_',yw_katalog_image_key($to)),$catalog);
             if($guess===null){$bad[]=$to;continue;}
@@ -565,15 +567,16 @@ function yw_admin_katalog_action(string $action): void {
             $sku=strtoupper(trim((string)($_POST['sku']??'')));
             if($sku!==''&&!isset($catalog['articles'][$sku]))throw new RuntimeException('Artikel '.$sku.' ist nicht im Katalog.');
             $back=$sku!==''?'/admin?tab=katalog&artikel='.rawurlencode($sku):'/admin?tab=katalog#bilder';
-            if($ajax&&trim((string)($_POST['finish']??''))!==''){flash('success',mb_substr(trim((string)$_POST['finish']),0,1500));$json(['ok'=>true]);}
+            if($ajax&&trim((string)($_POST['finish']??''))!==''){flash(($_POST['finish_type']??'')==='error'?'error':'success',mb_substr(trim((string)$_POST['finish']),0,1500));$json(['ok'=>true]);}
+            if($ajax)session_write_close(); // andere Fenster der Verwaltung nicht für die Dauer des Abgleichs blockieren
             $r=yw_daiber_fetch_missing($ajax?15.0:25.0,$sku!==''?[$sku]:null,$sku!==''&&($_POST['all']??'')==='1');
             if($r['loaded'])audit_log('katalog.daiber_images','system',null,['sku'=>$sku,'loaded'=>$r['loaded'],'assigned'=>$r['assigned']]);
         }catch(RuntimeException $e){
             if(!$ajax)throw $e;
             $json(['ok'=>false,'error'=>$e->getMessage()]);
         }
-        if($ajax)$json(['ok'=>true,'loaded'=>$r['loaded'],'assigned'=>$r['assigned'],'remaining'=>$r['remaining'],'notfound'=>$r['notfound'],'offline'=>$r['offline'],'message'=>yw_daiber_fetch_message($r)]);
-        flash($r['offline']&&!$r['loaded']?'error':'success',yw_daiber_fetch_message($r));redirect($back);
+        if($ajax)$json(['ok'=>true,'loaded'=>$r['loaded'],'assigned'=>$r['assigned'],'remaining'=>$r['remaining'],'notfound'=>$r['notfound'],'offline'=>$r['offline'],'busy'=>$r['busy'],'message'=>yw_daiber_fetch_message($r)]);
+        flash(($r['offline']||$r['busy'])&&!$r['loaded']?'error':'success',yw_daiber_fetch_message($r));redirect($back);
     }
     if($action==='katalog_daiber_settings'){
         $on=($_POST['katalog_daiber_auto']??'')==='1';

@@ -250,9 +250,10 @@ function yw_zones_sanitize(array $input): array {
 
 /** Findet für eine Position die Ansicht und Zone: eigene Zonen des Produkts vor Standard. */
 function yw_zone_for(array $zones,string $position,array $availableViews): ?array {
-    // Gibt es ein Foto der passenden Ansicht (Ärmel → Ärmelansicht, Rücken → Rückansicht), dort zeigen
-    $preferredView=yw_zone_default_view($position);
-    if(isset($zones[$preferredView][$position])&&in_array($preferredView,$availableViews,true))return ['view'=>$preferredView,'zone'=>$zones[$preferredView][$position]];
+    // Gibt es ein Foto der passenden Ansicht, dort zeigen: Rücken → Rückansicht; das Ärmelfoto (Daiber-Seitenansicht)
+    // zeigt den linken Ärmel – der rechte bleibt auf der Vorderansicht, damit zwei Ärmel-Logos nicht übereinander liegen
+    $preferredView=$position==='sleeve_left'?'sleeve':(yw_zone_default_view($position)==='back'?'back':null);
+    if($preferredView!==null&&isset($zones[$preferredView][$position])&&in_array($preferredView,$availableViews,true))return ['view'=>$preferredView,'zone'=>$zones[$preferredView][$position]];
     foreach($zones as $view=>$list){
         if(isset($list[$position]) && in_array($view,$availableViews,true))return ['view'=>$view,'zone'=>$list[$position]];
     }

@@ -347,21 +347,33 @@
       if (running) return;
       running = true;
       buttons.forEach(function (b) { b.disabled = true; });
-      var loaded = 0, assigned = 0, rounds = 0, notfound = [], offline = false, error = '';
+      var loaded = 0, assigned = 0, rounds = 0, idle = 0, lastRemaining = -1, notfound = [], offline = false, error = '';
       say('Bilder werden aus dem Daiber-Shop geladen …');
       function finish() {
         var msg = error ? error : (offline && !loaded ? 'Der Daiber-Shop ist gerade nicht erreichbar. Der Cronjob versucht es in 15 Minuten erneut.' : loaded + ' Bild(er) aus dem Daiber-Shop geladen, ' + assigned + ' Produkt(e) zugeordnet.');
         if (notfound.length) msg += ' Im Daiber-Shop nicht gefunden: ' + notfound.slice(0, 10).join(', ') + ' – diese Bilder bitte selbst hochladen.';
         say(msg + ' Seite wird aktualisiert …');
-        post({ finish: msg }).catch(function () {}).then(function () { window.location.href = window.location.pathname + window.location.search.replace(/([?&])bilder=laden(&|$)/, '$1').replace(/[?&]$/, '') + (form.id === 'katalog-fetch-all' ? '#bilder' : ''); });
+        post({ finish: msg, finish_type: error || (offline && !loaded) ? 'error' : 'success' }).catch(function () {}).then(function () {
+          var target = window.location.pathname + window.location.search.replace(/([?&])bilder=laden(&|$)/, '$1').replace(/[?&]$/, '');
+          if (form.id === 'katalog-fetch-all') window.location.hash = 'bilder';
+          // Nur der Anker ändert sich: dann neu laden, sonst springt der Browser nur zur Stelle
+          if (target === window.location.pathname + window.location.search) window.location.reload(); else window.location.href = target;
+        });
       }
       function next() {
         rounds++;
         post({}).then(function (j) {
           if (!j.ok) { error = j.error || 'Bilder konnten nicht geladen werden.'; finish(); return; }
+          if (j.busy) {
+            // Cronjob oder anderes Fenster gleicht gerade ab: kurz warten und erneut versuchen
+            if (rounds >= 80) { error = j.message; finish(); return; }
+            say('Gerade läuft schon ein Abgleich (Cronjob) – es geht gleich weiter …'); setTimeout(next, 8000); return;
+          }
           loaded += j.loaded; assigned += j.assigned; offline = j.offline;
           (j.notfound || []).forEach(function (s) { if (notfound.indexOf(s) < 0) notfound.push(s); });
-          if (j.remaining > 0 && !j.offline && rounds < 80) { say(loaded + ' Bild(er) geladen, ' + assigned + ' Produkt(e) zugeordnet – noch ' + j.remaining + ' Artikel …'); next(); }
+          // Ohne Fortschritt (nichts geladen, nicht weniger offen) nach drei Runden aufhören – der Cronjob macht weiter
+          idle = (j.loaded === 0 && lastRemaining >= 0 && j.remaining >= lastRemaining) ? idle + 1 : 0; lastRemaining = j.remaining;
+          if (j.remaining > 0 && !j.offline && rounds < 80 && idle < 3) { say(loaded + ' Bild(er) geladen, ' + assigned + ' Produkt(e) zugeordnet – noch ' + j.remaining + ' Artikel …'); next(); }
           else finish();
         }).catch(function () { error = 'Die Verbindung wurde unterbrochen. Bereits geladene Bilder sind gespeichert, der Rest folgt über den Cronjob.'; finish(); });
       }

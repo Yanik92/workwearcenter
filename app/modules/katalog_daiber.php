@@ -38,8 +38,11 @@ function yw_daiber_url_allowed(string $url): bool {
 /** cURL-Abruf vorbereiten; der Inhalt landet in $slot['body'], bei Überschreiten von $maxBytes wird abgebrochen ($slot['big']). */
 function yw_daiber_handle(string $url,int $maxBytes,array &$slot): CurlHandle {
     $slot=['body'=>'','big'=>false];
+    // Höchstens bis kurz nach dem Zeitbudget des laufenden Abgleichs warten (sonst 25 s)
+    $deadline=(float)($GLOBALS['yw_daiber_deadline']??0);
+    $timeout=$deadline>0?max(5,min(25,(int)ceil($deadline-microtime(true))+8)):25;
     $ch=curl_init($url);
-    curl_setopt_array($ch,[CURLOPT_FOLLOWLOCATION=>false,CURLOPT_CONNECTTIMEOUT=>6,CURLOPT_TIMEOUT=>25,CURLOPT_ENCODING=>'',
+    curl_setopt_array($ch,[CURLOPT_FOLLOWLOCATION=>false,CURLOPT_CONNECTTIMEOUT=>min(6,$timeout),CURLOPT_TIMEOUT=>$timeout,CURLOPT_ENCODING=>'',
         CURLOPT_USERAGENT=>'WorkwearCenter/'.app_version().' (Bildabgleich Daiber-Fachhandel; +https://'.workwearcenter_domain().')',
         CURLOPT_HTTPHEADER=>['Accept: text/html,application/json,image/jpeg,image/png,image/webp;q=0.9','Accept-Language: de-DE,de;q=0.9'],
         CURLOPT_WRITEFUNCTION=>static function($ch,string $chunk) use(&$slot,$maxBytes): int{if(strlen($slot['body'])+strlen($chunk)>$maxBytes){$slot['big']=true;return 0;}$slot['body'].=$chunk;return strlen($chunk);}]);
@@ -71,7 +74,8 @@ function yw_daiber_get(string $url,int $maxBytes): ?string {
                 foreach((array)($meta['wrapper_data']??[]) as $h){if(preg_match('~^HTTP/\S+\s+(\d{3})~',(string)$h,$m))$status=(int)$m[1];elseif(preg_match('~^Location:\s*(\S+)~i',(string)$h,$m))$location=$m[1];}
             }
         }
-        if($failed||$status>=500||$status===429){yw_daiber_pause();return null;}
+        // Pause nur, wenn der Shop selbst gestört ist; ein einzelnes fehlerhaftes Bild hält den Abgleich nicht an
+        if($failed||$status>=500||$status===429){if(strtolower((string)parse_url($url,PHP_URL_HOST))==='www.daiber.shop')yw_daiber_pause();return null;}
         if($status>=300&&$status<400&&$location!==''){$url=preg_match('~^https?://~i',$location)?$location:YW_DAIBER_SHOP.'/'.ltrim($location,'/');continue;}
         return $status===200?$body:null;
     }
@@ -172,13 +176,19 @@ function yw_daiber_article(string $sku): ?array {
     if(is_array($cached)&&(int)($cached['t']??0)>time()-YW_DAIBER_CACHE_DAYS*86400)return $cached;
     $url=is_array($cached)&&!empty($cached['url'])&&yw_daiber_url_allowed((string)$cached['url'])?(string)$cached['url']:null;
     $html=$url!==null?yw_daiber_get($url,YW_DAIBER_MAX_HTML):null;
+    $t=time();
     if($html===null){
         if(yw_daiber_paused())return null;
         $url=yw_daiber_find_article_url($sku);
-        if($url===null)return null;
-        if($url!==''){$html=yw_daiber_get($url,YW_DAIBER_MAX_HTML);if($html===null)return null;}
+        if($url===null){
+            if(yw_daiber_paused())return null;
+            $url='';$t=time()-(YW_DAIBER_CACHE_DAYS-1)*86400; // Suche antwortet nicht sinnvoll: als „nicht gefunden“ merken, morgen neu versuchen
+        }elseif($url!==''){
+            $html=yw_daiber_get($url,YW_DAIBER_MAX_HTML);
+            if($html===null){if(yw_daiber_paused())return null;$url='';$t=time()-(YW_DAIBER_CACHE_DAYS-1)*86400;} // Artikelseite fehlt (z. B. 404)
+        }
     }
-    $data=['url'=>$url,'switch'=>null,'colors'=>[],'single'=>null,'done'=>[],'t'=>time()];
+    $data=['url'=>$url,'switch'=>null,'colors'=>[],'single'=>null,'done'=>[],'t'=>$t];
     if($html!==null){
         $data=array_merge($data,yw_daiber_parse_article($html));
         if(!$data['colors']&&!$data['single'])$data['url']='';
@@ -190,7 +200,7 @@ function yw_daiber_article(string $sku): ?array {
 /** Bildinhalt prüfen und verkleinert (max. 1400 px, JPG) unter $target ablegen. */
 function yw_daiber_save_image(string $data,string $target): bool {
     $tmp=tempnam(sys_get_temp_dir(),'wwcd');if($tmp===false)return false;
-    $part=$target.'.part';
+    $part=$target.'.'.bin2hex(random_bytes(6)).'.part';
     try{
         if(file_put_contents($tmp,$data)===false)return false;
         yw_validate_uploaded_raster($tmp,'Daiber-Bild');
@@ -215,7 +225,8 @@ function yw_daiber_save_image(string $data,string $target): bool {
  * (schnell, klein), sonst das Original. Rückgabe: Liste der gespeicherten Zieldateien.
  */
 function yw_daiber_download(array $targets): array {
-    $cdn=[];foreach($targets as $url=>$target)if(str_starts_with((string)$url,YW_DAIBER_MEDIA))$cdn[(string)$url]=YW_DAIBER_CDN.substr((string)$url,strlen(YW_DAIBER_MEDIA)).'?w=1000&quality=90&format=jpg';
+    // Der Bilddienst liefert immer WebP: nur nutzen, wenn GD WebP lesen kann, sonst gleich das Original
+    $cdn=[];if(function_exists('imagecreatefromwebp'))foreach($targets as $url=>$target)if(str_starts_with((string)$url,YW_DAIBER_MEDIA))$cdn[(string)$url]=YW_DAIBER_CDN.substr((string)$url,strlen(YW_DAIBER_MEDIA)).'?w=1000&quality=90&format=jpg';
     $got=yw_daiber_get_many(array_values($cdn),YW_DAIBER_MAX_IMAGE,6);$saved=[];$retry=[];
     foreach($targets as $url=>$target){
         $data=isset($cdn[$url])?($got[$cdn[$url]]??null):null;
@@ -273,89 +284,112 @@ function yw_daiber_needed(array $catalog,?array $skus,bool $allColors): array {
 /**
  * Lädt fehlende Bilder für Daiber-Produkte im Shop und ordnet sie zu (siehe yw_daiber_needed).
  * Arbeitet höchstens etwa $seconds Sekunden; was übrig bleibt, folgt beim nächsten Aufruf.
- * Rückgabe: loaded (Dateien), assigned (Produkte), remaining (Artikel noch offen), notfound (Artikelnummern), offline.
+ * Läuft schon ein Abgleich (Cronjob oder Knopf in einem anderen Fenster), kommt busy=true zurück.
+ * Rückgabe: loaded (Dateien), assigned (Produkte), remaining (Artikel noch offen), notfound (Artikelnummern), offline, busy.
  */
 function yw_daiber_fetch_missing(float $seconds=20.0,?array $skus=null,bool $allColors=false): array {
-    $result=['loaded'=>0,'assigned'=>0,'remaining'=>0,'notfound'=>[],'offline'=>false];
+    $result=['loaded'=>0,'assigned'=>0,'remaining'=>0,'notfound'=>[],'offline'=>false,'busy'=>false];
     $catalog=yw_katalog_load();
     if(!$catalog)return $result;
-    $deadline=microtime(true)+$seconds;
-    @set_time_limit((int)ceil($seconds)+90);
-    $limit=trim((string)ini_get('memory_limit'));$bytes=(float)$limit*match(strtolower(substr($limit,-1))){'g'=>1073741824,'m'=>1048576,'k'=>1024,default=>1};
-    if($limit!=='-1'&&$bytes<256*1048576)@ini_set('memory_limit','256M'); // Originalfotos haben bis zu 10 Megapixel
-    $have=yw_katalog_image_map(true)['map']; // schon vorhandene Bilder (Upload, FTP oder früherer Abgleich)
     $dir=yw_daiber_dir();
-    foreach(yw_daiber_needed($catalog,$skus,$allColors) as $sku=>$colors){
-        $sku=(string)$sku;$article=null;$todo=[];
-        if($result['offline']||microtime(true)>$deadline){$result['remaining']++;continue;}
-        foreach($colors as $color=>$want){
-            $color=(string)$color;$key=yw_katalog_color_key($sku,$color);
-            $front=$want['front']&&!isset($have[$key]);
-            if(!$front&&!$want['views'])continue;
-            if($article===null){
-                $article=yw_daiber_article($sku);
-                if($article===null){$result['offline']=true;break;}
-                if($article['url']===''){$result['notfound'][]=$sku;break;}
-            }
-            $done=$article['done'][$color]??[];
-            $front=$front&&!isset($done['front']);$views=$want['views']&&!isset($done['views']);
-            if(!$front&&!$views)continue;
-            $c=$article['colors'][mb_strtolower($color)]??null;
-            if($c===null&&$article['single']&&count($catalog['articles'][$sku]['col'])===1)$c=['img'=>$article['single'],'g'=>'','o'=>''];
-            if($c===null){$article['done'][$color]=['front'=>time(),'views'=>time()];continue;} // Farbe gibt es im Daiber-Shop nicht (mehr)
-            $todo[$color]=['key'=>$key,'c'=>$c,'views'=>$views];
-        }
-        if($result['offline']){$result['remaining']++;continue;}
-        // In Paketen zu 4 Farben, damit auch Artikel mit vielen Farben in die Zeitgrenze passen
-        foreach(array_chunk($todo,4,true) as $chunk){
-            if(microtime(true)>$deadline){$result['remaining']++;break;}
-            // 1) Vorderansichten (auch als Vergleich für die Erkennung von Rücken und Seite)
-            $targets=[];foreach($chunk as $color=>$t)if(!is_file($dir.'/'.$t['key'].'.jpg'))$targets[$t['c']['img']]=$dir.'/'.$t['key'].'.jpg';
-            $saved=yw_daiber_download($targets);$result['loaded']+=count($saved);
-            if(yw_daiber_paused()){$result['offline']=true;$result['remaining']++;break;}
-            foreach($chunk as $color=>$t){$article['done'][$color]['front']=time();if(is_file($dir.'/'.$t['key'].'.jpg'))$have[$t['key']]=true;}
-            // 2) Farbvarianten öffnen und deren Detailbilder sammeln
-            $viewColors=array_filter($chunk,static fn(array $t): bool=>$t['views']&&is_file($dir.'/'.$t['key'].'.jpg'));
-            $pages=[];
-            if($viewColors){
-                if($article['switch']){
-                    $switch=[];foreach($viewColors as $color=>$t)if($t['c']['g']!=='')$switch[$color]=$article['switch'].'?'.http_build_query(['switched'=>$t['c']['g'],'options'=>json_encode([$t['c']['g']=>$t['c']['o']])]);
-                    $answers=yw_daiber_get_many(array_values($switch),200_000,4);
-                    foreach($switch as $color=>$u){$target=(string)(json_decode((string)($answers[$u]??''),true)['url']??'');if($target!==''&&yw_daiber_url_allowed($target))$pages[$color]=$target;}
-                }else foreach($viewColors as $color=>$t)$pages[$color]=$article['url'];
-            }
-            $html=$pages?yw_daiber_get_many(array_values($pages),YW_DAIBER_MAX_HTML,4):[];
-            $details=[];$targets=[];
-            foreach($pages as $color=>$u){
-                foreach(yw_daiber_detail_urls((string)($html[$u]??''),$chunk[$color]['c']['img']) as $i=>$d){$tmp=sys_get_temp_dir().'/wwcv-'.bin2hex(random_bytes(6)).'.jpg';$targets[$d]=$tmp;$details[$color][]=$tmp;}
-            }
-            yw_daiber_download($targets);
-            // 3) Rücken und Seite erkennen und ablegen
-            foreach($viewColors as $color=>$t){
-                $a=$catalog['articles'][$sku];
-                $found=yw_daiber_pick_views($dir.'/'.$t['key'].'.jpg',array_values(array_filter($details[$color]??[],'is_file')),yw_zone_garment_type(['category'=>$a['c'],'name'=>$a['n']])==='top');
-                foreach(['back'=>'_back','sleeve'=>'_side'] as $view=>$suffix){
-                    $target=$dir.'/'.$t['key'].$suffix.'.jpg';
-                    if(isset($found[$view])&&!is_file($target)&&@copy($found[$view],$target)){@chmod($target,0644);$result['loaded']++;}
+    if(!is_dir($dir)&&!@mkdir($dir,0755,true)&&!is_dir($dir))throw new RuntimeException('Der Bilderordner uploads/katalog/bilder/daiber/ kann nicht angelegt werden. Bitte beim Hoster Schreibrechte für uploads/ prüfen.');
+    if(!is_writable($dir))throw new RuntimeException('Der Bilderordner uploads/katalog/bilder/daiber/ ist nicht beschreibbar. Bitte per FTP Schreibrechte setzen (z. B. 755 bzw. 775).');
+    $cacheDir=dirname(yw_daiber_cache_file('x'));
+    if(!is_writable($cacheDir))throw new RuntimeException('Der private Datenordner ('.basename($cacheDir).') ist nicht beschreibbar.');
+    // Nur ein Abgleich gleichzeitig (Cronjob und Verwaltung schreiben sonst dieselben Dateien)
+    $lock=@fopen($cacheDir.'/.lock','c');
+    if(!$lock||!flock($lock,LOCK_EX|LOCK_NB)){if($lock)fclose($lock);$result['busy']=true;return $result;}
+    try{
+        $deadline=microtime(true)+$seconds;$GLOBALS['yw_daiber_deadline']=$deadline;
+        @set_time_limit((int)ceil($seconds)+90);
+        $limit=trim((string)ini_get('memory_limit'));$bytes=(float)$limit*match(strtolower(substr($limit,-1))){'g'=>1073741824,'m'=>1048576,'k'=>1024,default=>1};
+        if($limit!=='-1'&&$bytes<256*1048576)@ini_set('memory_limit','256M'); // Originalfotos haben bis zu 10 Megapixel
+        $have=yw_katalog_image_map(true)['map']; // schon vorhandene Bilder (Upload, FTP oder früherer Abgleich)
+        foreach(yw_daiber_needed($catalog,$skus,$allColors) as $sku=>$colors){
+            $sku=(string)$sku;$article=null;$todo=[];
+            if($result['offline']||microtime(true)>$deadline){$result['remaining']++;continue;}
+            foreach($colors as $color=>$want){
+                $color=(string)$color;$key=yw_katalog_color_key($sku,$color);
+                $front=$want['front']&&!isset($have[$key]);
+                if(!$front&&!$want['views'])continue;
+                if($article===null){
+                    $article=yw_daiber_article($sku);
+                    if($article===null){$result['offline']=true;break;}
+                    if($article['url']===''){$result['notfound'][]=$sku;break;}
                 }
-                if(isset($html[$pages[$color]??''])||!isset($pages[$color]))$article['done'][$color]['views']=time(); // bei Störung später erneut versuchen
+                $done=$article['done'][$color]??[];
+                $front=$front&&!isset($done['front']);$views=$want['views']&&!isset($done['views']);
+                if(!$front&&!$views)continue;
+                $c=$article['colors'][mb_strtolower($color)]??null;
+                if($c===null&&$article['single']&&count($catalog['articles'][$sku]['col'])===1)$c=['img'=>$article['single'],'g'=>'','o'=>''];
+                if($c===null){$article['done'][$color]=['front'=>time(),'views'=>time()];continue;} // Farbe gibt es im Daiber-Shop nicht (mehr)
+                // Eigenes Foto (Upload/FTP) hat Vorrang: Daiber-Vorderansicht dann nur als Vergleichsbild, nicht im Bilderordner
+                $own=isset($have[$key])&&!str_starts_with(str_replace('\\','/',(string)$have[$key]),$dir.'/');
+                $todo[$color]=['key'=>$key,'c'=>$c,'views'=>$views,'cmp'=>$own?sys_get_temp_dir().'/wwcf-'.bin2hex(random_bytes(6)).'.jpg':$dir.'/'.$key.'.jpg'];
             }
-            foreach($details as $files)foreach($files as $tmp)if(is_file($tmp))@unlink($tmp);
-            if(yw_daiber_paused()){$result['offline']=true;$result['remaining']++;break;}
+            if($result['offline']){$result['remaining']++;continue;}
+            $tmpFiles=[];
+            // In Paketen zu 4 Farben, damit auch Artikel mit vielen Farben in die Zeitgrenze passen
+            foreach(array_chunk($todo,4,true) as $chunk){
+                if(microtime(true)>$deadline){$result['remaining']++;break;}
+                // 1) Vorderansichten (Produktbild bzw. Vergleich für die Erkennung von Rücken und Seite)
+                $targets=[];foreach($chunk as $color=>$t){if(!is_file($t['cmp']))$targets[$t['c']['img']]=$t['cmp'];if(!str_starts_with($t['cmp'],$dir.'/'))$tmpFiles[]=$t['cmp'];}
+                foreach(yw_daiber_download($targets) as $file)if(str_starts_with($file,$dir.'/'))$result['loaded']++;
+                if(yw_daiber_paused()){$result['offline']=true;$result['remaining']++;break;}
+                foreach($chunk as $color=>$t){
+                    $article['done'][$color]['front']=time();
+                    if(!is_file($t['cmp'])){$article['done'][$color]['views']=time();unset($chunk[$color]);continue;} // Bild nicht zu bekommen: nicht endlos wiederholen
+                    if(str_starts_with($t['cmp'],$dir.'/'))$have[$t['key']]=$t['cmp'];
+                }
+                if(microtime(true)>$deadline&&array_filter($chunk,static fn(array $t): bool=>$t['views'])){$result['remaining']++;break;}
+                // 2) Farbvarianten öffnen und deren Detailbilder sammeln
+                $viewColors=array_filter($chunk,static fn(array $t): bool=>$t['views']);
+                $pages=[];$switch=[];
+                foreach($viewColors as $color=>$t){
+                    if($article['switch']&&$t['c']['g']!=='')$switch[$color]=$article['switch'].'?'.http_build_query(['switched'=>$t['c']['g'],'options'=>json_encode([$t['c']['g']=>$t['c']['o']])]);
+                    else $pages[$color]=$article['url']; // Artikel ohne Farbauswahl: Detailbilder stehen auf der Artikelseite
+                }
+                $answers=$switch?yw_daiber_get_many(array_values($switch),200_000,4):[];
+                foreach($switch as $color=>$u){$target=(string)(json_decode((string)($answers[$u]??''),true)['url']??'');if($target!==''&&yw_daiber_url_allowed($target))$pages[$color]=$target;}
+                $html=$pages?yw_daiber_get_many(array_values($pages),YW_DAIBER_MAX_HTML,4):[];
+                $details=[];$targets=[];
+                foreach($pages as $color=>$u){
+                    foreach(yw_daiber_detail_urls((string)($html[$u]??''),$chunk[$color]['c']['img']) as $d){$tmp=sys_get_temp_dir().'/wwcv-'.bin2hex(random_bytes(6)).'.jpg';$targets[$d]=$tmp;$details[$color][]=$tmp;$tmpFiles[]=$tmp;}
+                }
+                yw_daiber_download($targets);
+                // 3) Rücken und Seite erkennen und ablegen
+                foreach($viewColors as $color=>$t){
+                    $a=$catalog['articles'][$sku];
+                    $found=yw_daiber_pick_views($t['cmp'],array_values(array_filter($details[$color]??[],'is_file')),yw_zone_garment_type(['category'=>$a['c'],'name'=>$a['n']])==='top');
+                    foreach(['back'=>'_back','sleeve'=>'_side'] as $view=>$suffix){
+                        $target=$dir.'/'.$t['key'].$suffix.'.jpg';
+                        if(isset($found[$view])&&!is_file($target)&&@copy($found[$view],$target)){@chmod($target,0644);$result['loaded']++;}
+                    }
+                    // Erledigt, wenn die Variantenseite gelesen wurde; bei Störungen höchstens dreimal versuchen
+                    $tries=(int)($article['tries'][$color]??0)+1;$article['tries'][$color]=$tries;
+                    if(($html[$pages[$color]??'']??null)!==null||$tries>=3)$article['done'][$color]['views']=time();
+                }
+                if(yw_daiber_paused()){$result['offline']=true;$result['remaining']++;break;}
+            }
+            foreach($tmpFiles as $tmp)if(is_file($tmp))@unlink($tmp);
+            if($article!==null)yw_daiber_cache_save($sku,$article);
         }
-        if($article!==null)yw_daiber_cache_save($sku,$article);
+        $result['notfound']=array_values(array_unique($result['notfound']));
+        if($result['loaded']){
+            $assigned=yw_katalog_assign_images();$result['assigned']=$assigned['assigned'];
+            if($result['assigned'])try{require_once __DIR__.'/shop.php';yw_zone_auto_backfill(40);}catch(Throwable $e){error_log('Druckzonen: '.$e->getMessage());}
+        }
+        try{set_site_setting('katalog_daiber_last',(string)json_encode(['t'=>date('Y-m-d H:i'),'loaded'=>$result['loaded'],'assigned'=>$result['assigned'],'notfound'=>$result['notfound'],'remaining'=>$result['remaining'],'offline'=>$result['offline']],JSON_UNESCAPED_UNICODE));}catch(Throwable $ignored){}
+        return $result;
+    }finally{
+        unset($GLOBALS['yw_daiber_deadline']);
+        flock($lock,LOCK_UN);fclose($lock);
     }
-    $result['notfound']=array_values(array_unique($result['notfound']));
-    if($result['loaded']){
-        $assigned=yw_katalog_assign_images();$result['assigned']=$assigned['assigned'];
-        if($result['assigned'])try{require_once __DIR__.'/shop.php';yw_zone_auto_backfill(40);}catch(Throwable $e){error_log('Druckzonen: '.$e->getMessage());}
-    }
-    try{set_site_setting('katalog_daiber_last',(string)json_encode(['t'=>date('Y-m-d H:i'),'loaded'=>$result['loaded'],'assigned'=>$result['assigned'],'notfound'=>$result['notfound'],'remaining'=>$result['remaining'],'offline'=>$result['offline']],JSON_UNESCAPED_UNICODE));}catch(Throwable $ignored){}
-    return $result;
 }
 
 /** Rückmeldung für die Verwaltung. */
 function yw_daiber_fetch_message(array $r): string {
+    if(!empty($r['busy']))return 'Gerade läuft schon ein Abgleich (z. B. der Cronjob). Bitte in einer Minute noch einmal klicken.';
     if($r['offline']&&!$r['loaded'])return 'Der Daiber-Shop ist gerade nicht erreichbar. Der Abgleich wird in 15 Minuten automatisch wiederholt.';
     $msg=$r['loaded'].' Bild(er) von daiber.shop geladen, '.$r['assigned'].' Produkt(e) zugeordnet.';
     if($r['remaining'])$msg.=' '.$r['remaining'].' Artikel folgen automatisch (Cronjob) oder mit einem weiteren Klick.';
