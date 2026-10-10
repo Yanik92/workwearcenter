@@ -191,13 +191,14 @@ function handle_admin_action(): never {
             $accountId=(int)($_POST['account_id']??0);
             $decision=(string)($_POST['decision']??'');
             if(!in_array($decision,['approved','rejected'],true)) throw new RuntimeException('Freigabeentscheidung ist ungültig.');
-            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
+            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,ea.role,ea.registration_status,ea.active,ea.employment_start,ea.employment_end,ea.anonymized_at,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
             $stmt->execute([$accountId]);$account=$stmt->fetch();
             if(!$account) throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
             $stmt=db()->prepare('UPDATE employee_accounts SET registration_status=?,active=? WHERE id=?');
             $stmt->execute([$decision,$decision==='approved'?1:0,$accountId]);
             yw_mail_to_person($account,yw_access_mail($decision==='approved',['slug'=>$account['slug']],true)); // 10.12: in der Sprache der Person
             audit_log('employee.access_'.$decision,'employee',$accountId,['company_id'=>(int)$account['company_id']]);
+            yw_manager_change_audit((int)$account['company_id'],$accountId,$account,['registration_status'=>$decision,'active'=>$decision==='approved'?1:0]+$account,'admin'); // 10.15
             flash('success',$decision==='approved'?'Mitarbeiter wurde freigegeben.':'Registrierung wurde abgelehnt.');
             $returnCompany=(int)($_POST['return_company']??0);
             redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter'):'/admin');
@@ -518,7 +519,7 @@ function handle_admin_action(): never {
                 throw new RuntimeException('Registrierungsstatus ist ungültig.');
             }
 
-            $accountCheck=db()->prepare('SELECT id,role,registration_status,active FROM employee_accounts WHERE id=? AND company_id=? LIMIT 1');$accountCheck->execute([$accountId,$companyId]);$currentAccount=$accountCheck->fetch();if(!$currentAccount)throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
+            $accountCheck=db()->prepare('SELECT id,role,registration_status,active,employment_start,employment_end,anonymized_at FROM employee_accounts WHERE id=? AND company_id=? LIMIT 1');$accountCheck->execute([$accountId,$companyId]);$currentAccount=$accountCheck->fetch();if(!$currentAccount)throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
             $losesManagerAccess=(string)$currentAccount['role']==='manager' && !($role==='manager' && $registrationStatus==='approved' && $active===1);
             if($losesManagerAccess){
                 $managerCheck=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND id<>? AND role='manager' AND registration_status='approved' AND active=1 AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE())");
@@ -529,6 +530,7 @@ function handle_admin_action(): never {
             $stmt=db()->prepare('UPDATE employee_accounts SET role=?,registration_status=?,active=?,equipment_profile_id=? WHERE id=? AND company_id=?');
             $stmt->execute([$role,$registrationStatus,$active,$profileId,$accountId,$companyId]);
             audit_log('employee.account_updated','employee',$accountId,['company_id'=>$companyId,'role'=>$role,'status'=>$registrationStatus,'active'=>$active]);
+            yw_manager_change_audit($companyId,$accountId,$currentAccount,['role'=>$role,'registration_status'=>$registrationStatus,'active'=>$active]+$currentAccount,'admin'); // 10.15: Rollenwechsel still protokollieren
 
             flash('success','Mitarbeiterrolle wurde gespeichert.');
             redirect(yw_customer_return_url($companyId,'mitarbeiter'));
@@ -549,14 +551,17 @@ function handle_admin_action(): never {
             if(!in_array($mode,['company','percentage'],true)) throw new RuntimeException('Finanzierungsmodell ist ungültig.');
             if($mode==='company') $share=0;
             if(!in_array($shippingPayer,['company','employee'],true)) throw new RuntimeException('Versandkostenträger ist ungültig.');
-            $companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$id]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.');
+            $companyCheck=db()->prepare('SELECT * FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$id]);$companyBefore=$companyCheck->fetch();if(!$companyBefore)throw new RuntimeException('Firma wurde nicht gefunden.');
 
             $stmt=db()->prepare('UPDATE companies SET financing_mode=?, employee_share_percent=?, approval_required=?, shipping_enabled=?, shipping_net_cents=?, shipping_vat_rate=?, free_shipping_gross_cents=?, shipping_payer=? WHERE id=?');
             $stmt->execute([
                 $mode,$share,$approval,$shippingEnabled,$shippingNetCents,$shippingVat,$freeShippingGrossCents,$shippingPayer,$id
             ]);
+            // 10.15: Dürfen Verantwortliche weitere Verantwortliche ernennen? (Standard aus; Spalte erst nach update.php)
+            $appointMeta=[];
+            if(yw_managers_appoint_ready() && array_key_exists('managers_can_appoint_present',$_POST)){$appoint=!empty($_POST['managers_can_appoint'])?1:0;db()->prepare('UPDATE companies SET managers_can_appoint=? WHERE id=?')->execute([$appoint,$id]);if($appoint!==(int)($companyBefore['managers_can_appoint']??0))$appointMeta=['managers_can_appoint'=>$appoint];}
 
-            audit_log('company.rules_updated','company',$id,['company_id'=>$id]);
+            audit_log('company.rules_updated','company',$id,['company_id'=>$id]+$appointMeta);
 
             flash('success','Shopregeln und Versandkosten wurden gespeichert.');
             redirect(yw_customer_return_url($id,'regeln'));
@@ -807,6 +812,7 @@ function handle_admin_action(): never {
             $accountId=(int)db()->lastInsertId();
             yw_send_password_link($accountId,$name,$email,(string)$company['slug'],true,true);
             audit_log('employee.created_by_admin','employee',$accountId,['company_id'=>$companyId,'role'=>$role]);
+            yw_manager_change_audit($companyId,$accountId,['role'=>'employee'],['role'=>$role,'registration_status'=>'approved','active'=>1],'admin',['created'=>true]); // 10.15
             flash('success',($role==='manager'?'Verantwortlicher':'Mitarbeiter').' wurde angelegt. Der Link zum Festlegen des Passworts wurde an '.$email.' gesendet (60 Minuten gültig).');
             redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
@@ -1125,7 +1131,10 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     foreach($pendingEmployees as $person){
         echo '<div class="work-task"><span class="task-icon">'.wc_public_icon('user').'</span><div><strong>'.e($person['name']).' freigeben?</strong><small>'.e($person['legal_name']).' · '.e($person['email']).'</small></div><div class="task-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="rejected"><button class="btn small" type="submit">Ablehnen</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="approved"><button class="btn small primary" type="submit">Freigeben</button></form></div></div>';
     }
-    if(!$failedMails&&!$overdue&&!$pendingEmployees&&!$failedHandovers&&(!$me||(int)($me['totp_enabled']??0))) echo '<div class="empty compact">Keine dringenden Aufgaben. Das System ist aufgeräumt.</div>';
+    // 10.15: Rollenänderungen bei Verantwortlichen der letzten 14 Tage (ohne eigene Änderungen; keine Mail an andere)
+    $roleChanges=yw_manager_role_changes(null,6,(int)($me['id']??0));$rolePeople=yw_actor_people($roleChanges);
+    foreach($roleChanges as $r){[$head,$sub]=yw_manager_role_change_text($r,$rolePeople,true);echo '<div class="work-task'.($r['action']==='employee.manager_change_blocked'?' danger':'').'"><span class="task-icon">'.wc_public_icon('shield').'</span><div><strong>'.e($head).'</strong><small>'.e($sub).'</small></div><a class="btn small" href="'.e(yw_customer_url((int)$r['company_id'],'mitarbeiter')).'">Ansehen</a></div>';}
+    if(!$failedMails&&!$overdue&&!$pendingEmployees&&!$failedHandovers&&!$roleChanges&&(!$me||(int)($me['totp_enabled']??0))) echo '<div class="empty compact">Keine dringenden Aufgaben. Das System ist aufgeräumt.</div>';
     echo '</section><section class="card"><div class="title-row"><div><h2>Auftragsfluss</h2><p class="muted">Freigegebene Bestellungen.</p></div><a class="btn small" href="/admin?tab=production">Öffnen</a></div>';
     $stages=['new'=>'Neu','accepted'=>'Angenommen','goods_ordered'=>'Material offen','goods_received'=>'Material da','production'=>'Produktion','quality_check'=>'Qualitätskontrolle','ready'=>'Fertig'];
     $max=1;foreach($stages as $key=>$label)$max=max($max,count(array_filter($orders,fn($o)=>$o['status']==='approved' && $o['fulfillment_status']===$key)));
@@ -1400,6 +1409,13 @@ function yw_audit_labels(): array {
         'invite.created'=>'Mitarbeiterzugang angelegt',
         'employee.created_by_admin'=>'Konto durch Admin angelegt',
         'employee.anonymized'=>'Mitarbeiterdaten gelöscht (DSGVO)',
+        'employee.role_granted'=>'Rolle „Verantwortlicher“ vergeben',
+        'employee.role_revoked'=>'Rolle „Verantwortlicher“ entzogen',
+        'employee.manager_deactivated'=>'Verantwortliche/n gesperrt',
+        'employee.manager_reactivated'=>'Verantwortliche/n wieder freigeschaltet',
+        'employee.manager_change_blocked'=>'Änderung an Verantwortlichen abgewiesen',
+        'order.four_eyes_fallback'=>'Eigene Bestellung freigegeben (einzige verantwortliche Person)',
+        'exchange.four_eyes_fallback'=>'Eigenen Umtausch freigegeben (einzige verantwortliche Person)',
         'order.cancelled'=>'Bestellung zurückgezogen',
         'order.cancelled_by_admin'=>'Auftrag storniert (Verwaltung)',
         'order.status_from_auftragszentrale'=>'Status aus Auftragszentrale übernommen',

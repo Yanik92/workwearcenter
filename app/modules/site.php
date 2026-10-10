@@ -317,13 +317,13 @@ function privacy_page(): void {
 }
 
 /** Darstellung der Anfrageseite (Verarbeitung in inquiry_page). */
-function site_inquiry_render(bool $success,string $error,?string $probeshopToken=null): void {
+function site_inquiry_render(bool $success,string $error,?string $probeshopToken=null,bool $confirmationSent=true): void {
     hp_page_start('Unternehmensshop anfragen – '.current_site_setting('site_title','WorkwearCenter'));
     hp_page_hero('Anfrage','Firmenshop anfragen','<p>Beschreiben Sie kurz, was Ihr Team braucht. Wir melden uns persönlich – unverbindlich und kostenlos.</p>',[],true);
     echo '<section class="s-section"><div class="s-wrap s-inquiry"><div class="s-form-card">';
     if($success){
         echo '<div class="s-success"><span class="s-success-mark">'.hp_check_icon().'</span><h2>Vielen Dank für Ihre Anfrage!</h2><p>Wir haben Ihre Angaben erhalten und melden uns zeitnah persönlich bei Ihnen.</p>';
-        if($probeshopToken!==null)echo '<div class="s-probe-ready"><strong>Ihr persönlicher Probeshop ist fertig.</strong><p>So könnte Ihr Firmenshop mit Ihrem Logo aussehen. Den Link haben wir Ihnen auch per E-Mail geschickt; er ist 30 Tage gültig.</p><a class="s-btn s-btn-orange" href="/probeshop/'.e($probeshopToken).'" rel="noreferrer">Probeshop ansehen</a></div>';
+        if($probeshopToken!==null)echo '<div class="s-probe-ready"><strong>Ihr persönlicher Probeshop ist fertig.</strong><p>So könnte Ihr Firmenshop mit Ihrem Logo aussehen. '.($confirmationSent?'Den Link haben wir Ihnen auch per E-Mail geschickt; er ist 30 Tage gültig.':'Bitte speichern Sie sich den Link; er ist 30 Tage gültig.').'</p><a class="s-btn s-btn-orange" href="/probeshop/'.e($probeshopToken).'" rel="noreferrer">Probeshop ansehen</a></div>';
         else echo '<a class="s-btn s-btn-navy" href="/mustershop">In der Zwischenzeit: Mustershop ansehen</a>';
         echo '</div>';
     }else{

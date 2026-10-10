@@ -491,5 +491,7 @@ function yw_history_details(array $meta): string {
     if(!empty($meta['tracking'])&&is_string($meta['tracking']))$parts[]='Sendung '.$meta['tracking'];
     if(!empty($meta['reference'])&&is_string($meta['reference']))$parts[]='Referenz '.$meta['reference'];
     if(!empty($meta['reason'])&&is_string($meta['reason']))$parts[]='Grund: '.mb_strimwidth($meta['reason'],0,140,'…');
+    // 10.15: Rollenwechsel/Sperre von Verantwortlichen (vorher→nachher)
+    if(!empty($meta['changes'])&&is_array($meta['changes'])){$names=['role'=>'Rolle','registration_status'=>'Zugang','active'=>'Aktiv','employment_start'=>'Eintritt','employment_end'=>'Austritt'];$words=['manager'=>'Verantwortlich','employee'=>'Mitarbeiter','approved'=>'freigegeben','rejected'=>'abgelehnt','pending'=>'offen'];foreach($meta['changes'] as $k=>$v)if(is_string($v))$parts[]=($names[$k]??$k).': '.($k==='active'?strtr($v,['1'=>'ja','0'=>'nein']):strtr($v,$words));}
     return implode(' · ',$parts);
 }

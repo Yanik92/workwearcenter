@@ -535,6 +535,14 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_column($pdo,'employee_accounts','reminder_digest_at','DATETIME NULL',$changes);
     // Stapelweises Löschen alter Protokolleinträge nach Datum, ohne die ganze Tabelle zu lesen.
     schema_add_index($pdo,'audit_log','idx_audit_created','`created_at`',$changes);
+    // 10.15 – Vier-Augen-Schutz für Verantwortliche, Missbrauchsschutz Anfrageformular
+    // Standard aus: Die Rolle „Verantwortlicher“ vergibt nur die Verwaltung (Kundenakte → Mitarbeiter).
+    schema_add_column($pdo,'companies','managers_can_appoint','TINYINT(1) NOT NULL DEFAULT 0',$changes);
+    // Eingangsbestätigung an Interessenten: höchstens 1 je Adresse in 24 Stunden und 30 je Stunde insgesamt.
+    schema_add_column($pdo,'inquiries','confirmation_key','CHAR(64) NULL',$changes);
+    schema_add_column($pdo,'inquiries','confirmation_sent_at','DATETIME NULL',$changes);
+    schema_add_index($pdo,'inquiries','idx_yw_inquiries_confirm','`confirmation_key`,`confirmation_sent_at`',$changes);
+    schema_add_index($pdo,'inquiries','idx_yw_inquiries_confirm_sent','`confirmation_sent_at`',$changes);
     schema_mark_version($pdo,'10.14.0',$changes);
 
     return $changes;

@@ -260,13 +260,56 @@ function yw_probeshop_page(array $shop): void {
 
 /* ---------- E-Mail an den Interessenten ---------- */
 
-function yw_inquiry_confirmation_mail(string $email,string $name,string $company,?string $probeshopToken): bool {
-    $text="Guten Tag ".$name.",\n\nvielen Dank für Ihre Anfrage zum Firmenshop für ".$company.". Wir haben Ihre Angaben erhalten und melden uns zeitnah persönlich bei Ihnen.\n\n";
+/**
+ * Eingangsbestätigung an Interessenten. 10.15: fester Text ohne Eingaben aus dem Formular (kein Name, keine Firma,
+ * keine Nachricht), damit sich das Formular nicht zum Versand fremder Inhalte über unsere Adresse missbrauchen lässt.
+ * Ob überhaupt gesendet wird, entscheidet vorher yw_inquiry_confirmation_reserve().
+ */
+function yw_inquiry_confirmation_mail(string $email,?string $probeshopToken): bool {
+    [$subject,$text]=yw_inquiry_confirmation_text($probeshopToken);
+    return send_system_mail($email,$subject,$text);
+}
+
+/** Betreff und Text der Eingangsbestätigung: nimmt bewusst keine Formulareingaben entgegen. @return array{0:string,1:string} */
+function yw_inquiry_confirmation_text(?string $probeshopToken): array {
+    $text="Guten Tag,\n\nvielen Dank für Ihre Anfrage zum WorkwearCenter. Wir haben Ihre Angaben erhalten und melden uns zeitnah persönlich bei Ihnen.\n\n";
     if($probeshopToken!==null){
         $text.="Vorab haben wir aus Ihrem Logo einen persönlichen Probeshop erstellt. So könnte Ihr eigener Firmenshop aussehen:\n\n".yw_probeshop_url($probeshopToken)."\n\nDer Link ist nur für Sie bestimmt, 30 Tage gültig und wird danach samt Logo automatisch gelöscht.\n\n";
     }
-    $text.="Mit freundlichen Grüßen\n".current_site_setting('imprint_company','Yanik Textildruck')."\n".s_mail();
-    return send_system_mail($email,'Ihre Anfrage beim WorkwearCenter'.($probeshopToken!==null?' – Ihr Probeshop ist fertig':''),$text);
+    $text.="Sie haben keine Anfrage gestellt? Dann hat jemand Ihre Adresse eingetragen – Sie können diese E-Mail einfach ignorieren.\n\nMit freundlichen Grüßen\n".current_site_setting('imprint_company','Yanik Textildruck')."\n".s_mail();
+    return ['Ihre Anfrage beim WorkwearCenter'.($probeshopToken!==null?' – Ihr Probeshop ist fertig':''),$text];
+}
+
+/** 10.15: Höchstens eine Eingangsbestätigung je Adresse in 24 Stunden und YW_INQUIRY_CONFIRM_PER_HOUR insgesamt je Stunde. */
+const YW_INQUIRY_CONFIRM_PER_HOUR=30;
+
+/** Vergleichsschlüssel einer Empfängeradresse: Kleinschreibung, ohne „+Zusatz“, bei Gmail ohne Punkte (dieselbe Mailbox). */
+function yw_inquiry_recipient_key(string $email): string {
+    $email=strtolower(trim($email));$at=strrpos($email,'@');
+    if($at===false)return hash('sha256',$email);
+    $local=substr($email,0,$at);$domain=substr($email,$at+1);
+    $plus=strpos($local,'+');if($plus!==false)$local=substr($local,0,$plus);
+    if(in_array($domain,['gmail.com','googlemail.com'],true)){$local=str_replace('.','',$local);$domain='gmail.com';}
+    return hash('sha256',$local.'@'.$domain);
+}
+
+/**
+ * Prüft die Grenzen und vermerkt die Bestätigung an der Anfrage. Rückgabe: 'ok' (senden),
+ * 'recipient' (Adresse hatte in 24 h schon eine), 'global' (Stundenlimit erreicht) oder 'unavailable'
+ * (Sperre/Datenbankstand fehlt – dann sicherheitshalber nicht senden).
+ */
+function yw_inquiry_confirmation_reserve(int $inquiryId,string $email): string {
+    $key=yw_inquiry_recipient_key($email);$locked=false;
+    try{
+        $locked=(int)db()->query("SELECT GET_LOCK('yw_inquiry_confirm',5)")->fetchColumn()===1;
+        if(!$locked)return 'unavailable';
+        $q=db()->prepare('SELECT COUNT(*) FROM inquiries WHERE confirmation_key=? AND confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 24 HOUR)');$q->execute([$key]);
+        if((int)$q->fetchColumn()>0)return 'recipient';
+        if((int)db()->query('SELECT COUNT(*) FROM inquiries WHERE confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 1 HOUR)')->fetchColumn()>=YW_INQUIRY_CONFIRM_PER_HOUR)return 'global';
+        db()->prepare('UPDATE inquiries SET confirmation_key=?,confirmation_sent_at=NOW() WHERE id=?')->execute([$key,$inquiryId]);
+        return 'ok';
+    }catch(Throwable $e){error_log('Inquiry confirmation limit: '.$e->getMessage());return 'unavailable';}
+    finally{if($locked)try{db()->query("SELECT RELEASE_LOCK('yw_inquiry_confirm')");}catch(Throwable $ignored){}}
 }
 
 /* ---------- Verwaltung ---------- */

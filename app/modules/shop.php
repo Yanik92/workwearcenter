@@ -1219,6 +1219,7 @@ function company_portal_approvals(array $company,array $account): void {
         return;
     }
 
+    $others=yw_other_manager_count((int)$company['id'],(int)$account['id']); // 10.15: Vier-Augen-Prinzip wie in yw_order_decide()
     echo '<div class="cp-order-list">';
     foreach($orders as $o){
         $items=$itemsByOrder[(int)$o['id']]??[];
@@ -1237,7 +1238,9 @@ function company_portal_approvals(array $company,array $account): void {
         echo company_portal_progress($o);
         echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>'.e(t('cart.total')).'</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.employee')).'</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.company')).'</span><strong>'.money($companyShare).'</strong></div></div>';
         if($status==='pending'){
-            echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000" placeholder="'.e(t('approvals.note_placeholder')).'"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button><button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button></form></div>';
+            $own=(int)($o['employee_account_id']??0)===(int)$account['id'];
+            if($own)echo '<div class="cp-manager-alert">'.e($others>0?t('decide.own_order'):t('approvals.own_order_single')).'</div>';
+            echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000" placeholder="'.e(t('approvals.note_placeholder')).'"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button>'.($own&&$others>0?'':'<button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button>').'</form></div>';
         }
         elseif(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>'.e(t('orders.decision_note')).'</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
         echo '</article>';

@@ -26,11 +26,12 @@ function yw_order_decide(array $company,array $account,int $orderId,string $deci
         return ['error',$decision==='rejected'?t('err.reason_required'):t('err.note_too_long')];
 
     // Vier-Augen-Prinzip: Eigene Bestellungen gibt eine andere verantwortliche Person frei.
-    // Nur wenn es keine weitere aktive verantwortliche Person gibt, ist das erlaubt (wird protokolliert).
+    // Nur wenn es keine weitere aktuell zugangsberechtigte verantwortliche Person gibt, ist das erlaubt (eigener Protokolleintrag).
     $ownerQuery=db()->prepare('SELECT employee_account_id FROM orders WHERE id=? AND company_id=? LIMIT 1');
     $ownerQuery->execute([$orderId,(int)$company['id']]);
     $selfDecision=(int)$ownerQuery->fetchColumn()===(int)$account['id'];
-    if($selfDecision && $decision==='approved' && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)
+    $selfApproval=$selfDecision && $decision==='approved';
+    if($selfApproval && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)
         return ['error',t('err.four_eyes_order')];
 
     $stmt=db()->prepare("UPDATE orders SET status=?,decision_note=?,decided_by_account_id=?,decided_at=NOW() WHERE id=? AND company_id=? AND status='pending'");
@@ -40,6 +41,7 @@ function yw_order_decide(array $company,array $account,int $orderId,string $deci
         $meta=['company_id'=>(int)$company['id'],'decision'=>$decision]+($selfDecision?['self_decision'=>true]:[]);
         if($via!=='shop')$meta+=['via'=>$via,'decided_by'=>(int)$account['id']];
         audit_log('order.decision','order',$orderId,$meta);
+        if($selfApproval)audit_log('order.four_eyes_fallback','order',$orderId,['company_id'=>(int)$company['id'],'decided_by'=>(int)$account['id'],'via'=>$via,'reason'=>'einzige zugangsberechtigte verantwortliche Person']); // 10.15
         if($decision==='approved')yw_handover_enqueue($orderId);
         // 10.12: Mail in der Sprache der bestellenden Person
         $statusUrl=workwearcenter_url($slug.'/bestellungen');
@@ -56,9 +58,13 @@ function yw_order_decide(array $company,array $account,int $orderId,string $deci
         : ['error',t('err.order_already_decided')];
 }
 
-/** Anzahl weiterer aktiver Verantwortlicher (wie im Shop: Grundlage des Vier-Augen-Prinzips). */
+/**
+ * Anzahl weiterer Verantwortlicher, die heute freigeben können (Grundlage des Vier-Augen-Prinzips für Shop,
+ * Mail-Link und Umtausch). 10.15: gleiche Bedingungen wie Anmeldung und Freigabe-Link (freigegeben, Ein-/Austritt),
+ * damit ein gesperrtes oder ausgeschiedenes Konto die einzige verantwortliche Person nicht aussperrt.
+ */
 function yw_other_manager_count(int $companyId,int $accountId): int {
-    $q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND anonymized_at IS NULL AND id<>?");
+    $q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND registration_status='approved' AND anonymized_at IS NULL AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) AND id<>?");
     $q->execute([$companyId,$accountId]);
     return (int)$q->fetchColumn();
 }
@@ -202,7 +208,8 @@ function yw_mail_decision_page(string $slug,string $token): void {
     $preset=(string)($_GET['aktion']??'')==='ablehnen'?'ablehnen':'freigeben';
     $q=db()->prepare("SELECT o.*,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.id=? AND o.company_id=? LIMIT 1");
     $q->execute([$orderId,(int)$company['id']]);$order=$q->fetch();
-    $selfBlocked=(int)$order['employee_account_id']===(int)$account['id'] && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0;
+    $own=(int)$order['employee_account_id']===(int)$account['id'];
+    $selfBlocked=$own && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0;
 
     render_head(t('decide.page_title',['id'=>$orderId,'shop'=>$company['shop_name']]),$company);
     echo company_shop_style($company);
@@ -219,6 +226,7 @@ function yw_mail_decision_page(string $slug,string $token): void {
     $gross=(int)($order['gross_total_cents']??0);if($gross<=0)$gross=(int)$order['total_cents'];
     echo '<div class="yw-md-sum"><span>'.e(t('cart.total')).' <strong>'.money($gross).'</strong></span><span>'.e(t('approvals.company')).' <strong>'.money((int)$order['company_total_cents']).'</strong></span><span>'.e(t('approvals.employee')).' <strong>'.money((int)$order['employee_total_cents']).'</strong></span></div>';
     if(trim((string)($order['note']??''))!=='')echo '<p><strong>'.e(t('decide.employee_note')).':</strong> '.e((string)$order['note']).'</p>';
+    if($own && !$selfBlocked)echo '<div class="flash info">'.e(t('approvals.own_order_single')).'</div>'; // 10.15: Rückfall bei nur einer verantwortlichen Person (protokolliert)
     echo '<div class="yw-md-actions">';
     if($selfBlocked)echo '<div class="flash info">'.e(t('decide.own_order')).'</div>';
     else echo '<form method="post" class="'.($preset==='freigeben'?'active':'').'">'.csrf_field().'<input type="hidden" name="decision" value="approved"><label>'.e(t('approvals.note')).' <small class="muted">'.e(t('common.optional')).'</small><textarea name="decision_note" maxlength="1000"></textarea></label><button class="yw-md-btn" type="submit">'.e(t('decide.approve_button')).'</button></form>';

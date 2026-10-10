@@ -100,7 +100,40 @@ function yw_customer_section_people(array $c): void {
         }
         echo '<p class="muted" style="margin-top:14px">Hinweis: Ein Verantwortlicher registriert sich zunächst ganz normal im Shop. Danach weist du ihm hier die Rolle „Verantwortlicher“ zu.</p>';
         echo '</div></section>';
+        yw_customer_section_manager_changes($c);
+}
 
+/* ---------- 10.15: Rollenänderungen bei Verantwortlichen (still protokolliert, keine Mail) ---------- */
+
+/** Vorgänge der letzten 14 Tage: ernannt, Rolle entzogen, gesperrt, wieder freigeschaltet, abgewiesener Versuch. $excludeAdminId blendet eigene Änderungen aus. */
+function yw_manager_role_changes(?int $companyId,int $limit=8,int $excludeAdminId=0): array {
+    try{
+        $where="a.action IN ('employee.role_granted','employee.role_revoked','employee.manager_deactivated','employee.manager_reactivated','employee.manager_change_blocked') AND a.created_at>=DATE_SUB(NOW(),INTERVAL 14 DAY)";$params=[];
+        if($companyId!==null){$where.=' AND a.company_id=?';$params[]=$companyId;}
+        if($excludeAdminId>0){$where.=" AND NOT (a.actor_type='admin' AND a.actor_id<=>?)";$params[]=$excludeAdminId;}
+        $q=db()->prepare("SELECT a.action,a.actor_type,a.actor_id,a.company_id,a.entity_id,a.metadata_json,a.created_at,c.shop_name,ea.name,ea.email,ea.anonymized_at FROM audit_log a LEFT JOIN companies c ON c.id=a.company_id LEFT JOIN employee_accounts ea ON ea.id=a.entity_id WHERE $where ORDER BY a.id DESC LIMIT ".max(1,min(50,$limit)));
+        $q->execute($params);return $q->fetchAll();
+    }catch(Throwable $e){return [];}
+}
+
+/** Eine Zeile als [Überschrift, Zusatz] (Klartext, noch nicht maskiert). */
+function yw_manager_role_change_text(array $r,array $people,bool $withCompany): array {
+    $labels=['employee.role_granted'=>'zum Verantwortlichen ernannt','employee.role_revoked'=>'Rolle „Verantwortlicher“ entzogen','employee.manager_deactivated'=>'als Verantwortlicher gesperrt','employee.manager_reactivated'=>'als Verantwortlicher wieder freigeschaltet','employee.manager_change_blocked'=>'Änderung abgewiesen (Vier-Augen-Schutz)'];
+    $meta=json_decode((string)($r['metadata_json']??''),true)?:[];
+    $name=yw_account_anonymized((string)($r['email']??''),$r['anonymized_at']??null)?'Gelöschtes Konto #'.(int)$r['entity_id']:((string)($r['name']??'')!==''?(string)$r['name']:'Konto #'.(int)$r['entity_id']);
+    $actorId=$r['actor_id']!==null?(int)$r['actor_id']:null;
+    $by=$r['actor_type']==='employee'?'im Shop durch '.($people['employee'][$actorId]??'Verantwortliche/n'):yw_actor_label((string)$r['actor_type'],$actorId,$meta,$people);
+    if($r['action']==='employee.manager_change_blocked')$by='Versuch im Shop durch '.($people['employee'][$actorId]??'Verantwortliche/n');
+    return [$name.' '.($labels[$r['action']]??$r['action']),($withCompany?(string)($r['shop_name']??'').' · ':'').date('d.m.Y H:i',strtotime((string)$r['created_at'])).' · '.$by.(!empty($meta['reason'])&&is_string($meta['reason'])?' · '.$meta['reason']:'')];
+}
+
+/** Kundenakte → Mitarbeiter: Einstellung und Rollenänderungen der letzten 14 Tage. */
+function yw_customer_section_manager_changes(array $c): void {
+    $rows=yw_manager_role_changes((int)$c['id'],20);$people=yw_actor_people($rows);
+    echo '<section class="card"><h2>Rollen der Verantwortlichen</h2><div class="card-body"><p class="muted">'.(yw_managers_can_appoint($c)?'Verantwortliche dürfen in diesem Shop weitere Verantwortliche ernennen. Herabstufen, sperren oder löschen kannst nur du.':'Nur du vergibst und entziehst die Rolle „Verantwortlicher“. Verantwortliche können sich im Shop gegenseitig weder herabstufen noch sperren oder löschen.').' Einstellung im Reiter <a href="'.e(yw_customer_url((int)$c['id'],'regeln')).'">Regeln &amp; Budget</a>.</p>';
+    if(!$rows)echo '<div class="empty compact">Keine Rollenänderungen in den letzten 14 Tagen.</div>';
+    else{echo '<ul class="manager-changes" style="list-style:none;margin:12px 0 0;padding:0;display:grid;gap:10px">';foreach($rows as $r){[$head,$sub]=yw_manager_role_change_text($r,$people,false);echo '<li><strong>'.e($head).'</strong><br><span class="muted">'.e($sub).'</span></li>';}echo '</ul>';}
+    echo '</div></section>';
 }
 
 function yw_customer_section_rules(array $c): void {
@@ -115,6 +148,9 @@ function yw_customer_section_rules(array $c): void {
             .'<label>Eigenanteil Mitarbeiter in %<input type="number" min="0" max="100" step="0.01" name="employee_share_percent" value="'.e(number_format((float)($c['employee_share_percent']??0),2,'.','')).'"></label></div>'
             .'<p class="muted">Geld- und Mengenbudgets werden eindeutig im Reiter „Firmenregeln“ verwaltet.</p>'
             .'<label class="check"><input type="checkbox" name="approval_required" value="1" '.((int)($c['approval_required']??1)===1?'checked':'').'><span>Freigabe durch Firmenverantwortlichen erforderlich</span></label>'
+            .(array_key_exists('managers_can_appoint',$c)?'<input type="hidden" name="managers_can_appoint_present" value="1"><label class="check"><input type="checkbox" name="managers_can_appoint" value="1" '.(yw_managers_can_appoint($c)?'checked':'').'><span>Verantwortliche dürfen weitere Verantwortliche ernennen</span></label>'
+                .'<p class="muted">Standard: aus – dann vergibst und entziehst nur du die Rolle (Kundenakte → Mitarbeiter). Eingeschaltet können Verantwortliche im Shop Mitarbeiter zu Verantwortlichen machen, andere Verantwortliche aber weiterhin nicht herabstufen, sperren oder löschen. Achtung: Wer ein zweites Konto zum Verantwortlichen macht, kann damit eigene Bestellungen freigeben. Jede Rollenänderung steht im Aktivitätsprotokoll.</p>'
+                :'<p class="muted">Einstellung „Verantwortliche dürfen weitere Verantwortliche ernennen“: erst nach dem Update-Assistenten verfügbar (bis dahin ernennt nur die Verwaltung).</p>')
             .'<hr><h4>Versandkosten</h4>'
             .'<label class="check"><input type="checkbox" name="shipping_enabled" value="1" '.((int)($c['shipping_enabled']??0)===1?'checked':'').'><span>Versandkosten berechnen</span></label>'
             .'<div class="grid2"><label>Versand netto in €<input type="number" min="0" step="0.01" name="shipping_net" value="'.e(number_format(((int)($c['shipping_net_cents']??0))/100,2,'.','')).'"></label>'

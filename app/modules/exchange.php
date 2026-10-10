@@ -267,6 +267,7 @@ function yw_exchange_manager_panel(array $company,array $account): string {
         $html.='<div class="yw-x-line"><span>'.(int)$r['quantity'].'× '.e($r['product_name']).' · '.e(t('common.size_value',['size'=>$r['old_size']])).($r['type']==='exchange'?' → <strong>'.e((string)$r['new_size']).'</strong>':'').'</span><span>'.e((int)$r['budget_delta_cents']!==0?t('x.budget',['amount'=>((int)$r['budget_delta_cents']>0?'+':'').money((int)$r['budget_delta_cents'])]).($r['type']==='return'?' '.t('x.after_completion'):''):t('x.budget_neutral')).'</span></div>';
         $html.='<div class="yw-x-req"><span>'.e(t('x.reason')).': '.e((string)$r['reason']).'</span></div>';
         if((int)$r['employee_account_id']===(int)$account['id'] && $others>0){$html.='<div class="yw-x-req"><span>'.e(t('x.own_request')).'</span></div></article>';continue;}
+        if((int)$r['employee_account_id']===(int)$account['id'])$html.='<div class="yw-x-req"><span>'.e(t('x.own_request_single')).'</span></div>'; // 10.15: Rückfall bei nur einer verantwortlichen Person (protokolliert)
         $html.='<form method="post" class="yw-x-decide">'.csrf_field().'<input type="hidden" name="action" value="exchange_decision"><input type="hidden" name="exchange_id" value="'.(int)$r['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button><button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button></form></article>';
     }
     return $html.'</section>';
@@ -280,12 +281,13 @@ function yw_exchange_manager_decide(array $company,array $account,int $id,string
     $q=db()->prepare('SELECT employee_account_id FROM yw_exchange_requests WHERE id=? AND company_id=? LIMIT 1');$q->execute([$id,(int)$company['id']]);$owner=$q->fetchColumn();
     if($owner===false)return ['error',t('x.err.not_found')];
     $self=(int)$owner===(int)$account['id'];
-    if($self && $decision==='approved' && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)return ['error',t('x.err.four_eyes')];
+    if($self && $decision==='approved' && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)return ['error',t('x.err.four_eyes')]; // Vier-Augen-Prinzip wie yw_order_decide()
     $u=db()->prepare("UPDATE yw_exchange_requests SET status=?,decision_note=?,decided_by_account_id=?,decided_at=NOW() WHERE id=? AND company_id=? AND status='requested'");
     $u->execute([$decision,$note!==''?$note:null,(int)$account['id'],$id,(int)$company['id']]);
     if(!$u->rowCount())return ['error',t('x.err.decided')];
     $orderId=(int)db()->query('SELECT order_id FROM yw_exchange_requests WHERE id='.(int)$id)->fetchColumn();
     audit_log('exchange.'.$decision,'order',$orderId,['company_id'=>(int)$company['id'],'exchange_id'=>$id]+($self?['self_decision'=>true]:[]));
+    if($self && $decision==='approved')audit_log('exchange.four_eyes_fallback','order',$orderId,['company_id'=>(int)$company['id'],'exchange_id'=>$id,'decided_by'=>(int)$account['id'],'reason'=>'einzige zugangsberechtigte verantwortliche Person']); // 10.15
     if($decision==='approved')yw_exchange_handover_enqueue($id);
     yw_exchange_notify($id,$decision);
     return ['success',$decision==='approved'?t('x.flash_approved'):t('x.flash_rejected')];
