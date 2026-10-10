@@ -39,22 +39,22 @@
   };
   var int = function (v) { return parseInt(v || '0', 10) || 0; };
 
-  /* ---------- Menü am Handy ---------- */
-  var side = document.querySelector('[data-cp-side]');
-  var toggle = side && side.querySelector('.cp-menu-toggle');
-  if (side && toggle) {
-    side.classList.add('js-menu');
-    toggle.hidden = false;
-    var setMenu = function (open) {
-      side.classList.toggle('open', open);
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-    toggle.addEventListener('click', function () { setMenu(!side.classList.contains('open')); });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && side.classList.contains('open')) { setMenu(false); toggle.focus(); }
-    });
+  /* ---------- 10.16: Konto- und Sprachmenü in der Kopfzeile schließen (Klick daneben, Escape) ---------- */
+  var popups = Array.prototype.slice.call(document.querySelectorAll('details.cp-account, details.yw-lang'));
+  if (popups.length) {
     document.addEventListener('click', function (e) {
-      if (side.classList.contains('open') && !side.contains(e.target)) setMenu(false);
+      popups.forEach(function (d) { if (d.open && !d.contains(e.target)) d.open = false; });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      popups.forEach(function (d) {
+        if (!d.open) return;
+        d.open = false;
+        var s = d.querySelector('summary'); if (s) s.focus();
+      });
+    });
+    popups.forEach(function (d) {
+      d.addEventListener('toggle', function () { if (d.open) popups.forEach(function (o) { if (o !== d) o.open = false; }); });
     });
   }
 
