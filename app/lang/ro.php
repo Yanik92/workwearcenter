@@ -598,7 +598,7 @@ return [
     'mail.remind_order.open' => 'Deschide aprobările',
     'mail.remind_reg.open' => 'Gestionează angajații',
     'mail.digest.subject' => ['Memento: {n} solicitare te așteaptă', 'Memento: {n} solicitări te așteaptă', 'Memento: {n} de solicitări te așteaptă'],
-    'mail.digest.intro' => ['în magazinul firmei {company}, {n} solicitare așteaptă decizia ta de mai mult de {days} zile. Iată rezumatul tău.', 'în magazinul firmei {company}, {n} solicitări așteaptă decizia ta de mai mult de {days} zile. Iată rezumatul tău.', 'în magazinul firmei {company}, {n} de solicitări așteaptă decizia ta de mai mult de {days} zile. Iată rezumatul tău.'],
+    'mail.digest.intro' => ['În magazinul firmei {company}, {n} solicitare așteaptă decizia ta de mai mult de {days} zile. Iată rezumatul tău.', 'În magazinul firmei {company}, {n} solicitări așteaptă decizia ta de mai mult de {days} zile. Iată rezumatul tău.', 'În magazinul firmei {company}, {n} de solicitări așteaptă decizia ta de mai mult de {days} zile. Iată rezumatul tău.'],
     'mail.digest.orders' => 'Comenzi de aprobat',
     'mail.digest.regs' => 'Înregistrări de aprobat',
     'mail.digest.orders_head' => 'Comenzi care așteaptă aprobarea ta',
