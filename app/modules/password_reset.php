@@ -5,21 +5,22 @@ function yw_password_reset_url(string $slug,string $token): string {
     return 'https://'.workwearcenter_domain().'/'.$slug.'/passwort-neu/'.$token;
 }
 
-function yw_create_password_reset(int $accountId,string $slug): string {
+function yw_create_password_reset(int $accountId,string $slug,int $minutes=60): string {
     $token=random_token();
     db()->prepare('UPDATE yw_password_resets SET used_at=NOW() WHERE account_id=? AND used_at IS NULL')->execute([$accountId]);
-    db()->prepare('INSERT INTO yw_password_resets(account_id,token_hash,expires_at) VALUES(?,?,DATE_ADD(NOW(),INTERVAL 60 MINUTE))')
-        ->execute([$accountId,hash('sha256',$token)]);
+    db()->prepare('INSERT INTO yw_password_resets(account_id,token_hash,expires_at) VALUES(?,?,DATE_ADD(NOW(),INTERVAL ? MINUTE))')
+        ->execute([$accountId,hash('sha256',$token),max(1,min(10080,$minutes))]);
     return yw_password_reset_url($slug,$token);
 }
 
 function yw_send_password_link(int $accountId,string $name,string $email,string $slug,bool $newAccount=false,bool $immediate=false): void {
-    $url=yw_create_password_reset($accountId,$slug);
+    // Einrichtungslinks neuer Konten gelten 7 Tage (große Importe laufen über die Mail-Warteschlange), Passwort-vergessen-Links 60 Minuten.
+    $url=yw_create_password_reset($accountId,$slug,$newAccount?10080:60);
     // 10.12: in der Sprache des Kontos (auch wenn die Verwaltung das Konto anlegt)
     yw_with_lang(yw_account_lang_by_id($accountId),function() use($email,$name,$url,$newAccount,$immediate){
         $subject=$newAccount?t('mail.pw.new_subject'):t('mail.pw.reset_subject');
         $intro=$newAccount?t('mail.pw.new_intro'):t('mail.pw.reset_intro');
-        send_system_mail($email,$subject,t('mail.hello',['name'=>$name])."\n\n".$intro."\n".t('mail.pw.link_text')."\n".$url."\n\n".t('mail.ignore'),$immediate);
+        send_system_mail($email,$subject,t('mail.hello',['name'=>$name])."\n\n".$intro."\n".t($newAccount?'mail.pw.link_text_new':'mail.pw.link_text')."\n".$url."\n\n".t('mail.ignore'),$immediate);
     });
 }
 
@@ -36,8 +37,9 @@ function yw_password_forgot_page(string $slug): void {
             record_login_failure($globalKey);
             if(filter_var($email,FILTER_VALIDATE_EMAIL)){
                 $emailKey='reset-email-'.$company['id'].'-'.hash('sha256',$email);
-                if(!login_throttled($emailKey,5)){
-                    record_login_failure($emailKey);
+                // Je Adresse höchstens 5 Links in 15 Minuten, unabhängig von der IP (wie beim Anmeldelink).
+                if(!login_throttled($emailKey,5,false)){
+                    record_login_failure($emailKey,false);
                     $q=db()->prepare("SELECT id,name,email FROM employee_accounts WHERE company_id=? AND email=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) LIMIT 1");
                     $q->execute([$company['id'],$email]); $account=$q->fetch();
                     if($account){

@@ -46,7 +46,7 @@ foreach(['corporate','admin','public','demo','shop','system'] as $module){
     catch(Throwable $loadError){$modulesOk=false;$diag['Programmteil '.$module]='FEHLER: '.$loadError->getMessage().' ('.basename($loadError->getFile()).':'.$loadError->getLine().')';}
 }
 if($modulesOk && function_exists('yw_schema_ready')){
-    $ready=yw_schema_ready();
+    $ready=yw_schema_ready(true); // vollständig prüfen, nicht nur die gemerkte Marke
     $diag['Datenbank']=$ready?'vollständig – der Shop sollte laufen':'NICHT vollständig: '.yw_schema_problem();
     if(!$ready && preg_match('/ FROM (\w+) LIMIT 0/',yw_schema_problem(),$tm)){
         try{$cols=db()->prepare('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION');$cols->execute([$tm[1]]);$diag['Spalten in '.$tm[1]]=implode(', ',$cols->fetchAll(PDO::FETCH_COLUMN))?:'(Tabelle fehlt)';}catch(Throwable $x){}

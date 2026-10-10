@@ -121,7 +121,7 @@ function upload_site_image(?array $file,string $old='',string $prefix='site'): s
 
     $safePrefix=preg_replace('/[^a-z0-9_-]/i','-', $prefix) ?: 'site';
     $name=$safePrefix.'-'.bin2hex(random_bytes(8)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)) throw new RuntimeException('Bild konnte nicht nach uploads/branding gespeichert werden.');
+    if(!yw_move_upload($tmp,$dir.'/'.$name)) throw new RuntimeException('Bild konnte nicht nach uploads/branding gespeichert werden.');
 
     return 'uploads/branding/'.$name;
 }
@@ -150,7 +150,7 @@ function upload_site_logo(array $file,string $old=''): string {
     if(!is_writable($dir)) throw new RuntimeException('Der Ordner uploads/branding ist nicht beschreibbar. Bitte Schreibrechte prüfen.');
 
     $name='main-logo-'.bin2hex(random_bytes(6)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)) throw new RuntimeException('Logo konnte nicht nach uploads/branding gespeichert werden.');
+    if(!yw_move_upload($tmp,$dir.'/'.$name)) throw new RuntimeException('Logo konnte nicht nach uploads/branding gespeichert werden.');
 
     return 'uploads/branding/'.$name;
 }
@@ -670,7 +670,8 @@ function send_inquiry_mail(array $data): bool {
         ."Telefon: ".$data['phone']."\n"
         ."Mitarbeitende: ".$data['employees']."\n\n"
         ."Nachricht:\n".$data['message']."\n"
-        .(!empty($data['probeshop'])?"\nProbeshop mit Logo (30 Tage gültig): ".yw_probeshop_url((string)$data['probeshop'])."\n":'');
+        .(!empty($data['probeshop'])?"\nProbeshop mit Logo (30 Tage gültig): ".yw_probeshop_url((string)$data['probeshop'])."\n":'')
+        .(isset($data['confirmation'])?"\nEingangsbestätigung an den Interessenten: ".match($data['confirmation']){'ok'=>'gesendet','recipient'=>'nicht gesendet – diese Adresse hat in den letzten 24 Stunden schon eine bekommen (Missbrauchsschutz)','global'=>'nicht gesendet – Stundenlimit für Bestätigungen erreicht (Missbrauchsschutz)',default=>'nicht gesendet – bitte selbst kurz antworten'}."\n":'');
 
     return send_system_mail($to,$subject,$body,false,(string)$data['email']);
 }
@@ -679,6 +680,7 @@ function inquiry_page(): void {
     $error='';
     $success=false;
     $probeshopToken=null;
+    $confirmation='ok';
 
     if(is_post()){
         verify_csrf();
@@ -719,12 +721,14 @@ function inquiry_page(): void {
                     if($logo!=='')$probeshopToken=yw_probeshop_create($company,$logo,$inquiryId,'inquiry')['token'];
                     db()->commit();
                     $logo=''; // gehört jetzt zum gespeicherten Probeshop
-                    audit_log('inquiry.created','inquiry',$inquiryId,$logo!==''?['probeshop'=>true]:[]);
+                    // 10.15: Eingangsbestätigung höchstens 1× je Adresse in 24 h und 30× je Stunde, ohne Formulartext
+                    $confirmation=yw_inquiry_confirmation_reserve($inquiryId,$email);
+                    audit_log('inquiry.created','inquiry',$inquiryId,($probeshopToken!==null?['probeshop'=>true]:[])+($confirmation!=='ok'?['confirmation'=>$confirmation]:[]));
                     send_inquiry_mail([
                         'company'=>$company,'name'=>$name,'email'=>$email,'phone'=>$phone,
-                        'employees'=>$employees,'message'=>$message,'probeshop'=>$probeshopToken
+                        'employees'=>$employees,'message'=>$message,'probeshop'=>$probeshopToken,'confirmation'=>$confirmation
                     ]);
-                    yw_inquiry_confirmation_mail($email,$name,$company,$probeshopToken);
+                    if($confirmation==='ok')yw_inquiry_confirmation_mail($email,$probeshopToken);
                     $success=true;
                 }catch(Throwable $e){
                     if(db()->inTransaction())db()->rollBack();
@@ -741,7 +745,7 @@ function inquiry_page(): void {
         }
     }
 
-    site_inquiry_render($success,$error,$probeshopToken);
+    site_inquiry_render($success,$error,$probeshopToken,$confirmation==='ok');
 }
 
 

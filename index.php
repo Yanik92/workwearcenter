@@ -12,6 +12,18 @@ register_shutdown_function(static function(): void {
         @file_put_contents(__DIR__.'/app/letzter-fehler.txt',date('d.m.Y H:i:s').' · '.(string)parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH)."\n".$err['message'].' ('.basename((string)$err['file']).':'.$err['line'].')');
     }
 });
+// Unerwartete Fehler (z. B. Datenbank bricht mitten in der Seite ab): protokollieren und statt einer leeren Seite einen Hinweis zeigen.
+set_exception_handler(static function(Throwable $e): void {
+    $msg=get_class($e).': '.$e->getMessage().' ('.basename($e->getFile()).':'.$e->getLine().')';
+    error_log('WorkwearCenter: '.$msg."\n".$e->getTraceAsString());
+    @file_put_contents(__DIR__.'/app/letzter-fehler.txt',date('d.m.Y H:i:s').' · '.(string)parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH)."\n".$msg);
+    // Tabelle oder Spalte fehlt (SQLSTATE 42S02/42S22): Schema-Marke verwerfen, der nächste Aufruf prüft vollständig und zeigt „Update erforderlich“.
+    if($e instanceof PDOException && in_array((string)$e->getCode(),['42S02','42S22'],true) && function_exists('yw_schema_forget'))try{if(db()->inTransaction())db()->rollBack();yw_schema_forget();}catch(Throwable $ignored){}
+    if(!headers_sent())http_response_code(500);
+    if(preg_grep('#^Content-Type:#i',headers_list()) && !preg_grep('#^Content-Type:\s*text/html#i',headers_list()))return; // CSV/ZIP: nichts anhängen
+    if(!headers_sent())header('Content-Type: text/html; charset=UTF-8');
+    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fehler</title><body style="font-family:system-ui;max-width:640px;margin:60px auto;padding:0 20px;line-height:1.6"><h1>Das hat gerade nicht geklappt</h1><p>Bitte die Seite in einem Moment neu laden. Der Fehler wurde protokolliert.</p><p><a href="/">Zur Startseite</a></p></body>';
+});
 require __DIR__ . '/app/bootstrap.php';
 require_once __DIR__.'/app/modules/corporate.php';
 require_once __DIR__.'/app/modules/admin.php';
@@ -22,8 +34,11 @@ require_once __DIR__.'/app/modules/system.php';
 if(!yw_schema_ready() && !in_array(path_only(),['/admin/login','/admin/logout','/admin/2fa'],true)) {
     http_response_code(503);
     render_head('Systemupdate erforderlich');
-    $fresh=true;try{db()->query('SELECT 1 FROM admins LIMIT 1');$fresh=false;}catch(Throwable $e){}
-    if($fresh) echo '<main class="install-bg"><section class="install-card"><h1>Neues System</h1><p>Die Datenbank ist noch leer. Bitte den Einrichtungs-Assistenten starten.</p><a class="btn primary" href="/install.php">Einrichtung starten</a></section></main>';
+    // Verbindungsabbruch/Überlast ist kein Update-Fall: Besucher sehen dann nur „kurz nicht erreichbar“, der Grund steht im Protokoll.
+    $dbDown=false;try{db()->query('SELECT 1');}catch(Throwable $e){$dbDown=true;error_log('WorkwearCenter DB: '.yw_schema_problem());}
+    $fresh=false;if(!$dbDown)try{db()->query('SELECT 1 FROM admins LIMIT 1');}catch(Throwable $e){$fresh=$e instanceof PDOException && $e->getCode()==='42S02';}
+    if($dbDown) echo '<main class="install-bg"><section class="install-card"><h1>Kurz nicht erreichbar</h1><p>Die Datenbank antwortet gerade nicht. Bitte die Seite in einer Minute neu laden.</p></section></main>';
+    elseif($fresh) echo '<main class="install-bg"><section class="install-card"><h1>Neues System</h1><p>Die Datenbank ist noch leer. Bitte den Einrichtungs-Assistenten starten.</p><a class="btn primary" href="/install.php">Einrichtung starten</a></section></main>';
     else echo '<main class="install-bg"><section class="install-card"><h1>Update erforderlich</h1><p>Die Programmdateien sind neuer als die Datenbank. Bitte als Administrator anmelden und den Update-Assistenten ausführen.</p><a class="btn primary" href="/admin/login">Anmelden</a> <a class="btn" href="/update.php">Zum Update-Assistenten</a></section></main>';
     render_foot(); exit;
 }
@@ -50,8 +65,8 @@ if ($path === '/robots.txt') {
 // larger employee imports moving without requiring a separately configured cron job.
 register_shutdown_function(static function(): void {
     if(function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
-    // Erinnerungen höchstens einmal täglich, falls kein Cronjob eingerichtet ist.
-    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup();} } catch(Throwable $e) {}
+    // Erinnerungen und Aufbewahrungsfristen höchstens einmal täglich, falls kein Cronjob eingerichtet ist.
+    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup(); yw_retention_prune();} } catch(Throwable $e) {}
     try { yw_process_mail_queue(2); }
     catch(Throwable $e) { error_log('WorkwearCenter background mail queue: '.$e->getMessage()); }
     // Übergabe an die Auftragsverwaltung als Rückfallebene zum Cronjob.

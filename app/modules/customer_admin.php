@@ -22,6 +22,65 @@ function yw_customer_assert_manager(array $company,array $actor): void {
     $q->execute([$actor['id'],$company['id']]); if(!$q->fetchColumn()) throw new DomainException(t('err.no_permission'));
 }
 
+/* ---------- 10.15: Vier-Augen-Schutz für Verantwortliche ---------- */
+
+/** Dürfen Verantwortliche dieser Firma weitere Verantwortliche ernennen? Standard: nein (nur die Verwaltung). */
+function yw_managers_can_appoint(array $company): bool { return (int)($company['managers_can_appoint']??0)===1; }
+
+/** Spalte companies.managers_can_appoint vorhanden (update.php gelaufen)? Einmal je Anfrage geprüft. */
+function yw_managers_appoint_ready(): bool {
+    static $ready=null;
+    if($ready!==null)return $ready;
+    try{db()->query('SELECT managers_can_appoint FROM companies LIMIT 0');return $ready=true;}catch(Throwable $e){return $ready=false;}
+}
+
+/** Kann dieses Konto heute als Verantwortlicher handeln (Rolle, Zugang, aktiv, nicht gelöscht, Ein-/Austritt)? */
+function yw_manager_eligible(array $a,?string $today=null): bool {
+    $today=$today??date('Y-m-d');$start=(string)($a['employment_start']??'');$end=(string)($a['employment_end']??'');
+    return (string)($a['role']??'')==='manager' && (int)($a['active']??0)===1 && (string)($a['registration_status']??'')==='approved' && empty($a['anonymized_at']) && ($start===''||$start<=$today) && ($end===''||$end>=$today);
+}
+
+/** Protokollvorgang für eine Änderung an Rolle/Zugang (vorher → nachher) oder null, wenn sich am Freigaberecht eines Verantwortlichen nichts ändert. */
+function yw_manager_change_action(array $before,array $after): ?string {
+    $was=(string)($before['role']??'')==='manager';$is=(string)($after['role']??'')==='manager';
+    if(!$was && $is)return 'employee.role_granted';
+    if($was && !$is)return 'employee.role_revoked';
+    if($was && $is && yw_manager_eligible($before) && !yw_manager_eligible($after))return 'employee.manager_deactivated';
+    if($was && $is && !yw_manager_eligible($before) && yw_manager_eligible($after))return 'employee.manager_reactivated'; // wieder freigeschaltet = wieder Freigaberecht
+    return null;
+}
+
+/**
+ * Rollenwechsel und Sperren von Verantwortlichen still protokollieren (keine Mail an andere Verantwortliche
+ * oder die Verwaltung). Wer es war, steht in actor_type/actor_id und zusätzlich in by/by_id.
+ */
+function yw_manager_change_audit(int $companyId,int $accountId,array $before,array $after,string $via,array $extra=[]): void {
+    $action=yw_manager_change_action($before,$after);if($action===null)return;
+    $by=in_array($via,['shop','csv'],true)?['by'=>'manager','by_id'=>(int)($_SESSION['employee_account_id']??0)]:['by'=>'admin','by_id'=>(int)($_SESSION['admin_id']??0)];
+    $changes=[];foreach(['role','registration_status','active','employment_start','employment_end'] as $k)if(array_key_exists($k,$after)&&(string)($before[$k]??'')!==(string)($after[$k]??''))$changes[$k]=(string)($before[$k]??'').'→'.(string)($after[$k]??'');
+    audit_log($action,'employee',$accountId,['company_id'=>$companyId,'via'=>$via]+$by+($changes?['changes'=>$changes]:[])+$extra);
+}
+
+/**
+ * Firmenshop: Was darf ein Verantwortlicher an einem Konto ändern? Gibt die zu speichernden Werte
+ * (role, registration_status, active, employment_start, employment_end) zurück oder bricht ab.
+ * - eigenes Konto: bleibt Verantwortlicher, freigegeben und aktiv (wie bisher)
+ * - andere Verantwortliche: Rolle, Zugang, Aktiv und Ein-/Austritt bleiben unverändert (Code 403 = Versuch)
+ * - Mitarbeiter → Verantwortlicher nur mit Firmen-Einstellung „Verantwortliche dürfen ernennen“
+ * $post: gesendete Felder; nur ausdrücklich gesendete, abweichende Werte gelten als Änderungsversuch.
+ */
+function yw_customer_role_guard(array $company,array $actor,array $target,array $wanted,array $post): array {
+    if((int)$target['id']===(int)$actor['id'])return ['role'=>'manager','registration_status'=>'approved','active'=>1]+$wanted;
+    if((string)$target['role']==='manager'){
+        $keep=['role'=>'manager','registration_status'=>(string)$target['registration_status'],'active'=>(int)$target['active'],'employment_start'=>($target['employment_start']??'')!==''?(string)$target['employment_start']:null,'employment_end'=>($target['employment_end']??'')!==''?(string)$target['employment_end']:null];
+        foreach(['role','registration_status','employment_start','employment_end'] as $k)if(array_key_exists($k,$post)&&$wanted[$k]!==$keep[$k])throw new DomainException(t('people.err.manager_protected'),403);
+        if((array_key_exists('active',$post)&&$keep['active']!==1)||(!array_key_exists('active',$post)&&array_key_exists('role',$post)&&$keep['active']===1))throw new DomainException(t('people.err.manager_protected'),403);
+        return $keep;
+    }
+    if($wanted['role']==='manager' && !yw_managers_can_appoint($company))throw new DomainException(t('people.err.appoint_disabled'),403);
+    return $wanted;
+}
+
 function yw_customer_csv_rows(array $file): array {
     if((int)($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new DomainException(t('people.csv.choose'));
     $size=(int)($file['size']??0);$tmp=(string)($file['tmp_name']??'');$name=(string)($file['name']??'');
@@ -49,7 +108,7 @@ function yw_customer_csv_rows(array $file): array {
 }
 
 function yw_customer_employee_action(array $company,array $actor,string $action): never {
-    verify_csrf(); $created=[]; $message=t('people.saved');$accessNotice=null;
+    verify_csrf(); $created=[]; $message=t('people.saved');$accessNotice=null;$roleAudits=[];
     try{
         $importRows=$action==='customer_employee_import'?yw_customer_csv_rows($_FILES['employees_csv']??[]):[];
         db()->beginTransaction(); $company=yw_locked_company((int)$company['id']); yw_customer_assert_manager($company,$actor);
@@ -62,11 +121,14 @@ function yw_customer_employee_action(array $company,array $actor,string $action)
             $q->execute([$company['id'],$name,$email,password_hash(random_token(),PASSWORD_DEFAULT),yw_customer_text($_POST['department']??'',120),yw_customer_text($_POST['cost_center']??'',120),yw_customer_text($_POST['location']??'',120),yw_customer_text($_POST['employee_number']??'',80),$employmentStart,$employmentEnd,$profileId]);
             $created[]=['id'=>(int)db()->lastInsertId(),'name'=>$name,'email'=>$email];$message=t('people.created');
         }elseif($action==='customer_employee_save'){
-            $id=(int)($_POST['account_id']??0);$q=db()->prepare('SELECT * FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.not_found'));
+            $id=(int)($_POST['account_id']??0);$q=db()->prepare('SELECT * FROM employee_accounts WHERE id=? AND company_id=? AND anonymized_at IS NULL FOR UPDATE');$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.not_found')); // anonymisierte Konten bleiben endgültig gesperrt
             $role=(string)($_POST['role']??'employee');$status=(string)($_POST['registration_status']??'approved');$active=isset($_POST['active'])?1:0;
             if(!in_array($role,['employee','manager'],true)||!in_array($status,['pending','approved','rejected'],true))throw new DomainException(t('people.err.role'));
-            if($id===(int)$actor['id']){$role='manager';$status='approved';$active=1;}
-            $employmentStart=yw_customer_date($_POST['employment_start']??'');$employmentEnd=yw_customer_date($_POST['employment_end']??'');yw_customer_assert_date_range($employmentStart,$employmentEnd);$today=date('Y-m-d');
+            $employmentStart=yw_customer_date($_POST['employment_start']??'');$employmentEnd=yw_customer_date($_POST['employment_end']??'');
+            // 10.15: andere Verantwortliche bleiben unverändert, Ernennen nur mit Firmen-Einstellung (Vier-Augen-Schutz)
+            $guard=yw_customer_role_guard($company,$actor,$target,['role'=>$role,'registration_status'=>$status,'active'=>$active,'employment_start'=>$employmentStart,'employment_end'=>$employmentEnd],$_POST);
+            $role=$guard['role'];$status=$guard['registration_status'];$active=(int)$guard['active'];$employmentStart=$guard['employment_start'];$employmentEnd=$guard['employment_end'];
+            yw_customer_assert_date_range($employmentStart,$employmentEnd);$today=date('Y-m-d');
             $remainsEligible=$role==='manager' && $active===1 && $status==='approved' && ($employmentStart===null||$employmentStart<=$today) && ($employmentEnd===null||$employmentEnd>=$today);
             if($target['role']==='manager' && !$remainsEligible){$q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) AND id<>?");$q->execute([$company['id'],$id]);if(!(int)$q->fetchColumn())throw new DomainException(t('people.err.last_manager'));}
             $name=yw_customer_text($_POST['name']??'',160);if($name==='')throw new DomainException(t('people.err.name_empty'));
@@ -74,25 +136,32 @@ function yw_customer_employee_action(array $company,array $actor,string $action)
             $q=db()->prepare('UPDATE employee_accounts SET name=?,department=?,cost_center=?,location=?,employee_number=?,employment_start=?,employment_end=?,equipment_profile_id=?,role=?,registration_status=?,active=? WHERE id=? AND company_id=?');
             $q->execute([$name,yw_customer_text($_POST['department']??'',120),yw_customer_text($_POST['cost_center']??'',120),yw_customer_text($_POST['location']??'',120),yw_customer_text($_POST['employee_number']??'',80),$employmentStart,$employmentEnd,$profileId,$role,$status,$active,$id,$company['id']]);
             if((string)$target['registration_status']!==$status && in_array($status,['approved','rejected'],true))$accessNotice=['email'=>(string)$target['email'],'name'=>$name,'status'=>$status,'active'=>$active,'language'=>$target['language']??null,'shop_languages'=>$company['shop_languages']??null];
+            $roleAudits[]=[$id,$target,['role'=>$role,'registration_status'=>$status,'active'=>$active,'employment_start'=>$employmentStart,'employment_end'=>$employmentEnd,'anonymized_at'=>null],'shop'];
         }elseif($action==='customer_employee_anonymize'){
             $id=(int)($_POST['account_id']??0);
             if($id===(int)$actor['id'])throw new DomainException(t('people.err.anonymize_self'));
+            // 10.15: Daten anderer Verantwortlicher löscht nur die Verwaltung.
+            $q=db()->prepare('SELECT role FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$id,$company['id']]);if((string)$q->fetchColumn()==='manager')throw new DomainException(t('people.err.manager_anonymize'),403);
             yw_anonymize_employee((int)$company['id'],$id);
             $message=t('people.anonymized');
         }elseif($action==='customer_employee_link'){
-            $id=(int)($_POST['account_id']??0);$q=db()->prepare("SELECT id,name,email FROM employee_accounts WHERE id=? AND company_id=? AND active=1 AND registration_status='approved' FOR UPDATE");$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.link'));$created[]=['id'=>(int)$target['id'],'name'=>$target['name'],'email'=>$target['email']];$message=t('people.link_sent');
+            $id=(int)($_POST['account_id']??0);$q=db()->prepare("SELECT id,name,email FROM employee_accounts WHERE id=? AND company_id=? AND active=1 AND registration_status='approved' AND anonymized_at IS NULL FOR UPDATE");$q->execute([$id,$company['id']]);$target=$q->fetch();if(!$target)throw new DomainException(t('people.err.link'));$created[]=['id'=>(int)$target['id'],'name'=>$target['name'],'email'=>$target['email']];$message=t('people.link_sent');
         }else{
             $profileNames=[];foreach(yw_equipment_profile_options((int)$company['id']) as $profile)$profileNames[mb_strtolower(trim((string)$profile['name']))]=(int)$profile['id'];
-            $find=db()->prepare('SELECT id FROM employee_accounts WHERE company_id=? AND email=? FOR UPDATE');
+            $find=db()->prepare('SELECT id,role,registration_status,active,employment_start,employment_end,anonymized_at FROM employee_accounts WHERE company_id=? AND email=? FOR UPDATE');$managersKept=0;
             $insert=db()->prepare("INSERT INTO employee_accounts(company_id,name,email,password_hash,role,registration_status,active,department,cost_center,location,employee_number,employment_start,employment_end,equipment_profile_id) VALUES(?,?,?,?, 'employee','approved',1,?,?,?,?,?,?,?)");
             $update=db()->prepare('UPDATE employee_accounts SET name=?,department=?,cost_center=?,location=?,employee_number=?,employment_start=?,employment_end=?,equipment_profile_id=? WHERE id=? AND company_id=?');
             $updateWithoutProfile=db()->prepare('UPDATE employee_accounts SET name=?,department=?,cost_center=?,location=?,employee_number=?,employment_start=?,employment_end=? WHERE id=? AND company_id=?');
-            foreach($importRows as $row){$profileName=mb_strtolower(trim($row['equipment_profile']));if($row['equipment_profile_present']&&$profileName!==''&&!isset($profileNames[$profileName]))throw new DomainException(t('people.csv.profile',['profile'=>$row['equipment_profile']]));$profileId=$row['equipment_profile_present']?($profileName===''?null:$profileNames[$profileName]):yw_default_equipment_profile_id((int)$company['id']);$find->execute([$company['id'],$row['email']]);$id=(int)$find->fetchColumn();$fields=[$row['name'],$row['department'],$row['cost_center'],$row['location'],$row['employee_number'],$row['employment_start'],$row['employment_end']];if($id){if($row['equipment_profile_present'])$update->execute([...$fields,$profileId,$id,$company['id']]);else $updateWithoutProfile->execute([...$fields,$id,$company['id']]);}else{$insert->execute([$company['id'],$row['name'],$row['email'],password_hash(random_token(),PASSWORD_DEFAULT),$row['department'],$row['cost_center'],$row['location'],$row['employee_number'],$row['employment_start'],$row['employment_end'],$profileId]);$created[]=['id'=>(int)db()->lastInsertId(),'name'=>$row['name'],'email'=>$row['email']];}}
+            foreach($importRows as $row){$profileName=mb_strtolower(trim($row['equipment_profile']));if($row['equipment_profile_present']&&$profileName!==''&&!isset($profileNames[$profileName]))throw new DomainException(t('people.csv.profile',['profile'=>$row['equipment_profile']]));$profileId=$row['equipment_profile_present']?($profileName===''?null:$profileNames[$profileName]):yw_default_equipment_profile_id((int)$company['id']);$find->execute([$company['id'],$row['email']]);$found=$find->fetch()?:null;$id=(int)($found['id']??0);$fields=[$row['name'],$row['department'],$row['cost_center'],$row['location'],$row['employee_number'],$row['employment_start'],$row['employment_end']];
+                // 10.15: Ein-/Austritt anderer Verantwortlicher bleibt unverändert (sonst ließen sie sich per CSV sperren).
+                if($found && (string)$found['role']==='manager'){if($id!==(int)$actor['id']){if((string)$found['employment_start']!==(string)$row['employment_start']||(string)$found['employment_end']!==(string)$row['employment_end'])$managersKept++;$fields[5]=$found['employment_start'];$fields[6]=$found['employment_end'];}else $roleAudits[]=[$id,$found,['employment_start'=>$row['employment_start'],'employment_end'=>$row['employment_end']]+$found,'csv'];}
+                if($id){if($row['equipment_profile_present'])$update->execute([...$fields,$profileId,$id,$company['id']]);else $updateWithoutProfile->execute([...$fields,$id,$company['id']]);}else{$insert->execute([$company['id'],$row['name'],$row['email'],password_hash(random_token(),PASSWORD_DEFAULT),$row['department'],$row['cost_center'],$row['location'],$row['employee_number'],$row['employment_start'],$row['employment_end'],$profileId]);$created[]=['id'=>(int)db()->lastInsertId(),'name'=>$row['name'],'email'=>$row['email']];}}
             $q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager'");$q->execute([$company['id']]);$managerCount=(int)$q->fetchColumn();
             if($managerCount>0){$q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE())");$q->execute([$company['id']]);if(!(int)$q->fetchColumn())throw new DomainException(t('people.err.import_managers'));}
-            $message=t('people.imported',['rows'=>count($importRows),'created'=>count($created)]);
+            $message=t('people.imported',['rows'=>count($importRows),'created'=>count($created)]).($managersKept?' '.t('people.csv.managers_kept',['n'=>$managersKept]):'');
         }
         db()->commit();
+        foreach($roleAudits as [$auditId,$before,$after,$via])yw_manager_change_audit((int)$company['id'],(int)$auditId,$before,$after,$via); // 10.15: still protokolliert, keine Mail
         if($accessNotice){
             $approved=$accessNotice['status']==='approved' && (int)$accessNotice['active']===1;
             yw_mail_to_person($accessNotice,yw_access_mail($approved,$company)); // 10.12: in der Sprache der Person
@@ -100,8 +169,12 @@ function yw_customer_employee_action(array $company,array $actor,string $action)
         $linkFailures=0;foreach($created as $new){try{yw_send_password_link($new['id'],$new['name'],$new['email'],(string)$company['slug'],$action!=='customer_employee_link',false);}catch(Throwable $mailError){$linkFailures++;error_log('Account setup mail: '.$mailError->getMessage());}}
         if($linkFailures)$message.=' '.t('people.link_failures',['n'=>$linkFailures]);
         audit_log($action,'company',(int)$company['id'],['company_id'=>(int)$company['id'],'created'=>count($created)]);flash('success',$message);
-    }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();if(!$e instanceof DomainException)error_log('Customer employee action: '.$e->getMessage());flash('error',$e instanceof DomainException?$e->getMessage():t('people.err.save_failed'));}
-    redirect('/'.$company['slug'].'/mitarbeiter');
+    }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();if(!$e instanceof DomainException)error_log('Customer employee action: '.$e->getMessage());
+        if($e instanceof DomainException && $e->getCode()===403)audit_log('employee.manager_change_blocked','employee',(int)($_POST['account_id']??0),['company_id'=>(int)$company['id'],'via'=>'shop','by'=>'manager','by_id'=>(int)$actor['id'],'attempt'=>$action]); // 10.15: abgewiesener Versuch
+        flash('error',$e instanceof DomainException?$e->getMessage():t('people.err.save_failed'));}
+    // 10.15: zurück auf dieselbe Seite der Personenliste (Suche, Seite, Jahr) und zur bearbeiteten Person
+    $personAnchor='person-'.(int)($_POST['account_id']??0);$failed=($_SESSION['flash'][0]??'')==='error';
+    redirect(yw_people_return_url((string)$company['slug'],match($action){'customer_employee_save','customer_employee_link'=>$personAnchor,'customer_employee_anonymize'=>$failed?$personAnchor:'personen',default=>''}));
 }
 
 /**
@@ -130,6 +203,7 @@ function yw_anonymize_employee(int $companyId,int $accountId): void {
         if($ownTransaction)db()->commit();
     }catch(Throwable $e){if($ownTransaction && db()->inTransaction())db()->rollBack();throw $e;}
     audit_log('employee.anonymized','employee',$accountId,['company_id'=>$companyId]);
+    if($target['role']==='manager')yw_manager_change_audit($companyId,$accountId,$target,['role'=>'employee','active'=>0,'registration_status'=>'rejected'],'admin',['reason'=>'Daten gelöscht (DSGVO)']); // 10.15
 }
 
 /**
@@ -185,18 +259,12 @@ function yw_customer_report_export(string $slug): never {
     $actor=company_portal_account($company);if(!$actor||!account_is_manager($actor)){http_response_code(403);exit('Kein Zugriff.');}
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$start,$end]=yw_report_period($company,$previous);
-    $q=db()->prepare("SELECT o.id,o.created_at,o.status,o.fulfillment_status,o.shipping_gross_cents,o.shipping_employee_cents,o.shipping_company_cents,
-            COALESCE(ea.name,'') name,COALESCE(ea.employee_number,'') employee_number,COALESCE(ea.department,'') department,COALESCE(ea.cost_center,'') cost_center,COALESCE(ea.location,'') location
-        FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id
-        WHERE o.company_id=? AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? ORDER BY o.id");
-    $q->execute([(int)$company['id'],$start,$end]);$orders=$q->fetchAll();
-    $items=[];
-    if($orders){
-        $ids=array_map(fn($o)=>(int)$o['id'],$orders);
-        $in=implode(',',array_fill(0,count($ids),'?'));
-        $iq=db()->prepare("SELECT order_id,product_name,size,quantity,unit_price_cents,unit_gross_cents,employee_share_cents,company_share_cents,line_net_cents,line_gross_cents,line_employee_cents,line_company_cents FROM order_items WHERE order_id IN ($in) ORDER BY id");
-        $iq->execute($ids);foreach($iq as $row)$items[(int)$row['order_id']][]=$row;
-    }
+    // Großkunden: eine Abfrage (statt IN-Liste mit einem Platzhalter je Bestellung, max. 65.535), ungepuffert gestreamt.
+    $sql="SELECT o.id,o.created_at,o.status,o.fulfillment_status,o.shipping_gross_cents,o.shipping_employee_cents,o.shipping_company_cents,
+            COALESCE(ea.name,'') name,COALESCE(ea.employee_number,'') employee_number,COALESCE(ea.department,'') department,COALESCE(ea.cost_center,'') cost_center,COALESCE(ea.location,'') location,
+            i.id item_id,i.product_name,i.size,i.quantity,i.unit_price_cents,i.unit_gross_cents,i.employee_share_cents,i.company_share_cents,i.line_net_cents,i.line_gross_cents,i.line_employee_cents,i.line_company_cents
+        FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN order_items i ON i.order_id=o.id
+        WHERE o.company_id=? AND o.status IN ('pending','approved') AND o.created_at>=? AND o.created_at<? ORDER BY o.id,i.id";
     audit_log('customer.report_export','company',(int)$company['id'],['company_id'=>(int)$company['id'],'period_start'=>$start]);
     $statusLabels=['pending'=>'Wartet auf Freigabe','approved'=>'Freigegeben'];
     header('Content-Type: text/csv; charset=UTF-8');
@@ -204,16 +272,22 @@ function yw_customer_report_export(string $slug): never {
     header('Cache-Control: no-store');
     $out=fopen('php://output','wb');fwrite($out,"\xEF\xBB\xBF");
     fputcsv($out,['Datum','Bestellung','Status','Produktionsstand','Mitarbeiter','Personalnummer','Abteilung','Kostenstelle','Standort','Artikel','Größe','Menge','Einzelpreis brutto','Summe brutto','Mitarbeiteranteil','Firmenanteil'],';','"','');
-    foreach($orders as $o){
-        $base=[date('d.m.Y',strtotime((string)$o['created_at'])),yw_order_number((int)$o['id']),$statusLabels[$o['status']]??$o['status'],$o['status']==='approved'?company_portal_fulfillment_status((string)($o['fulfillment_status']??'')):'',$o['name'],$o['employee_number'],$o['department'],$o['cost_center'],$o['location']];
-        foreach($items[(int)$o['id']]??[] as $it){
-            $qty=(int)$it['quantity'];$amounts=yw_order_item_amounts($it);
-            fputcsv($out,array_map('yw_csv_safe',array_merge($base,[$it['product_name'],$it['size'],$qty,yw_report_money((int)$it['unit_gross_cents']),yw_report_money($amounts['gross']),yw_report_money($amounts['employee']),yw_report_money($amounts['company'])])),';','"','');
+    // Versandzeile folgt wie bisher nach der letzten Position einer Bestellung.
+    $shipping=static function(?array $o,array $base) use($out): void {
+        if($o && (int)$o['shipping_gross_cents']>0)fputcsv($out,array_map('yw_csv_safe',array_merge($base,['Versand','',1,yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_employee_cents']),yw_report_money((int)$o['shipping_company_cents'])])),';','"','');
+    };
+    $prev=null;$base=[];
+    @set_time_limit(300);
+    yw_each_row($sql,[(int)$company['id'],$start,$end],function(array $o) use($out,$statusLabels,$shipping,&$prev,&$base): void {
+        if(!$prev || (int)$prev['id']!==(int)$o['id']){
+            $shipping($prev,$base);$prev=$o;
+            $base=[date('d.m.Y',strtotime((string)$o['created_at'])),yw_order_number((int)$o['id']),$statusLabels[$o['status']]??$o['status'],$o['status']==='approved'?company_portal_fulfillment_status((string)($o['fulfillment_status']??'')):'',$o['name'],$o['employee_number'],$o['department'],$o['cost_center'],$o['location']];
         }
-        if((int)$o['shipping_gross_cents']>0){
-            fputcsv($out,array_map('yw_csv_safe',array_merge($base,['Versand','',1,yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_gross_cents']),yw_report_money((int)$o['shipping_employee_cents']),yw_report_money((int)$o['shipping_company_cents'])])),';','"','');
-        }
-    }
+        if($o['item_id']===null)return;
+        $qty=(int)$o['quantity'];$amounts=yw_order_item_amounts($o);
+        fputcsv($out,array_map('yw_csv_safe',array_merge($base,[$o['product_name'],$o['size'],$qty,yw_report_money((int)$o['unit_gross_cents']),yw_report_money($amounts['gross']),yw_report_money($amounts['employee']),yw_report_money($amounts['company'])])),';','"','');
+    });
+    $shipping($prev,$base);
     fclose($out);exit;
 }
 
@@ -233,35 +307,94 @@ function yw_customer_report_card(array $company): void {
     echo '</tbody></table></div><p class="muted">'.e(t('report.note')).'</p></section>';
 }
 
+/**
+ * Großkunden: Personenliste seitenweise (?seite=) mit Suche (?suche=) statt aller Konten auf einer Seite.
+ * Anonymisierte Konten erscheinen nicht. $orderBy ist fester Code, nie Nutzereingabe.
+ */
+function yw_people_list(int $companyId,string $orderBy,int $perPage=50): array {
+    $search=trim(mb_substr(is_string($_GET['suche']??null)?$_GET['suche']:'',0,80));
+    $where='company_id=? AND anonymized_at IS NULL';$params=[$companyId];
+    if($search!==''){$like='%'.addcslashes($search,'%_\\').'%';$where.=' AND (name LIKE ? OR email LIKE ? OR department LIKE ? OR cost_center LIKE ? OR location LIKE ? OR employee_number LIKE ?)';array_push($params,$like,$like,$like,$like,$like,$like);}
+    $q=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE $where");$q->execute($params);$total=(int)$q->fetchColumn();
+    $pages=max(1,(int)ceil($total/$perPage));$page=min(max(1,(int)($_GET['seite']??1)),$pages);
+    $q=db()->prepare("SELECT * FROM employee_accounts WHERE $where ORDER BY $orderBy LIMIT $perPage OFFSET ".(($page-1)*$perPage));$q->execute($params);
+    return ['rows'=>$q->fetchAll(),'total'=>$total,'page'=>$page,'pages'=>$pages,'search'=>$search];
+}
+
+/** Suchfeld und Blättern zur Personenliste; $path ohne Query, $keep = weitere GET-Parameter, $texts = [Label, Platzhalter, Button, Zurück, Weiter, Seite x von y, Treffer, aria]. */
+function yw_people_list_nav(array $list,string $path,array $keep,array $texts,bool $withSearch=true): string {
+    $url=fn(int $page): string => $path.'?'.http_build_query($keep+($list['search']!==''?['suche'=>$list['search']]:[])+($page>1?['seite'=>$page]:[]));
+    $html='';
+    if($withSearch){
+        $html.='<form method="get" action="'.e($path).'" class="inline-form people-search" role="search" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">';
+        foreach($keep as $k=>$v)$html.='<input type="hidden" name="'.e($k).'" value="'.e($v).'">';
+        $html.='<label>'.e($texts[0]).' <input type="search" name="suche" maxlength="80" value="'.e($list['search']).'" placeholder="'.e($texts[1]).'"></label> <button class="btn small" type="submit">'.e($texts[2]).'</button>'.($list['search']!==''?' <span class="muted">'.e($texts[6]).'</span>':'').'</form>';
+    }
+    if($list['pages']>1){
+        $html.='<nav class="cp-action-row" aria-label="'.e($texts[7]).'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0">';
+        if($list['page']>1)$html.='<a class="btn small" href="'.e($url($list['page']-1)).'">← '.e($texts[3]).'</a>';
+        $html.='<span>'.e($texts[5]).'</span>';
+        if($list['page']<$list['pages'])$html.='<a class="btn small" href="'.e($url($list['page']+1)).'">'.e($texts[4]).' →</a>';
+        $html.='</nav>';
+    }
+    return $html;
+}
+
+/**
+ * 10.15: Rücksprung auf die Personenliste im Firmenshop mit derselben Suche, Seite und Jahresauswahl.
+ * Die Formulare senden an die aktuelle Adresse, daher stehen ?suche=&seite=&jahr= auch beim Speichern bereit.
+ */
+function yw_people_return_url(string $slug,string $anchor=''): string {
+    $q=[];
+    if(($_GET['jahr']??'')==='vorjahr')$q['jahr']='vorjahr';
+    $search=trim(mb_substr(is_string($_GET['suche']??null)?$_GET['suche']:'',0,80));if($search!=='')$q['suche']=$search;
+    if(is_string($_GET['seite']??null) && preg_match('/^[1-9]\d{0,5}$/D',$_GET['seite']) && $_GET['seite']!=='1')$q['seite']=$_GET['seite'];
+    return '/'.$slug.'/mitarbeiter'.($q?'?'.http_build_query($q):'').(preg_match('/^[a-z][a-z0-9-]{0,40}$/D',$anchor)?'#'.$anchor:'');
+}
+
+function yw_people_list_texts_shop(array $list): array {
+    return [t('people.search'),t('people.search_placeholder'),t('people.search_button'),t('pager.prev'),t('pager.next'),t('pager.page',['page'=>$list['page'],'pages'=>$list['pages']]),t('people.search_result',['count'=>$list['total']]),t('pager.people_aria')];
+}
+
 function yw_customer_people_page(array $company,array $account): void {
     $profiles=yw_equipment_profile_options((int)$company['id']);
-    $q=db()->prepare('SELECT * FROM employee_accounts WHERE company_id=? ORDER BY active DESC,registration_status,name');$q->execute([$company['id']]);$people=$q->fetchAll();
-    $active=count(array_filter($people,fn($p)=>(int)$p['active']===1));$pending=count(array_filter($people,fn($p)=>$p['registration_status']==='pending'));
+    $list=yw_people_list((int)$company['id'],"registration_status='pending' DESC,active DESC,registration_status,name,id");$people=$list['rows'];
+    // Aktiv = freigegeben und nicht anonymisiert (offene Registrierungen haben active=1).
+    $q=db()->prepare("SELECT COALESCE(SUM(active=1 AND registration_status='approved' AND anonymized_at IS NULL),0) active,COALESCE(SUM(registration_status='pending'),0) pending FROM employee_accounts WHERE company_id=?");$q->execute([$company['id']]);$counts=$q->fetch();
+    $active=(int)$counts['active'];$pending=(int)$counts['pending'];
     $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$q->execute([$company['id']]);$openOrders=(int)$q->fetchColumn();
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$periodStart,$periodEnd]=yw_report_period($company,$previous);
     $q=db()->prepare("SELECT NULLIF(ea.department,'') department,NULLIF(ea.cost_center,'') cost_center,NULLIF(ea.location,'') location,COUNT(DISTINCT ea.id) employees,COALESCE(SUM(os.company_spend),0) company_spend FROM employee_accounts ea LEFT JOIN (SELECT employee_account_id,SUM(company_total_cents) company_spend FROM orders WHERE company_id=? AND status IN ('pending','approved') AND created_at>=? AND created_at<? GROUP BY employee_account_id) os ON os.employee_account_id=ea.id WHERE ea.company_id=? AND ea.active=1 GROUP BY ea.department,ea.cost_center,ea.location ORDER BY department,cost_center,location");$q->execute([$company['id'],$periodStart,$periodEnd,$company['id']]);$groups=$q->fetchAll();
     echo '<div class="cp-section-head"><div><h1>'.e(t('people.title')).'</h1><p>'.e(t('people.intro')).'</p></div><strong>'.e(t('people.head_counts',['active'=>$active,'pending'=>$pending])).'</strong></div>';
     echo '<section class="cp-kpis"><article class="cp-kpi"><div class="icon">'.wc_public_icon('user').'</div><strong>'.$active.'</strong><span>'.e(t('people.kpi_active')).'</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('check').'</div><strong>'.$openOrders.'</strong><span>'.e(t('people.kpi_orders')).'</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('lock').'</div><strong>'.$pending.'</strong><span>'.e(t('people.kpi_registrations')).'</span></article></section>';
-    echo '<section class="cp-card"><h2>'.e(t('people.usage_title')).'</h2><p>'.e($previous?t('people.usage_previous'):t('people.usage_current')).'</p><div style="overflow:auto"><table><thead><tr><th>'.e(t('people.department')).'</th><th>'.e(t('people.cost_center')).'</th><th>'.e(t('people.location')).'</th><th>'.e(t('people.employees')).'</th><th>'.e(t('report.company_share')).'</th></tr></thead><tbody>';
+    // 10.15: Großkunden – viele Gruppen zugeklappt, damit die Personenliste nicht weit unten verschwindet.
+    $collapse=count($groups)>20;
+    echo '<section class="cp-card"><h2>'.e(t('people.usage_title')).'</h2><p>'.e($previous?t('people.usage_previous'):t('people.usage_current')).'</p>'.($collapse?'<details><summary>'.e(t('people.usage_show',['count'=>count($groups)])).'</summary>':'').'<div style="overflow:auto"><table><thead><tr><th>'.e(t('people.department')).'</th><th>'.e(t('people.cost_center')).'</th><th>'.e(t('people.location')).'</th><th>'.e(t('people.employees')).'</th><th>'.e(t('report.company_share')).'</th></tr></thead><tbody>';
     foreach($groups as $group)echo '<tr><td>'.e($group['department']??t('people.no_department')).'</td><td>'.e($group['cost_center']??t('people.no_cost_center')).'</td><td>'.e($group['location']??t('people.no_location')).'</td><td>'.(int)$group['employees'].'</td><td>'.money((int)$group['company_spend']).'</td></tr>';
-    echo '</tbody></table></div></section>';
+    echo '</tbody></table></div>'.($collapse?'</details>':'').'</section>';
     yw_customer_report_card($company);
     yw_payroll_manager_card($company);
-    $fields=fn(array $p=[]): string => '<label>'.e(t('people.department')).'<input name="department" maxlength="120" value="'.e($p['department']??'').'"></label><label>'.e(t('people.cost_center')).'<input name="cost_center" maxlength="120" value="'.e($p['cost_center']??'').'"></label><label>'.e(t('people.location')).'<input name="location" maxlength="120" value="'.e($p['location']??'').'"></label><label>'.e(t('people.employee_number')).'<input name="employee_number" maxlength="80" value="'.e($p['employee_number']??'').'"></label><label>'.e(t('people.start')).'<input type="date" name="employment_start" value="'.e($p['employment_start']??'').'"></label><label>'.e(t('people.end')).'<input type="date" name="employment_end" value="'.e($p['employment_end']??'').'"></label>';
+    $fields=fn(array $p=[],string $lock=''): string => '<label>'.e(t('people.department')).'<input name="department" maxlength="120" value="'.e($p['department']??'').'"></label><label>'.e(t('people.cost_center')).'<input name="cost_center" maxlength="120" value="'.e($p['cost_center']??'').'"></label><label>'.e(t('people.location')).'<input name="location" maxlength="120" value="'.e($p['location']??'').'"></label><label>'.e(t('people.employee_number')).'<input name="employee_number" maxlength="80" value="'.e($p['employee_number']??'').'"></label><label>'.e(t('people.start')).'<input type="date" name="employment_start" value="'.e($p['employment_start']??'').'"'.$lock.'></label><label>'.e(t('people.end')).'<input type="date" name="employment_end" value="'.e($p['employment_end']??'').'"'.$lock.'></label>';
     echo '<section class="cp-card"><h2>'.e(t('people.add_title')).'</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_add"><div class="grid2"><label>'.e(t('common.name')).'<input name="name" maxlength="160" required></label><label>'.e(t('common.email')).'<input type="email" name="email" maxlength="190" required></label>'.$fields().yw_equipment_profile_select($profiles,null).'</div><button class="btn primary">'.e(t('people.add_button')).'</button></form></section>';
     echo '<section class="cp-card"><h2>'.e(t('people.csv_title')).'</h2><p>'.e(t('people.csv_text')).'</p><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_import"><label>'.e(t('people.csv_file')).'<input type="file" name="employees_csv" accept=".csv,text/csv" required></label><button class="btn">'.e(t('people.csv_import')).'</button></form><p><a href="/'.e($company['slug']).'/mitarbeiter.csv">'.e(t('people.csv_export')).'</a></p></section>';
     $statusLabels=['pending'=>t('people.status_pending'),'approved'=>t('status.approved'),'rejected'=>t('status.rejected')];
+    $nav=fn(bool $withSearch): string => yw_people_list_nav($list,'/'.$company['slug'].'/mitarbeiter',$previous?['jahr'=>'vorjahr']:[],yw_people_list_texts_shop($list),$withSearch);
+    $canAppoint=yw_managers_can_appoint($company);
+    echo '<section class="cp-card" id="personen">'.$nav(true).'</section>';
     foreach($people as $person){
         if(!empty($person['anonymized_at']))continue; // anonymisierte Konten nicht mehr anzeigen
         $status=(string)($person['registration_status']??'approved');
-        echo '<details class="cp-card"><summary><strong>'.e($person['name']).'</strong> · '.e($person['email']).' · '.e($statusLabels[$status]??$status).'</summary>';
+        // 10.15: Vier-Augen-Schutz – andere Verantwortliche ändert nur die Verwaltung; Ernennen nur mit Firmen-Einstellung (serverseitig: yw_customer_role_guard)
+        $self=(int)$person['id']===(int)$account['id'];$protected=!$self && (string)$person['role']==='manager';$roleLocked=$protected||(!$self&&!$canAppoint);$lock=$protected?' disabled':'';
+        echo '<details class="cp-card" id="person-'.(int)$person['id'].'"><summary><strong>'.e($person['name']).'</strong> · '.e($person['email']).' · '.e($statusLabels[$status]??$status).((string)$person['role']==='manager'?' · '.e(t('people.role_manager')):'').'</summary>';
         if($status==='pending'){
             echo '<div class="cp-action-row"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="registration_decision"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="rejected"><button class="cp-btn reject" type="submit">'.e(t('approvals.reject')).'</button></form>';
             echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="registration_decision"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="approved"><button class="cp-btn approve" type="submit">'.e(t('people.approve_access')).'</button></form></div>';
         }
-        echo '<form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_save"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><div class="grid2"><label>'.e(t('common.name')).'<input name="name" maxlength="160" value="'.e($person['name']).'" required></label><label>'.e(t('common.email')).'<input value="'.e($person['email']).'" disabled></label>'.$fields($person).yw_equipment_profile_select($profiles,isset($person['equipment_profile_id'])?(int)$person['equipment_profile_id']:null)
-            .'<label>'.e(t('people.role')).'<select name="role"><option value="employee">'.e(t('people.role_employee')).'</option><option value="manager" '.($person['role']==='manager'?'selected':'').'>'.e(t('people.role_manager')).'</option></select></label><label>'.e(t('people.status')).'<select name="registration_status"><option value="pending" '.($status==='pending'?'selected':'').'>'.e(t('people.status_waiting')).'</option><option value="approved" '.($status==='approved'?'selected':'').'>'.e(t('status.approved')).'</option><option value="rejected" '.($status==='rejected'?'selected':'').'>'.e(t('status.rejected')).'</option></select></label></div><label class="check"><input type="checkbox" name="active" value="1" '.((int)$person['active']?'checked':'').'><span>'.e(t('people.active')).'</span></label><button class="btn">'.e(t('people.save')).'</button> <button class="btn" name="action" value="customer_employee_link">'.e(t('people.send_link')).'</button></form>'
-            .((int)$person['id']!==(int)$account['id']?'<form method="post" class="space-top" data-confirm="'.e(t('people.anonymize_confirm',['name'=>$person['name']])).'">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_anonymize"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><button class="btn small danger">'.e(t('people.anonymize')).'</button> <small class="muted">'.e(t('people.anonymize_hint')).'</small></form>':'').'</details>';
+        echo '<form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_save"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><div class="grid2"><label>'.e(t('common.name')).'<input name="name" maxlength="160" value="'.e($person['name']).'" required></label><label>'.e(t('common.email')).'<input value="'.e($person['email']).'" disabled></label>'.$fields($person,$lock).yw_equipment_profile_select($profiles,isset($person['equipment_profile_id'])?(int)$person['equipment_profile_id']:null)
+            .'<label>'.e(t('people.role')).'<select name="role"'.($roleLocked?' disabled':'').'><option value="employee">'.e(t('people.role_employee')).'</option><option value="manager" '.($person['role']==='manager'?'selected':'').'>'.e(t('people.role_manager')).'</option></select>'.(!$protected&&$roleLocked?'<small class="muted">'.e(t('people.appoint_admin_hint')).'</small>':'').'</label><label>'.e(t('people.status')).'<select name="registration_status"'.$lock.'><option value="pending" '.($status==='pending'?'selected':'').'>'.e(t('people.status_waiting')).'</option><option value="approved" '.($status==='approved'?'selected':'').'>'.e(t('status.approved')).'</option><option value="rejected" '.($status==='rejected'?'selected':'').'>'.e(t('status.rejected')).'</option></select></label></div><label class="check"><input type="checkbox" name="active" value="1" '.((int)$person['active']?'checked':'').$lock.'><span>'.e(t('people.active')).'</span></label>'.($protected?'<p class="muted">'.e(t('people.manager_protected_hint')).'</p>':'').'<button class="btn">'.e(t('people.save')).'</button> <button class="btn" name="action" value="customer_employee_link">'.e(t('people.send_link')).'</button></form>'
+            .(!$self&&!$protected?'<form method="post" class="space-top" data-confirm="'.e(t('people.anonymize_confirm',['name'=>$person['name']])).'">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_anonymize"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><button class="btn small danger">'.e(t('people.anonymize')).'</button> <small class="muted">'.e(t('people.anonymize_hint')).'</small></form>':'').'</details>';
     }
+    if($list['pages']>1)echo $nav(false);
 }

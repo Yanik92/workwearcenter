@@ -1,0 +1,2 @@
+# Tests nie über den Webserver ausführen – wirkt auch ohne mod_rewrite
+Require all denied

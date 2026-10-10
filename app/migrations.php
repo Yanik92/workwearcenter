@@ -521,6 +521,45 @@ function run_schema_updates(PDO $pdo): array {
     // Sprache des Mailrahmens (Gruß, Schaltflächen); Inhalt wird beim Einreihen übersetzt.
     schema_add_column($pdo,'yw_mail_queue','language','VARCHAR(5) NULL',$changes);
     schema_mark_version($pdo,'10.12.0',$changes);
+    // ---- Großkunden (1.500 Konten, 20.000+ Aufträge): Indizes ----
+    // Budget- und Mengenprüfung je Person (Shop, Checkout) statt aller Firmenaufträge des Jahres.
+    schema_add_index($pdo,'orders','idx_yw_orders_account','`employee_account_id`,`status`,`created_at`',$changes);
+    schema_add_index($pdo,'orders','idx_yw_orders_invite','`invite_id`',$changes);
+    // Verlauf in der Auftragsansicht; audit_log wächst unbegrenzt.
+    schema_add_index($pdo,'audit_log','idx_audit_entity','`entity_type`,`entity_id`',$changes);
+    schema_add_index($pdo,'yw_exchange_requests','idx_yw_exchange_item','`order_item_id`',$changes);
+    // ---- Version 10.14: API-Schlüssel auf eine Firma beschränken (NULL = alle Firmen) ----
+    schema_add_column($pdo,'yw_api_keys','company_id','INT UNSIGNED NULL',$changes);
+    schema_mark_version($pdo,'10.14.0',$changes);
+    // 10.15 – Sammel-Erinnerung und Aufbewahrungsfristen
+    // Letzte Sammel-Erinnerung je verantwortlicher Person (höchstens eine in 24 Stunden; NULL = noch keine).
+    schema_add_column($pdo,'employee_accounts','reminder_digest_at','DATETIME NULL',$changes);
+    // Stapelweises Löschen alter Protokolleinträge nach Datum, ohne die ganze Tabelle zu lesen.
+    schema_add_index($pdo,'audit_log','idx_audit_created','`created_at`',$changes);
+    // 10.15 – Vier-Augen-Schutz für Verantwortliche, Missbrauchsschutz Anfrageformular
+    // Standard aus: Die Rolle „Verantwortlicher“ vergibt nur die Verwaltung (Kundenakte → Mitarbeiter).
+    schema_add_column($pdo,'companies','managers_can_appoint','TINYINT(1) NOT NULL DEFAULT 0',$changes);
+    // Eingangsbestätigung an Interessenten: höchstens 1 je Adresse in 24 Stunden und 30 je Stunde insgesamt.
+    schema_add_column($pdo,'inquiries','confirmation_key','CHAR(64) NULL',$changes);
+    schema_add_column($pdo,'inquiries','confirmation_sent_at','DATETIME NULL',$changes);
+    schema_add_index($pdo,'inquiries','idx_yw_inquiries_confirm','`confirmation_key`,`confirmation_sent_at`',$changes);
+    schema_add_index($pdo,'inquiries','idx_yw_inquiries_confirm_sent','`confirmation_sent_at`',$changes);
+    // 10.15 – Tempo bei großen Datenmengen: Indizes für Warteschlangen, Übergabeprotokoll und Lohnabzug
+    // Mail- und Übergabewarteschlange: nächste fällige Einträge in id-Reihenfolge ohne Durchlauf der versendeten;
+    // Übergabeprotokoll: je Status die neuesten.
+    schema_add_index($pdo,'yw_mail_queue','idx_yw_mail_next','`status`,`id`,`available_at`',$changes);
+    schema_add_index($pdo,'yw_handover','idx_yw_handover_next','`status`,`id`,`available_at`',$changes);
+    // „Letzte erfolgreiche Übergabe“ ohne Durchlauf aller Übergaben (samt Auftragsdaten).
+    schema_add_index($pdo,'yw_handover','idx_yw_handover_done','`acknowledged_at`,`delivered_at`',$changes);
+    // Lohnabzug: Freigabezeitpunkt bzw. (ohne Freigabe) Bestellzeitpunkt im Monat je Firma.
+    schema_add_index($pdo,'orders','idx_yw_orders_payroll','`company_id`,`status`,`decided_at`,`created_at`',$changes);
+    // 10.15 – Lexware: Sammelrechnungen automatisch in Entwürfe mit höchstens 300 Positionen aufteilen
+    // part_no/part_count: „Teil 2 von 3“ (NULL = ungeteilt); line_grouping: Zwischenüberschriften je Kostenstelle,
+    // damit ein fehlgeschlagener Teil später mit denselben Aufträgen genauso erneut gesendet wird.
+    schema_add_column($pdo,'yw_lexware_documents','part_no','SMALLINT UNSIGNED NULL',$changes);
+    schema_add_column($pdo,'yw_lexware_documents','part_count','SMALLINT UNSIGNED NULL',$changes);
+    schema_add_column($pdo,'yw_lexware_documents','line_grouping','VARCHAR(16) NULL',$changes);
+    schema_mark_version($pdo,'10.15.0',$changes);
 
     return $changes;
 }

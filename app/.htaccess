@@ -1,0 +1,2 @@
+# Programmordner nie direkt ausliefern – wirkt auch ohne mod_rewrite (die Haupt-.htaccess sperrt app/ nur per RewriteRule)
+Require all denied

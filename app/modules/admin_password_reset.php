@@ -24,8 +24,8 @@ function admin_password_forgot_page(): void {
             record_login_failure('admin-reset-global');
             if(filter_var($email,FILTER_VALIDATE_EMAIL)){
                 $emailKey='admin-reset-email-'.hash('sha256',$email);
-                if(!login_throttled($emailKey,5)){
-                    record_login_failure($emailKey);
+                if(!login_throttled($emailKey,5,false)){ // je Adresse, unabhängig von der IP
+                    record_login_failure($emailKey,false);
                     $q=db()->prepare('SELECT id,email FROM admins WHERE email=? AND active=1 LIMIT 1');$q->execute([$email]);$admin=$q->fetch();
                     if($admin){
                         $url=yw_create_admin_password_reset((int)$admin['id']);

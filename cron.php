@@ -23,13 +23,24 @@ try{
     yw_process_mail_queue(50);
     $handed=yw_process_handover_queue(25);
     yw_cleanup_expired_security_rows();
-    $reminded=yw_send_reminders(3);
+    $pruned=yw_retention_prune(); // 10.15: Aufbewahrungsfristen für Aktivitätsprotokoll und Mailwarteschlange, stapelweise
+    $reminded=yw_send_reminders(3); // 10.15: Sammel-Erinnerung, höchstens eine Mail je verantwortlicher Person in 24 Stunden
     $budgetMails=yw_send_budget_year_mails(500);
     yw_orders_cleanup();
+    require_once __DIR__.'/app/modules/shop.php';
+    if(yw_daiber_enabled()){ // fehlende Produktbilder (vorne, hinten, Ärmel) aus dem Daiber-Shop, höchstens 20 Sekunden je Lauf
+        try{
+            $daiber=yw_daiber_fetch_missing(20.0);
+            fwrite(STDOUT,"Bilder aus dem Daiber-Shop: ".$daiber['loaded']." geladen, ".$daiber['assigned']." zugeordnet".($daiber['remaining']?", ".$daiber['remaining']." Artikel folgen":"").($daiber['offline']?" (Daiber-Shop nicht erreichbar)":"")."\n");
+        }catch(Throwable $e){error_log('WorkwearCenter cron Daiber-Bilder: '.$e->getMessage());}
+    }
+    $zones=yw_zone_auto_backfill(100); // Druckzonen neuer oder geänderter Produktfotos erkennen
+    fwrite(STDOUT,"Druckzonen automatisch erkannt: ".$zones."\n");
     fwrite(STDOUT,"Mails zum neuen Budgetjahr: ".$budgetMails."\n");
     $probeshops=yw_probeshop_cleanup(); // abgelaufene Probeshops samt Logo löschen (DSGVO)
     fwrite(STDOUT,"Abgelaufene Probeshops gelöscht: ".$probeshops."\n");
-    fwrite(STDOUT,"Erinnerungen an Verantwortliche: ".$reminded."\n");
+    fwrite(STDOUT,"Sammel-Erinnerungen an Verantwortliche: ".$reminded."\n");
+    fwrite(STDOUT,"Aufbewahrung gelöscht: ".$pruned['audit']." Protokolleinträge, ".$pruned['mail_sent']." versendete und ".$pruned['mail_failed']." fehlgeschlagene Mails\n");
     fwrite(STDOUT,"Übergaben an die Auftragsverwaltung: ".$handed."\n");
     fwrite(STDOUT,"WorkwearCenter-Mailwarteschlange und Sicherheitsbereinigung verarbeitet.\n");
 }catch(Throwable $e){

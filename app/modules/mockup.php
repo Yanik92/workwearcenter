@@ -45,15 +45,193 @@ function yw_zone_defaults(): array {
     ];
 }
 
-/** Druckzonen eines Produkts, bereinigt. Struktur: [view][position] => [x,y,w]. */
+/**
+ * Druckzonen eines Produkts, bereinigt. Struktur: [view][position] => [x,y,w].
+ * 10.12.4: Ohne von Hand gespeicherte Zonen werden sie automatisch aus den Produktfotos erkannt
+ * und gespeichert (mit Merkmal "_auto"). Ändert sich ein Foto, wird neu erkannt. Von Hand im
+ * Editor gespeicherte Zonen bleiben unangetastet.
+ */
 function yw_product_zones(array $product): array {
     $raw=trim((string)($product['print_zones_json']??''));
-    $zones=[];
-    if($raw!==''){
-        $decoded=json_decode($raw,true);
-        if(is_array($decoded))$zones=yw_zones_sanitize($decoded);
+    $decoded=$raw!==''?json_decode($raw,true):null;
+    if(is_array($decoded)&&!isset($decoded['_auto'])){
+        $manual=yw_zones_sanitize($decoded);
+        if($manual)return $manual;
+    }
+    $signature=yw_zone_auto_signature($product);
+    if(is_array($decoded)&&is_array($decoded['_auto']??null)&&($decoded['_auto']['sig']??'')===$signature)return yw_zones_sanitize($decoded);
+    if(!yw_product_views($product))return [];
+    // Höchstens 25 Erkennungen je Seitenaufruf; den Rest erledigt der nächste Aufruf bzw. der Cronjob.
+    $GLOBALS['yw_zone_budget']??=25;
+    if($GLOBALS['yw_zone_budget']<=0)return is_array($decoded)&&isset($decoded['_auto'])?yw_zones_sanitize($decoded):[];
+    $GLOBALS['yw_zone_budget']--;
+    $zones=yw_zone_auto_detect($product);
+    $id=(int)($product['id']??0);
+    if($id>0){
+        try{db()->prepare('UPDATE products SET print_zones_json=? WHERE id=?')->execute([json_encode($zones+['_auto'=>['sig'=>$signature,'at'=>date('c')]],JSON_UNESCAPED_UNICODE),$id]);}
+        catch(Throwable $e){error_log('Druckzonen speichern: '.$e->getMessage());}
     }
     return $zones;
+}
+
+/** Sind die Zonen des Produkts automatisch erkannt (true) oder von Hand gesetzt (false)? */
+function yw_product_zones_are_auto(array $product): bool {
+    $decoded=json_decode(trim((string)($product['print_zones_json']??'')),true);
+    return !is_array($decoded)||isset($decoded['_auto'])||!yw_zones_sanitize($decoded);
+}
+
+const YW_ZONE_AUTO_VERSION='1';
+
+function yw_zone_auto_signature(array $product): string {
+    return md5(YW_ZONE_AUTO_VERSION.'|'.($product['image_path']??'').'|'.($product['image_back_path']??'').'|'.($product['image_sleeve_path']??'').'|'.mb_strtolower((string)($product['category']??'')));
+}
+
+/** Art des Artikels aus Kategorie und Name: top (Shirts, Jacken …), head (Caps, Mützen), legs (Hosen), flat (Handtuch, Decke, Schürze …). */
+function yw_zone_garment_type(array $product): string {
+    $text=mb_strtolower((string)($product['category']??'').' '.(string)($product['name']??''));
+    if(preg_match('/\b(cap|caps|mütze|muetze|beanie|hut|hüte|huete|sunvisor|visor|stirnband)/u',$text))return 'head';
+    if(preg_match('/\b(hose|hosen|shorts|jeans|bermuda|latzhose)/u',$text))return 'legs';
+    if(preg_match('/\b(handtuch|frottier|decke|decken|schal|schals|tuch|tücher|schürze|schuerze|tasche|beutel|socken|handschuh|schweissband|point of sale)/u',$text))return 'flat';
+    return 'top';
+}
+
+/**
+ * Erkennt die Druckzonen aus den Produktfotos: Freisteller-Umriss suchen (transparenter oder
+ * einfarbiger Hintergrund), daraus Rumpf, Schulterlinie und Ärmel ableiten und die üblichen
+ * Positionen (Brust, Rücken, Nacken, Ärmel) relativ dazu setzen. Kein Treffer → leere Liste
+ * (dann gelten die Standardzonen).
+ */
+function yw_zone_auto_detect(array $product): array {
+    $type=yw_zone_garment_type($product);$zones=[];
+    foreach(yw_product_views($product) as $view=>$path){
+        $shape=yw_zone_image_shape(dirname(__DIR__,2).'/'.$path);
+        if(!$shape){ // z. B. weißes Teil auf weißem Grund: Zonen einer anderen Farbe desselben Artikels übernehmen
+            $sibling=yw_zone_sibling_zones($product,$view);
+            if($sibling)$zones[$view]=$sibling;
+            continue;
+        }
+        $z=yw_zone_from_shape($shape,$view,$type);
+        if($z)$zones[$view]=$z;
+    }
+    return yw_zones_sanitize($zones);
+}
+
+/** Automatisch erkannte Zonen einer anderen Farbe desselben Artikels (gleiche Grund-Artikelnummer). */
+function yw_zone_sibling_zones(array $product,string $view): array {
+    $sku=strtoupper(trim((string)($product['sku']??'')));$id=(int)($product['id']??0);
+    if($sku===''||!function_exists('yw_katalog_base_sku'))return [];
+    $base=yw_katalog_base_sku($sku,mb_strtolower((string)($product['color']??'')));
+    if($base===$sku)return [];
+    try{
+        $q=db()->prepare("SELECT print_zones_json FROM products WHERE id<>? AND (sku=? OR sku LIKE ?) AND print_zones_json LIKE '%_auto%' LIMIT 20");
+        $q->execute([$id,$base,$base.'-%']);
+        foreach($q->fetchAll(PDO::FETCH_COLUMN) as $json){$d=json_decode((string)$json,true);$z=is_array($d)?yw_zones_sanitize($d):[];if(!empty($z[$view]))return $z[$view];}
+    }catch(Throwable $e){}
+    return [];
+}
+
+/** Erkennt fehlende Druckzonen im Hintergrund (Cronjob, Schaltfläche „Alle automatisch erkennen“). */
+function yw_zone_auto_backfill(int $limit=200,bool $resetAuto=false): int {
+    if($resetAuto)db()->exec("UPDATE products SET print_zones_json=NULL WHERE print_zones_json LIKE '%\\_auto%'");
+    $rows=db()->query("SELECT * FROM products WHERE (print_zones_json IS NULL OR print_zones_json='' OR print_zones_json LIKE '%\\_auto%') AND COALESCE(image_path,'')<>'' ORDER BY id")->fetchAll();
+    $done=0;$GLOBALS['yw_zone_budget']=$limit;
+    foreach($rows as $p){
+        if($done>=$limit)break;
+        $raw=json_decode((string)($p['print_zones_json']??''),true);
+        if(is_array($raw)&&($raw['_auto']['sig']??'')===yw_zone_auto_signature($p))continue;
+        yw_product_zones($p);$done++;
+    }
+    return $done;
+}
+
+/**
+ * Umriss eines freigestellten Produkts. Rückgabe in Prozent der Bildbreite/-höhe:
+ * bbox (l,r,t,b), Zeilenläufe je Zeile, oder null bei unklarem Bild.
+ */
+function yw_zone_image_shape(string $file): ?array {
+    if(!is_file($file)||!function_exists('imagecreatetruecolor'))return null;
+    $info=@getimagesize($file);if(!is_array($info))return null;
+    [$w,$h,$type]=$info;if($w<20||$h<20||$w*$h>40_000_000)return null;
+    $src=match($type){IMAGETYPE_JPEG=>@imagecreatefromjpeg($file),IMAGETYPE_PNG=>@imagecreatefrompng($file),IMAGETYPE_WEBP=>function_exists('imagecreatefromwebp')?@imagecreatefromwebp($file):false,default=>false};
+    if(!$src)return null;
+    $sw=160;$sh=max(20,(int)round($h*$sw/$w));
+    $img=imagecreatetruecolor($sw,$sh);imagealphablending($img,false);imagesavealpha($img,true);
+    imagefill($img,0,0,imagecolorallocatealpha($img,0,0,0,127));
+    imagecopyresampled($img,$src,0,0,0,0,$sw,$sh,$w,$h);imagedestroy($src);
+    $px=[];for($y=0;$y<$sh;$y++)for($x=0;$x<$sw;$x++)$px[$y][$x]=imagecolorat($img,$x,$y);
+    imagedestroy($img);
+    // Hintergrund aus dem Rand schätzen
+    $border=[];
+    for($x=0;$x<$sw;$x++){$border[]=$px[0][$x];$border[]=$px[$sh-1][$x];}
+    for($y=0;$y<$sh;$y++){$border[]=$px[$y][0];$border[]=$px[$y][$sw-1];}
+    $transparent=0;foreach($border as $c)if((($c>>24)&0x7F)>100)$transparent++;
+    $alphaMode=$transparent>count($border)*0.6;
+    $rs=[];$gs=[];$bs=[];foreach($border as $c){$rs[]=($c>>16)&255;$gs[]=($c>>8)&255;$bs[]=$c&255;}
+    sort($rs);sort($gs);sort($bs);$m=intdiv(count($rs),2);$bg=[$rs[$m],$gs[$m],$bs[$m]];
+    $isGarment=static function(int $c) use($alphaMode,$bg): bool {
+        $a=($c>>24)&0x7F;
+        if($alphaMode)return $a<90;
+        if($a>100)return false;
+        return abs((($c>>16)&255)-$bg[0])+abs((($c>>8)&255)-$bg[1])+abs(($c&255)-$bg[2])>36;
+    };
+    $runs=[];$count=0;$t=null;$b=null;$l=$sw;$r=-1;
+    for($y=0;$y<$sh;$y++){
+        $row=[];$start=null;
+        for($x=0;$x<=$sw;$x++){
+            $on=$x<$sw&&$isGarment($px[$y][$x]);
+            if($on){$count++;if($start===null)$start=$x;}
+            elseif($start!==null){if($x-$start>=2)$row[]=[$start,$x-1];$start=null;}
+        }
+        // kleine Lücken (Nähte, Schatten) schließen
+        $merged=[];foreach($row as $run){if($merged&&$run[0]-$merged[count($merged)-1][1]<=2)$merged[count($merged)-1][1]=$run[1];else $merged[]=$run;}
+        $runs[$y]=$merged;
+        if($merged){$t??=$y;$b=$y;$l=min($l,$merged[0][0]);$r=max($r,$merged[count($merged)-1][1]);}
+    }
+    if($t===null||$b-$t<$sh*0.2||$r-$l<$sw*0.2)return null;
+    $coverage=$count/($sw*$sh);
+    if($coverage<0.06||$coverage>0.95)return null; // nichts erkannt bzw. Hintergrund nicht trennbar
+    return ['w'=>$sw,'h'=>$sh,'l'=>$l,'r'=>$r,'t'=>$t,'b'=>$b,'runs'=>$runs];
+}
+
+/** Zonen einer Ansicht aus dem Umriss ableiten (Ergebnis in Prozent). */
+function yw_zone_from_shape(array $s,string $view,string $type): array {
+    $W=$s['w'];$H=$s['h'];$px=static fn(float $v)=>round($v/$W*100,1);$py=static fn(float $v)=>round($v/$H*100,1);
+    $bw=$s['r']-$s['l'];$bh=$s['b']-$s['t'];$cx=($s['l']+$s['r'])/2;
+    if($type==='head'){
+        $front=['x'=>$px($cx),'y'=>$py($s['t']+$bh*0.38),'w'=>$px($bw*0.3)];
+        return $view==='front'?['chest_left'=>$front,'chest_right'=>$front,'other'=>$front]:['back_top'=>['x'=>$px($cx),'y'=>$py($s['t']+$bh*0.45),'w'=>$px($bw*0.3)],'neck'=>['x'=>$px($cx),'y'=>$py($s['t']+$bh*0.6),'w'=>$px($bw*0.2)]];
+    }
+    if($type==='flat'||$view==='sleeve'){
+        if($view==='sleeve'){$z=['x'=>$px($cx),'y'=>$py($s['t']+$bh*0.3),'w'=>$px($bw*0.45)];return ['sleeve_left'=>$z,'sleeve_right'=>$z];}
+        return ['other'=>['x'=>$px($cx),'y'=>$py($s['t']+$bh*0.5),'w'=>$px($bw*0.4)],'chest_left'=>['x'=>$px($cx),'y'=>$py($s['t']+$bh*0.3),'w'=>$px($bw*0.3)]];
+    }
+    // Maße relativ zum Umriss; die Faktoren sind an freigestellten Shirt-, Hoodie- und Jackenfotos
+    // (gerade und leicht gedreht) gegen von Hand gesetzte Zonen abgeglichen.
+    $at=static fn(float $f)=>$s['l']+$bw*$f;
+    if($type==='legs'){
+        $z=['x'=>$px($at(0.66)),'y'=>$py($s['t']+$bh*0.25),'w'=>$px($bw*0.18)];
+        return $view==='back'?['back_top'=>['x'=>$px($at(0.5)),'y'=>$py($s['t']+$bh*0.08),'w'=>$px($bw*0.3)],'other'=>$z]:['other'=>$z,'chest_left'=>$z];
+    }
+    // Schulterlinie: erste Zeile, die mindestens 60 % so breit ist wie das ganze Teil (Kragen/Kapuze sind schmaler)
+    $shoulder=$s['t'];
+    for($y=$s['t'];$y<=$s['b'];$y++){$runs=$s['runs'][$y]??[];if(!$runs)continue;if($runs[count($runs)-1][1]-$runs[0][0]>=$bw*0.6){$shoulder=$y;break;}}
+    $hb=max(1,$s['b']-$shoulder);
+    if($view==='back'){
+        return [
+            'neck'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.03),'w'=>$px($bw*0.1)],
+            'back_top'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.13),'w'=>$px($bw*0.34)],
+            'back_large'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.34),'w'=>$px($bw*0.48)],
+            'other'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($bw*0.3)],
+        ];
+    }
+    $chestY=$py($shoulder+$hb*0.235);$logoW=$px($bw*0.19);
+    return [
+        'chest_left'=>['x'=>$px($at(0.64)),'y'=>$chestY,'w'=>$logoW],   // Brust links = vom Betrachter aus rechts
+        'chest_right'=>['x'=>$px($at(0.36)),'y'=>$chestY,'w'=>$logoW],
+        'sleeve_left'=>['x'=>$px($at(0.9)),'y'=>$py($shoulder+$hb*0.2),'w'=>$px($bw*0.08)],
+        'sleeve_right'=>['x'=>$px($at(0.1)),'y'=>$py($shoulder+$hb*0.2),'w'=>$px($bw*0.08)],
+        'other'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($bw*0.3)],
+    ];
 }
 
 function yw_zones_sanitize(array $input): array {
@@ -72,6 +250,10 @@ function yw_zones_sanitize(array $input): array {
 
 /** Findet für eine Position die Ansicht und Zone: eigene Zonen des Produkts vor Standard. */
 function yw_zone_for(array $zones,string $position,array $availableViews): ?array {
+    // Gibt es ein Foto der passenden Ansicht, dort zeigen: Rücken → Rückansicht; das Ärmelfoto (Daiber-Seitenansicht)
+    // zeigt den linken Ärmel – der rechte bleibt auf der Vorderansicht, damit zwei Ärmel-Logos nicht übereinander liegen
+    $preferredView=$position==='sleeve_left'?'sleeve':(yw_zone_default_view($position)==='back'?'back':null);
+    if($preferredView!==null&&isset($zones[$preferredView][$position])&&in_array($preferredView,$availableViews,true))return ['view'=>$preferredView,'zone'=>$zones[$preferredView][$position]];
     foreach($zones as $view=>$list){
         if(isset($list[$position]) && in_array($view,$availableViews,true))return ['view'=>$view,'zone'=>$list[$position]];
     }
@@ -113,12 +295,18 @@ function yw_sanitize_svg(string $raw): string {
     $doc=new DOMDocument();
     $ok=$doc->loadXML($raw,LIBXML_NONET);
     libxml_clear_errors();libxml_use_internal_errors($prev);
-    if(!$ok||!$doc->documentElement||strtolower($doc->documentElement->localName)!=='svg')throw new RuntimeException('Die Datei ist kein gültiges SVG.');
+    $svgNs='http://www.w3.org/2000/svg';
+    if(!$ok||!$doc->documentElement||strtolower($doc->documentElement->localName)!=='svg'||!in_array($doc->documentElement->namespaceURI,[null,'',$svgNs],true))throw new RuntimeException('Die Datei ist kein gültiges SVG.');
     $banned=['script','foreignobject','iframe','object','embed','audio','video','animate','set','animatemotion','animatetransform','handler','listener'];
     $xpath=new DOMXPath($doc);
+    // Verarbeitungsanweisungen (z. B. xml-stylesheet mit type="text/xsl") entfernen: Ein XSLT im SVG selbst
+    // erzeugt sonst beim direkten Aufruf der Datei neue <script>-Elemente, an allen Prüfungen unten vorbei.
+    foreach(iterator_to_array($xpath->query('//processing-instruction()')) as $pi)$pi->parentNode?->removeChild($pi);
     $remove=[];
     foreach($xpath->query('//*') as $el){
         if(!$el instanceof DOMElement)continue;
+        // Nur SVG-Elemente behalten (XSLT-, XHTML- und Editor-Elemente wie inkscape:* fliegen raus)
+        if(!in_array($el->namespaceURI,[null,'',$svgNs],true)){$remove[]=$el;continue;}
         if(in_array(strtolower($el->localName),$banned,true)){$remove[]=$el;continue;}
         $dropAttrs=[];
         foreach(iterator_to_array($el->attributes) as $attr){
@@ -131,14 +319,15 @@ function yw_sanitize_svg(string $raw): string {
                 // nur Verweise innerhalb der Datei (#id) oder eingebettete Rasterbilder
                 if(!(str_starts_with($value,'#')||preg_match('#^data:image/(png|jpeg|webp);base64,#i',$value)))$dropAttrs[]=$attr;
             }
-            elseif($name==='style' && preg_match('/url\s*\(|expression|javascript:|@import/i',$value))$dropAttrs[]=$attr;
+            elseif($name==='style' && preg_match('/url\s*\(|image-set|expression|javascript:|@import|\\\\/i',$value))$dropAttrs[]=$attr;
+            elseif(preg_match('/url\s*\(\s*[\'"]?\s*(?!#)/i',$value))$dropAttrs[]=$attr; // fill="url(#verlauf)" ja, externe Adressen nein
         }
         foreach($dropAttrs as $a)$el->removeAttributeNode($a);
     }
     foreach($remove as $el)if($el->parentNode)$el->parentNode->removeChild($el);
     foreach($xpath->query('//*[local-name()="style"]') as $style){
         $css=(string)$style->textContent;
-        if(preg_match('/@import|url\s*\(|expression|javascript:/i',$css)&&$style->parentNode)$style->parentNode->removeChild($style);
+        if(preg_match('/@import|url\s*\(|image-set|expression|javascript:|\\\\/i',$css)&&$style->parentNode)$style->parentNode->removeChild($style);
     }
     $root=$doc->documentElement;
     // Breite/Höhe sicherstellen, sonst kann der Browser das Bild nicht vermessen
@@ -176,7 +365,7 @@ function yw_store_motif_file(?array $file,string $old=''): string {
     }elseif($mime==='image/png'){
         yw_validate_uploaded_raster($tmp,'Logo');
         $name='motif-'.bin2hex(random_bytes(8)).'.png';
-        if(!move_uploaded_file($tmp,$dir.'/'.$name))throw new RuntimeException('Logo konnte nicht gespeichert werden.');
+        if(!yw_move_upload($tmp,$dir.'/'.$name))throw new RuntimeException('Logo konnte nicht gespeichert werden.');
     }else throw new RuntimeException('Erlaubt sind SVG oder PNG mit transparentem Hintergrund.');
     if($old!=='')yw_delete_motif_file($old);
     return 'uploads/motifs/'.$name;
@@ -275,7 +464,8 @@ function yw_zone_editor_page(int $productId): void {
     $zones=yw_product_zones($product);
     $defaults=yw_zone_defaults();
     $positions=decoration_position_options();
-    echo '<section class="card"><div class="title-row"><div><h2>Druckzonen: '.e($product['name']).'</h2><p class="muted">Einmal festlegen, wo auf diesem Artikel „Brust links“, „Rücken groß“ usw. liegen. Das gilt für alle Firmen, die den Artikel bekommen.</p></div><a class="btn" href="/admin?tab=products">Zurück zu den Produkten</a></div>';
+    $auto=yw_product_zones_are_auto($product);
+    echo '<section class="card"><div class="title-row"><div><h2>Druckzonen: '.e($product['name']).'</h2><p class="muted">'.($auto?'<strong>Automatisch erkannt</strong> aus den Produktfotos – normalerweise ist hier nichts zu tun. Nur wenn eine Position nicht passt: anklicken, verschieben, speichern.':'<strong>Von Hand angepasst.</strong> Diese Zonen werden nicht mehr automatisch verändert.').' Gilt für alle Firmen, die den Artikel bekommen.</p></div><div class="actions">'.($auto?'':'<form method="post">'.csrf_field().'<input type="hidden" name="action" value="auto_print_zones"><input type="hidden" name="return_tab" value="products"><input type="hidden" name="product_id" value="'.$productId.'"><button class="btn" type="submit">Wieder automatisch erkennen</button></form>').'<a class="btn" href="/admin?tab=products">Zurück zu den Produkten</a></div></div>';
     if(!$views){echo '<div class="empty">Bitte zuerst ein Produktbild hochladen.</div></section>';return;}
     echo '<form method="post" class="zone-editor" data-zone-editor>'.csrf_field().'<input type="hidden" name="action" value="save_print_zones"><input type="hidden" name="return_tab" value="products"><input type="hidden" name="product_id" value="'.$productId.'">';
     echo '<input type="hidden" name="zones_json" value="'.e(json_encode($zones?:new stdClass(),JSON_UNESCAPED_UNICODE)).'" data-zone-input>';
@@ -305,6 +495,34 @@ function yw_save_print_zones_action(): void {
     $stmt->execute([$zones?json_encode($zones,JSON_UNESCAPED_UNICODE):null,$productId]);
     audit_log('product.zones_updated','product',$productId,['zones'=>count($zones,COUNT_RECURSIVE)]);
     flash('success','Druckzonen wurden gespeichert.');
+    redirect('/admin?tab=products&zones='.$productId);
+}
+
+/** Kurzer Status für die Produktliste. */
+function yw_zone_status_text(array $product): string {
+    if(!yw_product_views($product))return 'Ohne Foto – es gelten Standardzonen';
+    if(!yw_product_zones_are_auto($product))return 'Von Hand angepasst';
+    $zones=yw_product_zones($product);
+    return $zones?'Automatisch erkannt':'Noch nicht erkannt – es gelten Standardzonen';
+}
+
+/** Admin: Zonen eines Produkts (product_id) oder aller Produkte (all=1) wieder automatisch erkennen. */
+function yw_auto_print_zones_action(): never {
+    @set_time_limit(300);
+    if(!empty($_POST['all'])){
+        if(!empty($_POST['include_manual']))db()->exec('UPDATE products SET print_zones_json=NULL');
+        $n=yw_zone_auto_backfill(2000,true);
+        audit_log('product.zones_auto','product',null,['count'=>$n]);
+        flash('success','Druckzonen für '.$n.' Produkt(e) automatisch erkannt.');
+        redirect('/admin?tab=products');
+    }
+    $productId=(int)($_POST['product_id']??0);
+    db()->prepare('UPDATE products SET print_zones_json=NULL WHERE id=?')->execute([$productId]);
+    $q=db()->prepare('SELECT * FROM products WHERE id=?');$q->execute([$productId]);$p=$q->fetch();
+    if(!$p)throw new RuntimeException('Produkt wurde nicht gefunden.');
+    $GLOBALS['yw_zone_budget']=1;$zones=yw_product_zones($p);
+    audit_log('product.zones_auto','product',$productId);
+    flash($zones?'success':'error',$zones?'Druckzonen wurden automatisch erkannt.':'Im Foto war kein freigestelltes Produkt zu erkennen – es gelten die Standardzonen. Bitte von Hand festlegen.');
     redirect('/admin?tab=products&zones='.$productId);
 }
 

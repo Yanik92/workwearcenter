@@ -36,6 +36,15 @@ function yw_api_key_current(): ?array {
     return $key;
 }
 
+/** Firma, auf die der aktuelle Schlüssel beschränkt ist, oder null (alle Firmen). */
+function yw_api_company_scope(): ?int { $key=yw_api_key_current();$id=(int)($key['company_id']??0);return $id>0?$id:null; }
+/** 404, wenn eine Bestellung nicht zur Firma des Schlüssels gehört. */
+function yw_api_assert_order_scope(int $orderId): void {
+    $scope=yw_api_company_scope();if($scope===null)return;
+    $q=db()->prepare('SELECT company_id FROM orders WHERE id=?');$q->execute([$orderId]);
+    if((int)$q->fetchColumn()!==$scope)yw_api_json(404,['error'=>'not_found']);
+}
+
 function yw_api_scopes(array $key): array { return array_values(array_filter(array_map('trim',explode(',',(string)($key['scopes']??''))))); }
 
 /** Bricht mit 401/403 ab, wenn kein Schlüssel mit diesem Recht vorliegt. */
@@ -65,16 +74,18 @@ function yw_api_rate_check(int $keyId): void {
 }
 
 /** Neuen Schlüssel erzeugen; gibt [Klartext, id] zurück. Der Klartext wird nur einmal angezeigt. */
-function yw_api_key_create(string $name,string $system,array $scopes,string $ipAllowlist=''): array {
+function yw_api_key_create(string $name,string $system,array $scopes,string $ipAllowlist='',int $companyId=0): array {
     $name=trim($name);$system=trim($system);
     if($name===''||mb_strlen($name)>120)throw new RuntimeException('Bitte einen Namen für den Schlüssel angeben (max. 120 Zeichen).');
     if(!in_array($system,['auftragszentrale','fan-bande','partner','test'],true))throw new RuntimeException('Unbekanntes System.');
     $scopes=array_values(array_intersect($scopes,array_keys(YW_API_SCOPES)));
     if(!$scopes)throw new RuntimeException('Mindestens ein Recht auswählen.');
     $ips=[];foreach(array_filter(array_map('trim',explode(',',$ipAllowlist))) as $ip){if(filter_var($ip,FILTER_VALIDATE_IP)===false)throw new RuntimeException('Ungültige IP-Adresse: '.$ip);$ips[]=$ip;}
+    if($companyId>0){$q=db()->prepare('SELECT id FROM companies WHERE id=?');$q->execute([$companyId]);if(!$q->fetchColumn())throw new RuntimeException('Firma nicht gefunden.');}
+    if($system==='auftragszentrale'&&$companyId>0)throw new RuntimeException('Die Auftragszentrale braucht Zugriff auf alle Firmen.');
     $plain='wwc_'.bin2hex(random_bytes(24));
-    db()->prepare('INSERT INTO yw_api_keys(name,`system`,key_hash,key_prefix,scopes,ip_allowlist,active,created_by) VALUES(?,?,?,?,?,?,1,?)')
-        ->execute([$name,$system,hash('sha256',$plain),substr($plain,0,12),implode(',',$scopes),$ips?implode(',',$ips):null,(int)($_SESSION['admin_id']??0)]);
+    db()->prepare('INSERT INTO yw_api_keys(name,`system`,key_hash,key_prefix,scopes,ip_allowlist,company_id,active,created_by) VALUES(?,?,?,?,?,?,?,1,?)')
+        ->execute([$name,$system,hash('sha256',$plain),substr($plain,0,12),implode(',',$scopes),$ips?implode(',',$ips):null,$companyId>0?$companyId:null,(int)($_SESSION['admin_id']??0)]);
     $id=(int)db()->lastInsertId();
     audit_log('api.key_created','api_key',$id,['name'=>$name,'system'=>$system,'scopes'=>$scopes]);
     return [$plain,$id];
@@ -123,20 +134,21 @@ function yw_api_v1_route(string $path): bool {
 
     if($path==='/api/v1/ping'){
         $key=yw_api_key_current();
-        yw_api_json(200,['ok'=>true,'system'=>'WorkwearCenter','version'=>app_version(),'api'=>'v1','time'=>date(DATE_ATOM),'key'=>$key?['name'=>$key['name'],'system'=>$key['system'],'scopes'=>yw_api_scopes($key)]:null]);
+        yw_api_json(200,['ok'=>true,'system'=>'WorkwearCenter','version'=>$key?app_version():null,'api'=>'v1','time'=>date(DATE_ATOM),'key'=>$key?['name'=>$key['name'],'system'=>$key['system'],'scopes'=>yw_api_scopes($key)]:null]);
     }
     if($path==='/api/v1/kunden'&&$method==='GET'){
         yw_api_require_scope('customers:read');
         $limit=max(1,min(200,(int)$get('limit','100')));$since=$get('seit');$where='1=1';$params=[];
         if($since!==''){$ts=strtotime($since);if($ts===false)yw_api_json(400,['error'=>'invalid_since','message'=>'seit muss ein Datum sein (ISO 8601).']);$where='created_at>=?';$params[]=date('Y-m-d H:i:s',$ts);}
         if($get('aktiv')==='1'){$where.=' AND active=1';}
+        if(($scope=yw_api_company_scope())!==null){$where.=' AND id=?';$params[]=$scope;}
         $q=db()->prepare("SELECT * FROM companies WHERE $where ORDER BY id LIMIT $limit");$q->execute($params);
         yw_api_json(200,['count'=>$q->rowCount(),'data'=>array_map('yw_api_company',$q->fetchAll())]);
     }
     if(preg_match('#^/api/v1/kunden/(\d{1,10})$#',$path,$m)&&$method==='GET'){
         yw_api_require_scope('customers:read');
         $q=db()->prepare('SELECT * FROM companies WHERE id=?');$q->execute([(int)$m[1]]);$c=$q->fetch();
-        if(!$c)yw_api_json(404,['error'=>'not_found']);
+        if(!$c||(($scope=yw_api_company_scope())!==null&&(int)$c['id']!==$scope))yw_api_json(404,['error'=>'not_found']);
         $data=yw_api_company($c);
         $e=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved' AND anonymized_at IS NULL");$e->execute([(int)$c['id']]);$data['employeeCount']=(int)$e->fetchColumn();
         $p=db()->prepare('SELECT p.* FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=? AND p.active=1 ORDER BY p.name');$p->execute([(int)$c['id']]);$data['collection']=array_map('yw_api_product',$p->fetchAll());
@@ -161,6 +173,7 @@ function yw_api_v1_route(string $path): bool {
         if($approval!=='alle'){$where[]='o.status=?';$params[]=$approval;}
         $prod=$get('produktion');if($prod!==''){if(!array_key_exists($prod,yw_production_statuses()))yw_api_json(400,['error'=>'invalid_filter','message'=>'produktion ungültig.']);$where[]='o.fulfillment_status=?';$params[]=$prod;}
         if(($kunde=(int)$get('kunde'))>0){$where[]='o.company_id=?';$params[]=$kunde;}
+        if(($scope=yw_api_company_scope())!==null){$where[]='o.company_id=?';$params[]=$scope;}
         if(($since=$get('seit'))!==''){$ts=strtotime($since);if($ts===false)yw_api_json(400,['error'=>'invalid_since']);$where[]='GREATEST(o.created_at,COALESCE(o.decided_at,o.created_at),COALESCE(o.production_updated_at,o.created_at))>=?';$params[]=date('Y-m-d H:i:s',$ts);}
         if(($after=(int)$get('nach'))>0){$where[]='o.id>?';$params[]=$after;}
         $sql='SELECT o.id FROM orders o'.($where?' WHERE '.implode(' AND ',$where):'').' ORDER BY o.id LIMIT '.$limit;
@@ -171,16 +184,17 @@ function yw_api_v1_route(string $path): bool {
     if(preg_match('#^/api/v1/bestellungen/(?:WWC-?)?0*(\d{1,10})$#i',$path,$m)&&$method==='GET'){
         yw_api_require_scope('orders:read');
         $q=db()->prepare('SELECT id FROM orders WHERE id=?');$q->execute([(int)$m[1]]);if(!$q->fetchColumn())yw_api_json(404,['error'=>'not_found']);
+        yw_api_assert_order_scope((int)$m[1]);
         yw_api_json(200,yw_api_order((int)$m[1]));
     }
     if(preg_match('#^/api/v1/bestellungen/(?:WWC-?)?0*(\d{1,10})/status$#i',$path,$m)&&$method==='POST'){
-        $key=yw_api_require_scope('orders:write');
+        $key=yw_api_require_scope('orders:write');yw_api_assert_order_scope((int)$m[1]);
         $body=(string)file_get_contents('php://input',false,null,0,65537);
         $data=json_decode($body,true);if(!is_array($data))yw_api_json(400,['error'=>'invalid_json']);
         yw_api_json(200,yw_status_apply((int)$m[1],$data,'api:'.$key['system']));
     }
     if(preg_match('#^/api/v1/bestellungen/(?:WWC-?)?0*(\d{1,10})/quittung$#i',$path,$m)&&$method==='POST'){
-        $key=yw_api_require_scope('orders:write');
+        $key=yw_api_require_scope('orders:write');yw_api_assert_order_scope((int)$m[1]);
         $raw=(string)file_get_contents('php://input',false,null,0,10000);$body=$raw!==''?json_decode($raw,true):[];
         if(!is_array($body))yw_api_json(400,['error'=>'invalid_json']);
         $reference=isset($body['reference'])&&is_scalar($body['reference'])?mb_substr(trim((string)$body['reference']),0,120):null;if($reference==='')$reference=null;
@@ -201,7 +215,7 @@ function yw_api_v1_route(string $path): bool {
 function yw_admin_api_keys_action(string $action): void {
     if($action==='api_key_create'){
         $scopes=array_map('strval',(array)($_POST['scopes']??[]));
-        [$plain,$id]=yw_api_key_create((string)($_POST['name']??''),(string)($_POST['system']??''),$scopes,(string)($_POST['ip_allowlist']??''));
+        [$plain,$id]=yw_api_key_create((string)($_POST['name']??''),(string)($_POST['system']??''),$scopes,(string)($_POST['ip_allowlist']??''),(int)($_POST['company_id']??0));
         $_SESSION['api_key_once']=$plain;
         flash('success','API-Schlüssel wurde angelegt. Bitte jetzt kopieren – er wird nur einmal angezeigt.');redirect('/admin?tab=api');
     }
@@ -219,13 +233,13 @@ function yw_admin_api_keys_action(string $action): void {
 function yw_admin_api_page(): void {
     $once=(string)($_SESSION['api_key_once']??'');unset($_SESSION['api_key_once']);
     if($once!=='')echo '<section class="card api-key-once"><h2>Neuer API-Schlüssel</h2><p>Diesen Schlüssel jetzt in das andere System eintragen. Er wird <strong>nicht noch einmal angezeigt</strong>.</p><div class="copy">'.e($once).'</div><button type="button" class="btn small" data-copy="'.e($once).'">Schlüssel kopieren</button></section>';
-    $keys=db()->query('SELECT k.*,a.name admin_name FROM yw_api_keys k LEFT JOIN admins a ON a.id=k.created_by ORDER BY k.id DESC')->fetchAll();
+    $keys=db()->query('SELECT k.*,a.name admin_name,c.shop_name company_name FROM yw_api_keys k LEFT JOIN admins a ON a.id=k.created_by LEFT JOIN companies c ON c.id=k.company_id ORDER BY k.id DESC')->fetchAll();
     echo '<section class="card"><div class="title-row"><div><h2>API-Zugänge</h2><p class="muted">Jedes angebundene System bekommt einen eigenen Schlüssel mit genau den Rechten, die es braucht. Adresse: <code>'.e(workwearcenter_url('/api/v1/')).'</code> · Beschreibung: API-DOKUMENTATION.md im Paket.</p></div></div>';
     if(!$keys)echo '<div class="empty compact">Noch kein API-Schlüssel angelegt.</div>';
     else{
         echo '<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>System</th><th>Schlüssel</th><th>Rechte</th><th>Zuletzt genutzt</th><th>Status</th><th></th></tr></thead><tbody>';
         foreach($keys as $k){
-            echo '<tr><td><strong>'.e($k['name']).'</strong><br><span class="muted">angelegt '.e(date('d.m.Y',strtotime((string)$k['created_at']))).($k['admin_name']?' von '.e($k['admin_name']):'').'</span></td><td>'.e($k['system']).'</td><td><code>'.e($k['key_prefix']).'…</code>'.($k['ip_allowlist']?'<br><span class="muted">nur '.e($k['ip_allowlist']).'</span>':'').'</td><td>'.e(str_replace(',',', ',(string)$k['scopes'])).'</td><td>'.($k['last_used_at']?e(date('d.m.Y H:i',strtotime((string)$k['last_used_at']))).'<br><span class="muted">'.e((string)$k['last_ip']).'</span>':'<span class="muted">nie</span>').'</td><td><span class="badge '.((int)$k['active']?'approved':'rejected').'">'.((int)$k['active']?'aktiv':'gesperrt').'</span></td>';
+            echo '<tr><td><strong>'.e($k['name']).'</strong><br><span class="muted">angelegt '.e(date('d.m.Y',strtotime((string)$k['created_at']))).($k['admin_name']?' von '.e($k['admin_name']):'').'</span></td><td>'.e($k['system']).'</td><td><code>'.e($k['key_prefix']).'…</code>'.($k['ip_allowlist']?'<br><span class="muted">nur '.e($k['ip_allowlist']).'</span>':'').'</td><td>'.e(str_replace(',',', ',(string)$k['scopes'])).'<br><span class="muted">'.($k['company_name']?'nur '.e((string)$k['company_name']):'alle Firmen').'</span></td><td>'.($k['last_used_at']?e(date('d.m.Y H:i',strtotime((string)$k['last_used_at']))).'<br><span class="muted">'.e((string)$k['last_ip']).'</span>':'<span class="muted">nie</span>').'</td><td><span class="badge '.((int)$k['active']?'approved':'rejected').'">'.((int)$k['active']?'aktiv':'gesperrt').'</span></td>';
             echo '<td class="actions"><form method="post" class="inline-form">'.csrf_field().'<input type="hidden" name="action" value="api_key_toggle"><input type="hidden" name="key_id" value="'.(int)$k['id'].'"><button class="btn small">'.((int)$k['active']?'Sperren':'Freigeben').'</button></form> <form method="post" class="inline-form" data-confirm="Schlüssel „'.e($k['name']).'“ endgültig löschen? Das angebundene System verliert sofort den Zugriff.">'.csrf_field().'<input type="hidden" name="action" value="api_key_delete"><input type="hidden" name="key_id" value="'.(int)$k['id'].'"><button class="btn small danger">Löschen</button></form></td></tr>';
         }
         echo '</tbody></table></div>';
@@ -236,6 +250,10 @@ function yw_admin_api_page(): void {
     echo '<fieldset><legend>Rechte</legend><div class="checkboxes">';
     foreach(YW_API_SCOPES as $scope=>$label)echo '<label class="check"><input type="checkbox" name="scopes[]" value="'.e($scope).'" '.(in_array($scope,['orders:read','orders:write'],true)?'checked':'').'><span><strong>'.e($scope).'</strong> – '.e($label).'</span></label>';
     echo '</div></fieldset>';
+    $companies=db()->query('SELECT id,shop_name FROM companies ORDER BY shop_name')->fetchAll();
+    echo '<label>Zugriff auf <small>Partner und Fan-Bande bitte immer auf eine Firma beschränken</small><select name="company_id"><option value="0">alle Firmen (nur Auftragszentrale)</option>';
+    foreach($companies as $c)echo '<option value="'.(int)$c['id'].'">nur '.e((string)$c['shop_name']).'</option>';
+    echo '</select></label>';
     echo '<label>Erlaubte IP-Adressen <small>optional, durch Komma getrennt – leer = alle</small><input name="ip_allowlist" placeholder="z. B. 203.0.113.10"></label>';
     echo '<button class="btn primary">Schlüssel erzeugen</button></form></section>';
     echo '<section class="card"><h2>Ausgehende Übergabe (Webhook)</h2><p class="muted">Freigegebene Bestellungen werden weiterhin aktiv an die Auftragszentrale gesendet (Admin → System → Übergabe). Die API hier ist der Weg für Abfragen und Rückmeldungen.</p></section>';

@@ -35,7 +35,7 @@ paths:
                 properties:
                   ok: {type: boolean}
                   system: {type: string, example: WorkwearCenter}
-                  version: {type: string, example: 10.8.0}
+                  version: {type: string, nullable: true, example: 10.8.0, description: nur mit gültigem Schlüssel}
                   api: {type: string, example: v1}
                   time: {type: string, format: date-time}
                   key:

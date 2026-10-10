@@ -82,35 +82,36 @@ function admin_page(): void {
     $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges','lexware'];
     $tab=(string)($_GET['tab'] ?? 'dashboard');
     if(!in_array($tab,$allowedTabs,true))$tab='dashboard';
+    if($tab==='corporate') yw_admin_corporate(); // alte Links: Weiterleitung vor jeder Ausgabe
 
     $companies=[];$products=[];$orders=[];$inquiries=[];$auditLogs=[];
+    // Kundenakte: nur diese Firma, Kennzahlen nur für den Reiter Übersicht; Produkte nur für Kollektion.
+    $selectedCompany=$tab==='companies'?(int)($_GET['company']??0):0;
     $needsCompanies=in_array($tab,['dashboard','companies'],true);
-    $needsProducts=in_array($tab,['dashboard','companies','products','new'],true);
+    $needsProducts=in_array($tab,['products','new'],true) || ($selectedCompany!==0 && yw_customer_tab()==='kollektion');
     $needsOrders=in_array($tab,['dashboard','orders'],true) && empty($_GET['auftrag']);
 
-    if($needsCompanies){
-        $companies=db()->query("SELECT c.*,
-            (SELECT COUNT(*) FROM invites i WHERE i.company_id=c.id) invite_count,
-            (SELECT COUNT(*) FROM employee_accounts ea WHERE ea.company_id=c.id AND ea.active=1) registered_count,
-            (SELECT COUNT(*) FROM orders o WHERE o.company_id=c.id AND o.status='approved') approved_order_count,
-            (SELECT COUNT(*) FROM orders o WHERE o.company_id=c.id AND o.status='approved' AND o.fulfillment_status='completed') completed_order_count,
-            (SELECT COALESCE(SUM(CASE WHEN o.gross_total_cents>0 THEN o.gross_total_cents ELSE o.total_cents END),0) FROM orders o WHERE o.company_id=c.id AND o.status='approved') revenue_cents
-            FROM companies c ORDER BY c.id DESC")->fetchAll();
-    }
+    if($needsCompanies)$companies=$tab==='dashboard'?yw_admin_companies(0,true,8):yw_admin_companies($selectedCompany,$selectedCompany===0 || yw_customer_tab()==='uebersicht'); // Übersicht zeigt die 8 neuesten
     if($needsProducts)$products=db()->query('SELECT * FROM products ORDER BY active DESC, category, name')->fetchAll();
-    if($needsOrders){
-        $orderWhere=$tab==='dashboard'?"WHERE o.status='approved' AND o.fulfillment_status NOT IN ('shipped','picked_up','completed')":'';
-        $orderLimit=$tab==='orders'?' LIMIT 500':'';
+    if($needsOrders && $tab==='orders'){
         $orders=db()->query("SELECT o.*,c.legal_name,COALESCE(ea.name,i.employee_name,'Unbekannt') employee_name
             FROM orders o
             JOIN companies c ON c.id=o.company_id
             LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id
             LEFT JOIN invites i ON i.id=o.invite_id
-            $orderWhere
-            ORDER BY o.id DESC$orderLimit")->fetchAll();
+            ORDER BY o.id DESC LIMIT 500")->fetchAll();
     }
-    if(in_array($tab,['dashboard','inquiries'],true)){
+    if($needsOrders && $tab==='dashboard'){
+        // Übersicht braucht nur Zähler je Produktionsstand (statt aller offenen Aufträge mit allen Spalten); überfällig = älter als 7 Tage.
+        $q=db()->prepare("SELECT o.fulfillment_status,COUNT(*) amount,SUM(o.created_at<?) overdue FROM orders o JOIN companies c ON c.id=o.company_id WHERE o.status='approved' AND o.fulfillment_status NOT IN ('shipped','picked_up','completed') GROUP BY o.fulfillment_status");
+        $q->execute([date('Y-m-d H:i:s',strtotime('-7 days'))]);$orders=$q->fetchAll();
+    }
+    if($tab==='inquiries'){
         try{$inquiries=db()->query("SELECT * FROM inquiries ORDER BY FIELD(status,'new','contacted','done'), id DESC")->fetchAll();}
+        catch(Throwable $e){$inquiries=[];}
+    }
+    if($tab==='dashboard'){ // Übersicht zählt nur neue Anfragen
+        try{$inquiries=db()->query("SELECT id,status FROM inquiries WHERE status='new'")->fetchAll();}
         catch(Throwable $e){$inquiries=[];}
     }
     if($tab==='audit'){
@@ -134,6 +135,7 @@ function admin_page(): void {
     echo '<main class="admin-content">';
 
     echo admin_context_header($tab);
+    echo yw_schema_notice().yw_asset_integrity_notice();
     render_flash();
 
     if($tab==='corporate') yw_admin_corporate();
@@ -189,16 +191,17 @@ function handle_admin_action(): never {
             $accountId=(int)($_POST['account_id']??0);
             $decision=(string)($_POST['decision']??'');
             if(!in_array($decision,['approved','rejected'],true)) throw new RuntimeException('Freigabeentscheidung ist ungültig.');
-            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
+            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,ea.role,ea.registration_status,ea.active,ea.employment_start,ea.employment_end,ea.anonymized_at,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
             $stmt->execute([$accountId]);$account=$stmt->fetch();
             if(!$account) throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
             $stmt=db()->prepare('UPDATE employee_accounts SET registration_status=?,active=? WHERE id=?');
             $stmt->execute([$decision,$decision==='approved'?1:0,$accountId]);
             yw_mail_to_person($account,yw_access_mail($decision==='approved',['slug'=>$account['slug']],true)); // 10.12: in der Sprache der Person
             audit_log('employee.access_'.$decision,'employee',$accountId,['company_id'=>(int)$account['company_id']]);
+            yw_manager_change_audit((int)$account['company_id'],$accountId,$account,['registration_status'=>$decision,'active'=>$decision==='approved'?1:0]+$account,'admin'); // 10.15
             flash('success',$decision==='approved'?'Mitarbeiter wurde freigegeben.':'Registrierung wurde abgelehnt.');
             $returnCompany=(int)($_POST['return_company']??0);
-            redirect($returnCompany?'/admin?tab=companies&company='.$returnCompany:'/admin');
+            redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter','person-'.$accountId):'/admin');
         }
 
         if ($action==='bulk_fulfillment') {
@@ -488,7 +491,7 @@ function handle_admin_action(): never {
             $companyId=(int)db()->lastInsertId(); $cp=db()->prepare('INSERT INTO company_products(company_id,product_id) VALUES(?,?)'); foreach(array_unique($productIds) as $id)$cp->execute([$companyId,$id]);
             db()->commit();
             audit_log('company.created','company',$companyId,['company_id'=>$companyId]);
-            flash('success','Firmen-Shop wurde angelegt. Nächster Schritt: unter „Mitarbeiter & Rollen“ den ersten Verantwortlichen anlegen.'); redirect('/admin?tab=companies&company='.$companyId);
+            flash('success','Firmen-Shop wurde angelegt. Nächster Schritt: hier den ersten Verantwortlichen anlegen (Rolle „Verantwortlicher“).'); redirect(yw_customer_url($companyId,'mitarbeiter'));
         }
         if ($action==='update_brand') {
             $id=(int)$_POST['company_id']; $stmt=db()->prepare('SELECT * FROM companies WHERE id=?'); $stmt->execute([$id]); $company=$stmt->fetch(); if(!$company)throw new RuntimeException('Firma nicht gefunden.');
@@ -499,7 +502,7 @@ function handle_admin_action(): never {
             catch(Throwable $e){if($logo!==$oldLogo)delete_company_logo($logo);throw $e;}
             if($logo!==$oldLogo)delete_company_logo($oldLogo);
             audit_log('company.brand_updated','company',$id,['company_id'=>$id]);
-            unset($_SESSION['shop_access'][$id],$_SESSION['approval_access'][$id]); flash('success','Design wurde gespeichert.'); redirect('/admin?tab=companies&company='.$id);
+            unset($_SESSION['shop_access'][$id],$_SESSION['approval_access'][$id]); flash('success','Design wurde gespeichert.'); redirect(yw_customer_return_url($id,'kollektion'));
         }
         if ($action==='update_employee_account') {
             $accountId=(int)($_POST['account_id']??0);
@@ -516,7 +519,7 @@ function handle_admin_action(): never {
                 throw new RuntimeException('Registrierungsstatus ist ungültig.');
             }
 
-            $accountCheck=db()->prepare('SELECT id,role,registration_status,active FROM employee_accounts WHERE id=? AND company_id=? LIMIT 1');$accountCheck->execute([$accountId,$companyId]);$currentAccount=$accountCheck->fetch();if(!$currentAccount)throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
+            $accountCheck=db()->prepare('SELECT id,role,registration_status,active,employment_start,employment_end,anonymized_at FROM employee_accounts WHERE id=? AND company_id=? LIMIT 1');$accountCheck->execute([$accountId,$companyId]);$currentAccount=$accountCheck->fetch();if(!$currentAccount)throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
             $losesManagerAccess=(string)$currentAccount['role']==='manager' && !($role==='manager' && $registrationStatus==='approved' && $active===1);
             if($losesManagerAccess){
                 $managerCheck=db()->prepare("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND id<>? AND role='manager' AND registration_status='approved' AND active=1 AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE())");
@@ -527,9 +530,10 @@ function handle_admin_action(): never {
             $stmt=db()->prepare('UPDATE employee_accounts SET role=?,registration_status=?,active=?,equipment_profile_id=? WHERE id=? AND company_id=?');
             $stmt->execute([$role,$registrationStatus,$active,$profileId,$accountId,$companyId]);
             audit_log('employee.account_updated','employee',$accountId,['company_id'=>$companyId,'role'=>$role,'status'=>$registrationStatus,'active'=>$active]);
+            yw_manager_change_audit($companyId,$accountId,$currentAccount,['role'=>$role,'registration_status'=>$registrationStatus,'active'=>$active]+$currentAccount,'admin'); // 10.15: Rollenwechsel still protokollieren
 
             flash('success','Mitarbeiterrolle wurde gespeichert.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'mitarbeiter','person-'.$accountId));
         }
 
         if ($action==='update_shop_rules') {
@@ -547,17 +551,20 @@ function handle_admin_action(): never {
             if(!in_array($mode,['company','percentage'],true)) throw new RuntimeException('Finanzierungsmodell ist ungültig.');
             if($mode==='company') $share=0;
             if(!in_array($shippingPayer,['company','employee'],true)) throw new RuntimeException('Versandkostenträger ist ungültig.');
-            $companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$id]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.');
+            $companyCheck=db()->prepare('SELECT * FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$id]);$companyBefore=$companyCheck->fetch();if(!$companyBefore)throw new RuntimeException('Firma wurde nicht gefunden.');
 
             $stmt=db()->prepare('UPDATE companies SET financing_mode=?, employee_share_percent=?, approval_required=?, shipping_enabled=?, shipping_net_cents=?, shipping_vat_rate=?, free_shipping_gross_cents=?, shipping_payer=? WHERE id=?');
             $stmt->execute([
                 $mode,$share,$approval,$shippingEnabled,$shippingNetCents,$shippingVat,$freeShippingGrossCents,$shippingPayer,$id
             ]);
+            // 10.15: Dürfen Verantwortliche weitere Verantwortliche ernennen? (Standard aus; Spalte erst nach update.php)
+            $appointMeta=[];
+            if(yw_managers_appoint_ready() && array_key_exists('managers_can_appoint_present',$_POST)){$appoint=!empty($_POST['managers_can_appoint'])?1:0;db()->prepare('UPDATE companies SET managers_can_appoint=? WHERE id=?')->execute([$appoint,$id]);if($appoint!==(int)($companyBefore['managers_can_appoint']??0))$appointMeta=['managers_can_appoint'=>$appoint];}
 
-            audit_log('company.rules_updated','company',$id,['company_id'=>$id]);
+            audit_log('company.rules_updated','company',$id,['company_id'=>$id]+$appointMeta);
 
             flash('success','Shopregeln und Versandkosten wurden gespeichert.');
-            redirect('/admin?tab=companies&company='.$id);
+            redirect(yw_customer_return_url($id,'regeln'));
         }
 
         if ($action==='update_company_product_customization') {
@@ -657,7 +664,7 @@ function handle_admin_action(): never {
             audit_log('company_product.updated','product',$productId,['company_id'=>$companyId]);
 
             flash('success','Shop-Produkt „'.($customName!==''?$customName:$row['base_name']).'“ wurde individualisiert.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'kollektion','produkt-'.$productId));
         }
 
         if ($action==='save_decoration_motif') {
@@ -695,10 +702,11 @@ function handle_admin_action(): never {
                 $stmt->execute([$companyId,...$values]);$savedId=(int)db()->lastInsertId();$auditAction='decoration_motif.created';
             }
             audit_log($auditAction,'decoration_motif',$savedId,['company_id'=>$companyId,'stock_qty'=>(int)$stockRaw]);
-            flash('success','Veredelungsmotiv wurde gespeichert.');redirect('/admin?tab=companies&company='.$companyId);
+            flash('success','Veredelungsmotiv wurde gespeichert.');redirect(yw_customer_return_url($companyId,'kollektion','motive'));
         }
 
         if ($action==='save_print_zones') { yw_save_print_zones_action(); }
+        if ($action==='auto_print_zones') { yw_auto_print_zones_action(); }
         if (str_starts_with($action,'api_key_')) { yw_admin_api_keys_action($action); }
         if (str_starts_with($action,'katalog_')) { yw_admin_katalog_action($action); }
         if ($action==='save_company_note') {
@@ -715,45 +723,60 @@ function handle_admin_action(): never {
             audit_log('order.note_updated','order',$orderId);flash('success','Notiz gespeichert.');redirect(yw_order_url($orderId));
         }
 
-        if ($action==='update_collection') {
+        if ($action==='update_collection' || $action==='collection_bulk') {
             $id=(int)($_POST['company_id']??0);
-            $productIds=yw_admin_product_ids($_POST['products']??null);
             $companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$id]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.');
+            // 10.15: Mit Blättern gilt die Auswahl nur für die angezeigten Artikel (scope_products); ohne Angabe wie bisher für den ganzen Katalog.
+            $scope=null;$bulk='';
+            if($action==='collection_bulk'){
+                $bulk=(string)($_POST['bulk']??'');if(!in_array($bulk,['add','remove'],true))throw new RuntimeException('Sammelaktion ist ungültig.');
+                $filter=yw_customer_list_state($_POST);
+                $scope=yw_customer_product_ids($id,'katalog',0,(string)($filter['artikel']??''),(string)($filter['kategorie']??''),$bulk==='add'?'katalog':'kollektion');
+                if(!$scope)throw new RuntimeException('Keine passenden Artikel gefunden.');
+                if(count($scope)>500)throw new RuntimeException('Höchstens 500 Artikel auf einmal – bitte Suche oder Kategorie eingrenzen.');
+                $productIds=$bulk==='add'?$scope:[];
+            }elseif(array_key_exists('scope_products',$_POST)){
+                $raw=$_POST['scope_products'];if(!is_array($raw)||count($raw)>500)throw new RuntimeException('Produktauswahl ist ungültig.');
+                $scope=[];foreach($raw as $value){if(!is_scalar($value)||!preg_match('/^[1-9]\d*$/D',(string)$value))throw new RuntimeException('Produktauswahl enthält eine ungültige Kennung.');$scope[]=(int)$value;}
+                $productIds=is_array($_POST['products']??null)&&$_POST['products']?array_values(array_intersect(yw_admin_product_ids($_POST['products']),$scope)):[];
+            }else $productIds=yw_admin_product_ids($_POST['products']??null);
 
             $stmt=db()->prepare('SELECT product_id,preview_front_path,preview_back_path FROM company_products WHERE company_id=?');
             $stmt->execute([$id]);
             $existingRows=$stmt->fetchAll();
             $existingIds=array_map('intval',array_column($existingRows,'product_id'));
-            $previewsToDelete=[];
+            $previewsToDelete=[];$added=0;$removed=0;
 
             db()->beginTransaction();
 
             foreach($existingRows as $row){
                 $pid=(int)$row['product_id'];
-                if(!in_array($pid,$productIds,true)){
+                if(!in_array($pid,$productIds,true) && ($scope===null || in_array($pid,$scope,true))){
                     $previewsToDelete[]=(string)($row['preview_front_path']??'');
                     $previewsToDelete[]=(string)($row['preview_back_path']??'');
                     $delProfile=db()->prepare('DELETE FROM yw_equipment_profile_products WHERE product_id=? AND profile_id IN (SELECT id FROM yw_equipment_profiles WHERE company_id=?)');
                     $delProfile->execute([$pid,$id]);
                     $del=db()->prepare('DELETE FROM company_products WHERE company_id=? AND product_id=?');
                     $del->execute([$id,$pid]);
+                    $removed++;
                 }
             }
 
             $insert=db()->prepare('INSERT INTO company_products(company_id,product_id) VALUES(?,?)');
             foreach($productIds as $pid){
-                if(!in_array($pid,$existingIds,true)) $insert->execute([$id,$pid]);
+                if(!in_array($pid,$existingIds,true)){$insert->execute([$id,$pid]);$added++;}
             }
+            if(count($existingIds)-$removed+$added<1)throw new RuntimeException('Die Kollektion braucht mindestens einen Artikel. Bitte zuerst andere Artikel aufnehmen.');
 
             db()->commit();
             foreach(array_unique($previewsToDelete) as $preview)delete_company_product_preview($preview);
-            audit_log('company.collection_updated','company',$id,['company_id'=>$id,'product_count'=>count($productIds)]);
-            flash('success','Firmenkollektion wurde gespeichert. Bestehende Individualisierungen wurden beibehalten.');
-            redirect('/admin?tab=companies&company='.$id);
+            audit_log('company.collection_updated','company',$id,['company_id'=>$id,'product_count'=>count($existingIds)-$removed+$added,'added'=>$added,'removed'=>$removed]+($bulk!==''?['bulk'=>$bulk]:[]));
+            flash('success',$scope===null?'Firmenkollektion wurde gespeichert. Bestehende Individualisierungen wurden beibehalten.':'Firmenkollektion wurde gespeichert: '.$added.' aufgenommen, '.$removed.' entfernt.'.($bulk===''?' Individualisierungen der übrigen Artikel bleiben erhalten.':''));
+            redirect(yw_customer_return_url($id,'kollektion','kollektion'));
         }
         if ($action==='add_invite') {
             $name=trim((string)($_POST['employee_name']??'')); if(!$name||mb_strlen($name)>160)throw new RuntimeException('Bitte einen Mitarbeiternamen mit höchstens 160 Zeichen eingeben.');$companyId=(int)($_POST['company_id']??0);$companyCheck=db()->prepare('SELECT id FROM companies WHERE id=? LIMIT 1');$companyCheck->execute([$companyId]);if(!$companyCheck->fetchColumn())throw new RuntimeException('Firma wurde nicht gefunden.'); $stmt=db()->prepare('INSERT INTO invites(company_id,employee_name,token) VALUES(?,?,?)'); $stmt->execute([$companyId,$name,random_token()]);
-            audit_log('invite.created','invite',(int)db()->lastInsertId(),['company_id'=>$companyId]);flash('success','Mitarbeiterzugang wurde erstellt.'); redirect('/admin?tab=companies&company='.$companyId);
+            audit_log('invite.created','invite',(int)db()->lastInsertId(),['company_id'=>$companyId]);flash('success','Mitarbeiterzugang wurde erstellt.'); redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
         if ($action==='fulfillment') {
             $status=(string)($_POST['status']??'');
@@ -804,8 +827,9 @@ function handle_admin_action(): never {
             $accountId=(int)db()->lastInsertId();
             yw_send_password_link($accountId,$name,$email,(string)$company['slug'],true,true);
             audit_log('employee.created_by_admin','employee',$accountId,['company_id'=>$companyId,'role'=>$role]);
+            yw_manager_change_audit($companyId,$accountId,['role'=>'employee'],['role'=>$role,'registration_status'=>'approved','active'=>1],'admin',['created'=>true]); // 10.15
             flash('success',($role==='manager'?'Verantwortlicher':'Mitarbeiter').' wurde angelegt. Der Link zum Festlegen des Passworts wurde an '.$email.' gesendet (60 Minuten gültig).');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'mitarbeiter'));
         }
         if ($action==='toggle_company') {
             $companyId=(int)($_POST['company_id']??0);
@@ -814,13 +838,13 @@ function handle_admin_action(): never {
             $q=db()->prepare('SELECT active FROM companies WHERE id=?');$q->execute([$companyId]);$nowActive=(int)$q->fetchColumn()===1;
             audit_log('company.status_toggled','company',$companyId,['company_id'=>$companyId,'active'=>$nowActive]);
             flash('success',$nowActive?'Firmen-Shop ist wieder aktiv.':'Firmen-Shop wurde deaktiviert. Anmeldung, Registrierung und Bestellungen sind gesperrt; alle Daten bleiben erhalten.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId));
         }
         if ($action==='employee_anonymize') {
             $companyId=(int)($_POST['company_id']??0);$accountId=(int)($_POST['account_id']??0);
             try{yw_anonymize_employee($companyId,$accountId);}catch(DomainException $e){throw new RuntimeException($e->getMessage());}
             flash('success','Personenbezogene Daten wurden entfernt. Bestellungen bleiben für die Buchhaltung erhalten.');
-            redirect('/admin?tab=companies&company='.$companyId);
+            redirect(yw_customer_return_url($companyId,'mitarbeiter','personen'));
         }
         if ($action==='delete_inquiry') {
             $id=(int)($_POST['inquiry_id']??0);
@@ -838,8 +862,9 @@ function handle_admin_action(): never {
         if($exception instanceof PDOException){error_log('WorkwearCenter admin database action failed: '.$exception->getMessage());$message='Speichern fehlgeschlagen. Bitte Eingaben prüfen und erneut versuchen.';}
         else $message=$exception->getMessage();
         flash('error',$message);
-        // Ohne return_tab zurück auf die Seite, von der das Formular kam (statt immer auf „Aufträge“).
-        if(!isset($_POST['return_tab'])){
+        // Zurück auf die Seite, von der das Formular kam (z. B. derselbe Reiter der Kundenakte);
+        // return_tab nur, wenn kein Referer der Verwaltung vorliegt.
+        {
             $ref=(string)($_SERVER['HTTP_REFERER']??'');$refHost=strtolower((string)parse_url($ref,PHP_URL_HOST));$refPath=(string)parse_url($ref,PHP_URL_PATH);
             $ownHost=strtolower((string)preg_replace('/:\d+$/','',(string)($_SERVER['HTTP_HOST']??'')));
             if($refHost!==''&&$refHost===$ownHost&&$refPath==='/admin'){$query=(string)parse_url($ref,PHP_URL_QUERY);redirect('/admin'.($query!==''?'?'.$query:''));}
@@ -970,6 +995,42 @@ function admin_backend_style(): string {
     .collection-decoration-labels,.collection-decoration-row{display:grid;grid-template-columns:140px 110px minmax(160px,1fr) minmax(200px,1fr) 100px;gap:8px}
     .collection-decoration-labels{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:#667085;font-weight:850;padding:0 3px}
     .collection-decoration-row select,.collection-decoration-row input{height:42px;border:1px solid #d8dee8;border-radius:9px;background:#fff;padding:0 10px;min-width:0}
+    /* 10.15: Artikellisten großer Kollektionen (Suche, Kategorie, Seiten) */
+    .list-views,.list-pager,.list-bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+    .list-views .btn span{font-weight:600;opacity:.75}
+    .list-filter{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:12px 0}
+    .list-filter label{display:grid;gap:5px;font-size:13px;font-weight:750;flex:1 1 200px;min-width:0}
+    .list-filter select,.list-filter input{min-width:0}
+    .collection-list{border:1px solid #e1e6ed;border-radius:14px;background:#fff;margin:10px 0}
+    .collection-list-head{display:flex;gap:14px;align-items:center;padding:9px 13px;background:#f7f8fa;border-bottom:1px solid #e8ebf0;border-radius:14px 14px 0 0}
+    .collection-list-head .check{background:transparent;border:0;padding:0;font-size:13px;font-weight:750}
+    .collection-row{display:grid;grid-template-columns:28px 52px minmax(0,1fr) auto 112px;gap:12px;align-items:center;padding:9px 13px;border-top:1px solid #eef1f4}
+    .collection-list-head+.collection-row{border-top:0}
+    .collection-row.is-open{background:#fff8f2}
+    .collection-pick input{width:20px;height:20px}
+    .collection-row-main{min-width:0}.collection-row-main strong{display:block;overflow-wrap:anywhere}
+    .collection-row-main small{display:block;color:#667085;margin-top:3px;overflow-wrap:anywhere}
+    .collection-row-meta{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+    .collection-row-price{font-size:13px;white-space:nowrap;color:#344054}
+    .collection-row-hint{font-size:12px;color:#98a2b3;text-align:center}
+    .collection-out{font-size:.75rem;font-weight:850;padding:6px 9px;border-radius:999px;background:#fff;border:1px dashed #d0d5dd;color:#98a2b3}
+    .collection-inline-editor{margin:0 13px 14px;border-color:#f6c9a6}
+    .collection-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 15px;background:#fff8f2}
+    .collection-savebar{position:sticky;bottom:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 14px;margin-top:8px;border:1px solid #e1e6ed;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 -6px 18px rgba(16,24,40,.06)}
+    .collection-savebar.is-static{position:static;box-shadow:none}
+    .savebar-short{display:none}
+    .profile-products-closed{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .flash[data-flash],.collection-row,.employee-role-form,.admin-toolbox,.list-anchor,#kollektion,#motive{scroll-margin-top:110px}
+    @media(max-width:760px){
+      .collection-row{grid-template-columns:28px 44px minmax(0,1fr);row-gap:8px;padding:10px}
+      .collection-row>.collection-product-mini{width:44px;height:44px}
+      .collection-row-meta{grid-column:2/-1;justify-content:flex-start}
+      .collection-row>.btn,.collection-row-hint{grid-column:2/-1;justify-self:start}
+      .collection-inline-editor{margin:0 0 14px}
+      .collection-editor-head{flex-wrap:wrap}
+      .collection-mockup{padding:10px}
+      .collection-savebar{flex-wrap:nowrap;gap:10px;padding:8px 10px}.collection-savebar .muted{font-size:12px;line-height:1.3}.collection-savebar .btn{flex:0 0 auto}.savebar-long{display:none}.savebar-short{display:inline}
+    }
     .motif-list{display:grid;gap:10px;margin:16px 0}.motif-editor{border:1px solid #e1e6ed;border-radius:10px;background:#fbfcfd}.motif-editor>summary{cursor:pointer;padding:13px 15px;font-weight:800}.motif-editor-body{padding:16px;border-top:1px solid #e6eaf0}.motif-fields{display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(140px,.8fr) repeat(2,minmax(120px,.65fr));gap:10px}.motif-checks{display:flex;gap:18px;flex-wrap:wrap}
 
     .company-product-visual{position:relative}
@@ -1100,9 +1161,11 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     try{$pendingEmployeeCount=(int)db()->query("SELECT COUNT(*) FROM employee_accounts WHERE registration_status='pending'")->fetchColumn();$pendingEmployees=db()->query("SELECT ea.id,ea.name,ea.email,c.legal_name FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.registration_status='pending' ORDER BY ea.created_at LIMIT 8")->fetchAll();}catch(Throwable $e){}
     try{$failedMails=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
     $failedHandovers=0;try{$failedHandovers=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
-    $newOrders=count(array_filter($orders,fn($o)=>$o['status']==='approved' && in_array((string)$o['fulfillment_status'],['new','accepted'],true)));
-    $production=count(array_filter($orders,fn($o)=>$o['status']==='approved' && in_array((string)$o['fulfillment_status'],['goods_received','processing','production','quality_check'],true)));
-    $overdue=count(array_filter($orders,fn($o)=>$o['status']==='approved' && !in_array((string)$o['fulfillment_status'],['shipped','picked_up','completed'],true) && strtotime((string)$o['created_at'])<strtotime('-7 days')));
+    // $orders: je offenem Produktionsstand freigegebener Aufträge die Anzahl (amount) und davon überfällige (overdue), siehe admin_page().
+    $stageCount=fn(array $keys): int => (int)array_sum(array_map(fn($o)=>in_array((string)$o['fulfillment_status'],$keys,true)?(int)$o['amount']:0,$orders));
+    $newOrders=$stageCount(['new','accepted']);
+    $production=$stageCount(['goods_received','processing','production','quality_check']);
+    $overdue=(int)array_sum(array_map(fn($o)=>(int)$o['overdue'],$orders));
 
     echo '<div class="control-head"><div><h2>Heute im Blick</h2><p>Offene Aufgaben und der aktuelle Auftragsfluss.</p></div><div class="actions"><a class="btn" href="/admin?tab=orders">Aufträge öffnen</a><a class="btn primary" href="/admin?tab=new">Neuen Firmen-Shop anlegen</a></div></div>';
     echo '<div class="admin-dashboard-grid">'
@@ -1121,11 +1184,14 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     foreach($pendingEmployees as $person){
         echo '<div class="work-task"><span class="task-icon">'.wc_public_icon('user').'</span><div><strong>'.e($person['name']).' freigeben?</strong><small>'.e($person['legal_name']).' · '.e($person['email']).'</small></div><div class="task-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="rejected"><button class="btn small" type="submit">Ablehnen</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="approved"><button class="btn small primary" type="submit">Freigeben</button></form></div></div>';
     }
-    if(!$failedMails&&!$overdue&&!$pendingEmployees&&!$failedHandovers&&(!$me||(int)($me['totp_enabled']??0))) echo '<div class="empty compact">Keine dringenden Aufgaben. Das System ist aufgeräumt.</div>';
+    // 10.15: Rollenänderungen bei Verantwortlichen der letzten 14 Tage (ohne eigene Änderungen; keine Mail an andere)
+    $roleChanges=yw_manager_role_changes(null,6,(int)($me['id']??0));$rolePeople=yw_actor_people($roleChanges);
+    foreach($roleChanges as $r){[$head,$sub]=yw_manager_role_change_text($r,$rolePeople,true);echo '<div class="work-task'.($r['action']==='employee.manager_change_blocked'?' danger':'').'"><span class="task-icon">'.wc_public_icon('shield').'</span><div><strong>'.e($head).'</strong><small>'.e($sub).'</small></div><a class="btn small" href="'.e(yw_customer_url((int)$r['company_id'],'mitarbeiter')).'">Ansehen</a></div>';}
+    if(!$failedMails&&!$overdue&&!$pendingEmployees&&!$failedHandovers&&!$roleChanges&&(!$me||(int)($me['totp_enabled']??0))) echo '<div class="empty compact">Keine dringenden Aufgaben. Das System ist aufgeräumt.</div>';
     echo '</section><section class="card"><div class="title-row"><div><h2>Auftragsfluss</h2><p class="muted">Freigegebene Bestellungen.</p></div><a class="btn small" href="/admin?tab=production">Öffnen</a></div>';
     $stages=['new'=>'Neu','accepted'=>'Angenommen','goods_ordered'=>'Material offen','goods_received'=>'Material da','production'=>'Produktion','quality_check'=>'Qualitätskontrolle','ready'=>'Fertig'];
-    $max=1;foreach($stages as $key=>$label)$max=max($max,count(array_filter($orders,fn($o)=>$o['status']==='approved' && $o['fulfillment_status']===$key)));
-    foreach($stages as $key=>$label){$count=count(array_filter($orders,fn($o)=>$o['status']==='approved' && $o['fulfillment_status']===$key));echo '<div class="flow-row"><span>'.e($label).'</span><span class="flow-bar"><i style="width:'.(int)round($count/$max*100).'%"></i></span><strong>'.$count.'</strong></div>';}
+    $max=1;foreach($stages as $key=>$label)$max=max($max,$stageCount([$key]));
+    foreach($stages as $key=>$label){$count=$stageCount([$key]);echo '<div class="flow-row"><span>'.e($label).'</span><span class="flow-bar"><i style="width:'.(int)round($count/$max*100).'%"></i></span><strong>'.$count.'</strong></div>';}
     echo '</section></div>';
 
     echo '<section class="card shop-performance"><div class="title-row"><div><h2>Firmen im Blick</h2><p class="muted">Aktive Konten, Aufträge und Bestellvolumen.</p></div><a class="btn small" href="/admin?tab=companies">Alle Firmen</a></div>';
@@ -1197,7 +1263,7 @@ function render_admin_products(array $products): void {
 
     echo '<details class="card admin-toolbox"><summary>Produktimport und Export</summary><div class="admin-toolbox-body"><div class="title-row"><p class="muted">Neue Produkte per CSV anlegen oder anhand von Produkt-ID beziehungsweise SKU aktualisieren. Der Import läuft vollständig oder gar nicht.</p><div class="actions"><a class="btn" href="/admin/produkte.csv">Produktstamm exportieren</a><a class="btn" href="/admin/produkte-vorlage.csv">Leere Vorlage</a></div></div><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="import_products_csv"><label>Produkt-CSV<input type="file" name="products_csv" accept=".csv,text/csv" required></label><p class="muted">Am sichersten: Produktstamm exportieren, in Excel bearbeiten und wieder importieren. Produkt-ID bestehender Zeilen nicht verändern; neue Zeilen erhalten eine eindeutige SKU. Bilder und kundenspezifische Veredelungen bleiben unverändert.</p><button class="btn primary" type="submit">CSV prüfen und importieren</button></form></div></details>';
 
-    echo '<section class="card"><div class="title-row"><div><h2>Stammprodukt-Katalog</h2><p class="muted">Lege jedes Grundprodukt nur einmal an. Firmenlogos, individuelle Veredelung und abweichende Preise werden anschließend im jeweiligen Firmenshop hinterlegt.</p></div><button class="btn primary" type="button" data-open-details="new-product">Produkt hinzufügen</button></div>';
+    echo '<section class="card"><div class="title-row"><div><h2>Stammprodukt-Katalog</h2><p class="muted">Lege jedes Grundprodukt nur einmal an. Firmenlogos, individuelle Veredelung und abweichende Preise werden anschließend im jeweiligen Firmenshop hinterlegt.</p></div><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="auto_print_zones"><input type="hidden" name="return_tab" value="products"><input type="hidden" name="all" value="1"><button class="btn" type="submit" title="Erkennt Brust, Rücken, Nacken und Ärmel aus den Produktfotos. Von Hand angepasste Zonen bleiben.">Druckzonen automatisch erkennen</button></form><button class="btn primary" type="button" data-open-details="new-product">Produkt hinzufügen</button></div></div>';
 
     if(!$products){
         echo '<div class="empty">Noch keine Produkte angelegt.</div>';
@@ -1237,8 +1303,7 @@ function render_admin_products(array $products): void {
             echo '<div class="grid2"><label>Veredelungsart<select name="decoration_type"><option value="none" '.($decoration==='none'?'selected':'').'>Keine Veredelung</option><option value="print" '.($decoration==='print'?'selected':'').'>Bedruckt</option><option value="embroidery" '.($decoration==='embroidery'?'selected':'').'>Gestickt</option><option value="mixed" '.($decoration==='mixed'?'selected':'').'>Druck & Stick</option></select></label><label>Produktbild (vorne)<input type="file" name="image" accept="image/png,image/jpeg,image/webp"></label></div>';
             $viewBack=yw_local_image_path((string)($p['image_back_path']??''),['products']);$viewSleeve=yw_local_image_path((string)($p['image_sleeve_path']??''),['products']);
             echo '<div class="grid2 product-views"><label>Rückansicht '.($viewBack!==''?'<small>vorhanden</small>':'<small>optional</small>').'<input type="file" name="image_back" accept="image/png,image/jpeg,image/webp">'.($viewBack!==''?'<span class="check"><input type="checkbox" name="delete_image_back" value="1"> Rückansicht entfernen</span>':'').'</label><label>Ärmelansicht '.($viewSleeve!==''?'<small>vorhanden</small>':'<small>optional</small>').'<input type="file" name="image_sleeve" accept="image/png,image/jpeg,image/webp">'.($viewSleeve!==''?'<span class="check"><input type="checkbox" name="delete_image_sleeve" value="1"> Ärmelansicht entfernen</span>':'').'</label></div>';
-            $zoneCount=count(yw_product_zones($p),COUNT_RECURSIVE)-count(yw_product_zones($p));
-            echo '<p class="product-zones-link"><a class="btn small" href="/admin?tab=products&amp;zones='.(int)$p['id'].'">Druckzonen festlegen</a> <span class="muted">'.($zoneCount>0?$zoneCount.' Zonen eingerichtet':'Noch keine eigenen Zonen – es gelten Standardzonen').'</span></p>';
+            echo '<p class="product-zones-link"><a class="btn small" href="/admin?tab=products&amp;zones='.(int)$p['id'].'">Druckzonen ansehen</a> <span class="muted">'.e(yw_zone_status_text($p)).'</span></p>';
             echo '<label>Veredelungsbeschreibung<textarea name="decoration_details" maxlength="10000" rows="4">'.e((string)($p['decoration_details']??'')).'</textarea></label>';
             echo '<button class="btn small" type="submit">Änderungen speichern</button></form></div></details>';
             echo '</div>';
@@ -1274,7 +1339,7 @@ function render_new_company(array $products): void {
     echo '<section class="card"><h2>Stammdaten und Shopregeln</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="create_company"><input type="hidden" name="return_tab" value="new">';
 
     echo '<div class="grid2"><label>Firmenname<input name="legal_name" maxlength="190" required></label><label>Angezeigter Shopname<input name="shop_name" maxlength="190" placeholder="Musterbau Mitarbeiter-Shop" required></label></div>';
-    echo '<label>Shop-Kurzname <small>Beispiel: „musterbau“ ergibt '.e(workwearcenter_domain()).'/musterbau</small><input name="slug" maxlength="63" pattern="[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]" required></label>';
+    echo '<label>Shop-Kurzname <small>Beispiel: „musterbau“ ergibt '.e(workwearcenter_domain()).'/musterbau</small><input name="slug" maxlength="63" pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]|[a-z0-9]" required></label>';
 
     echo '<div class="grid2"><label>Primärfarbe<input type="color" name="primary_color" value="#101b2d"></label><label>Akzentfarbe<input type="color" name="accent_color" value="#ff6b00"></label></div>';
 
@@ -1310,7 +1375,7 @@ function render_admin_decoration_motifs(array $company): void {
         foreach($methodOptions as $value=>$label)$html.='<option value="'.e($value).'" '.($selected===$value?'selected':'').'>'.e($label).'</option>';
         return $html.'</select>';
     };
-    echo '<details class="details"><summary>Veredelungsmotive & Druckbestand <span class="muted">('.count($motifs).')</span></summary><div class="details-inner">';
+    echo '<details class="details" id="motive"><summary>Veredelungsmotive & Druckbestand <span class="muted">('.count($motifs).')</span></summary><div class="details-inner">';
     echo '<p>Hier verwaltest du ausschließlich fertige Drucke, Transfers oder Motivdateien – keinen Textil-Wareneingang. Verknüpfte Motive werden bei freigegebenen Aufträgen automatisch gegen den hinterlegten Bestand geprüft.</p>';
     if($motifs){
         echo '<div class="motif-list">';
@@ -1324,6 +1389,26 @@ function render_admin_decoration_motifs(array $company): void {
     }else echo '<div class="empty compact">Noch kein Veredelungsmotiv hinterlegt.</div>';
     echo '<details class="motif-editor"><summary>Neues Motiv anlegen</summary><div class="motif-editor-body"><form method="post" class="form-stack" enctype="multipart/form-data">'.csrf_field().'<input type="hidden" name="action" value="save_decoration_motif"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$companyId.'"><div class="motif-fields"><label>Motivname<input name="motif_name" maxlength="190" placeholder="z. B. Firmenlogo Brust 9 cm" required></label><label>Verfahren'.$methodSelect('dtf').'</label><label>Bestand<input type="number" name="stock_qty" min="0" max="1000000" value="0" required></label><label>Mindestbestand<input type="number" name="reorder_level" min="0" max="1000000" value="0" required></label></div><label>Interne Notiz<input name="motif_notes" maxlength="500" placeholder="z. B. Ablagefach oder Dateiname"></label><label>Logo-Datei <small>SVG oder PNG, transparent</small><input type="file" name="motif_file" accept=".svg,image/svg+xml,image/png"></label><div class="motif-checks"><label class="check"><input type="checkbox" name="track_stock" value="1" checked><span>Mengenbestand prüfen</span></label><label class="check"><input type="checkbox" name="active" value="1" checked><span>Motiv aktiv</span></label></div><button class="btn primary small" type="submit">Motiv anlegen</button></form></div></details>';
     echo '</div></details>';
+}
+
+/**
+ * Firmen mit Kennzahlen für Übersicht, Kundenliste und Kundenakte: gruppierte Teilabfragen statt fünf Unterabfragen je Firma,
+ * dazu die Zähler der Einrichtungsschritte (yw_company_setup_steps). $companyId≠0: nur diese Firma; $stats=false: ohne Kennzahlen;
+ * $newest>0: nur die neuesten Firmen (Übersicht), die Teilabfragen rechnen dann auch nur für diese.
+ */
+function yw_admin_companies(int $companyId=0,bool $stats=true,int $newest=0): array {
+    if($companyId!==0&&!$stats){$q=db()->prepare('SELECT * FROM companies WHERE id=?');$q->execute([$companyId]);return $q->fetchAll();}
+    $one=$companyId!==0?' AND company_id=?':($newest>0?' AND company_id IN (SELECT id FROM (SELECT id FROM companies ORDER BY id DESC LIMIT '.$newest.') newest)':'');
+    $q=db()->prepare("SELECT c.*,COALESCE(iv.amount,0) invite_count,COALESCE(ea.amount,0) registered_count,COALESCE(o.approved,0) approved_order_count,COALESCE(o.completed,0) completed_order_count,COALESCE(o.revenue,0) revenue_cents,
+            COALESCE(cp.amount,0) setup_products,COALESCE(ea.managers,0) setup_managers,COALESCE(ea.approved,0) setup_employees
+        FROM companies c
+        LEFT JOIN (SELECT company_id,COUNT(*) amount FROM invites WHERE 1=1$one GROUP BY company_id) iv ON iv.company_id=c.id
+        LEFT JOIN (SELECT company_id,COUNT(*) amount,SUM(registration_status='approved') approved,SUM(role='manager' AND registration_status='approved') managers FROM employee_accounts WHERE active=1$one GROUP BY company_id) ea ON ea.company_id=c.id
+        LEFT JOIN (SELECT company_id,COUNT(*) approved,SUM(fulfillment_status='completed') completed,SUM(CASE WHEN gross_total_cents>0 THEN gross_total_cents ELSE total_cents END) revenue FROM orders WHERE status='approved'$one GROUP BY company_id) o ON o.company_id=c.id
+        LEFT JOIN (SELECT company_id,COUNT(*) amount FROM company_products WHERE 1=1$one GROUP BY company_id) cp ON cp.company_id=c.id
+        ".($companyId!==0?'WHERE c.id=? ':'').'ORDER BY c.id DESC'.($companyId===0&&$newest>0?' LIMIT '.$newest:''));
+    $q->execute($companyId!==0?array_fill(0,5,$companyId):[]);
+    return $q->fetchAll();
 }
 
 function render_admin_companies(array $companies,array $products): void {
@@ -1397,6 +1482,13 @@ function yw_audit_labels(): array {
         'invite.created'=>'Mitarbeiterzugang angelegt',
         'employee.created_by_admin'=>'Konto durch Admin angelegt',
         'employee.anonymized'=>'Mitarbeiterdaten gelöscht (DSGVO)',
+        'employee.role_granted'=>'Rolle „Verantwortlicher“ vergeben',
+        'employee.role_revoked'=>'Rolle „Verantwortlicher“ entzogen',
+        'employee.manager_deactivated'=>'Verantwortliche/n gesperrt',
+        'employee.manager_reactivated'=>'Verantwortliche/n wieder freigeschaltet',
+        'employee.manager_change_blocked'=>'Änderung an Verantwortlichen abgewiesen',
+        'order.four_eyes_fallback'=>'Eigene Bestellung freigegeben (einzige verantwortliche Person)',
+        'exchange.four_eyes_fallback'=>'Eigenen Umtausch freigegeben (einzige verantwortliche Person)',
         'order.cancelled'=>'Bestellung zurückgezogen',
         'order.cancelled_by_admin'=>'Auftrag storniert (Verwaltung)',
         'order.status_from_auftragszentrale'=>'Status aus Auftragszentrale übernommen',
@@ -1404,6 +1496,7 @@ function yw_audit_labels(): array {
         'company.note_updated'=>'Kundennotiz geändert',
         'company.preview_started'=>'Shop-Vorschau geöffnet',
         'system.backup_downloaded'=>'Datensicherung heruntergeladen',
+        'system.retention_saved'=>'Aufbewahrungsfrist geändert',
         'api.key_created'=>'API-Schlüssel angelegt','api.key_toggled'=>'API-Schlüssel gesperrt/freigegeben','api.key_deleted'=>'API-Schlüssel gelöscht','api.ip_rejected'=>'API-Zugriff von fremder IP abgelehnt','order.status_from_api'=>'Status über API übernommen','katalog.updated'=>'Daiber-Liste eingelesen','product.images_assigned'=>'Produktbilder aus Katalog zugeordnet',
         'handover.acknowledged'=>'Auftrag von Auftragsverwaltung übernommen',
         'handover.retry'=>'Übergabe erneut gesendet',
@@ -1441,6 +1534,7 @@ function yw_audit_labels(): array {
         'yw_profile_create'=>'Ausstattungsprofil angelegt',
         'yw_profile_save'=>'Ausstattungsprofil geändert',
         'yw_profile_products'=>'Profilsortiment geändert',
+        'yw_profile_bulk'=>'Profilsortiment per Sammelaktion geändert',
         'yw_production'=>'Produktionsauftrag geändert',
         'system.updated'=>'System aktualisiert',
     ];
@@ -1448,7 +1542,7 @@ function yw_audit_labels(): array {
 
 function render_admin_audit(array $logs): void {
     $labels=yw_audit_labels();
-    echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge.</p></div></div>';
+    echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge. Einträge werden nach '.yw_audit_retention_months().' Monaten automatisch gelöscht, Lexware- und Lohnabzug-Einträge bleiben (<a href="/admin?tab=system">einstellbar unter Systemstatus</a>).</p></div></div>';
     if(!$logs){echo '<div class="empty">Noch keine protokollierten Vorgänge.</div></section>';return;}
     $people=yw_actor_people($logs);
     echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Wer</th><th>Objekt</th></tr></thead><tbody>';

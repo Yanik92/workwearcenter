@@ -347,3 +347,112 @@ Keine Datenbankänderung; `update.php` kann trotzdem aufgerufen werden.
 - Die Übersetzungen sind sorgfältig erstellt, aber nicht von Muttersprachlern gegengelesen. Bitte vor dem Einsatz bei einer Firma von einer Person prüfen lassen, die die Sprache spricht (Texte stehen gesammelt in `app/lang/<sprache>.php`).
 - Website, Verwaltung und Exporte bleiben deutsch (siehe oben).
 
+
+## Nachtrag 10.12.1 – Lieferantenkatalog wieder richtig dargestellt
+
+**Ursache:** Auf dem Server war `assets/v9.css` nicht aktuell (beim FTP-Upload übersprungen oder alte Fassung). Darin stehen die Gestaltungsregeln des Lieferantenkatalogs; ohne sie stehen Suche, Kennzahlen, Trefferkarten und Farbauswahl ungestaltet untereinander.
+
+- Neue Prüfung im Systemstatus: **„Programmdateien vollständig hochgeladen“**. Vergleicht jede Programmdatei mit der Prüfsummenliste `app/data/dateien.json` aus dem Paket und nennt Dateien, die fehlen oder veraltet sind.
+- Sind Design-Dateien (`assets/`) veraltet, zeigt die Verwaltung oben auf jeder Seite einen roten Hinweis mit den betroffenen Dateien.
+- CSS- und JS-Dateien werden mit ihrer eigenen Prüfsumme statt der Versionsnummer geladen: Jede geänderte Datei holt sich der Browser sofort neu, auch ohne Strg+F5.
+- Für Releases: `php tools/dateiliste-erzeugen.php` erzeugt die Prüfsummenliste.
+
+**Beim Hochladen per FileZilla:** Bei der Frage „Zieldatei existiert bereits“ **„Überschreiben“** wählen und „Immer diese Aktion verwenden“ anhaken – nicht „Überschreiben, falls Quelle neuer“. Sonst bleiben ältere Dateien auf dem Server liegen.
+
+## Nachtrag 10.12.2 – Katalogbilder: Zuordnung repariert
+- **Zweifarbige Artikel** (z. B. JN010 black/red) wurden nie erkannt, weil der Schrägstrich im Farbnamen im Dateinamen gesucht wurde. Jetzt passt `JN010_black_red.jpg`, also der Name, den Daiber selbst in der Liste führt.
+- Dateinamen werden großzügig erkannt: Groß-/Kleinschreibung, Bindestrich oder Unterstrich, Zusätze wie `_front`, `-back` oder ` (1)`. Der längste passende Anfang gewinnt, `JN010_black_red.jpg` landet also nicht bei black.
+- Dateinamen mit Leerzeichen, Klammern oder Umlauten wurden beim Hochladen stillschweigend verworfen. Sie werden jetzt übernommen und sicher umbenannt.
+- **Große Auswahl:** Viele Bilder auf einmal überschritten die Upload-Grenze des Servers, und es kam nur „Sicherheitsprüfung fehlgeschlagen“. Jetzt überträgt die Seite die Bilder automatisch in Paketen mit Fortschrittsanzeige. Ist ein Formular trotzdem zu groß, erscheint ein klarer Hinweis mit der Größe.
+- Nach dem Upload meldet die Seite, welche Produkte noch ohne Bild sind (mit dem erwarteten Dateinamen) und welche Dateien zu keinem Katalogartikel passen. Die Liste „Fehlende Dateien“ nannte bisher falsche Namen (z. B. `jn840-navy_navy.jpg`).
+
+## Nachtrag 10.12.3 – Kundenakte bleibt im Reiter
+- Nach dem Speichern in der Kundenakte (z. B. „Kollektion speichern“ unter „Kollektion & Design“) landete man auf der Übersicht der Firma, bei einem Fehler sogar in der Kundenliste. Jetzt bleibt die Seite im selben Reiter, auch wenn eine Meldung erscheint.
+- Umsetzung: Jedes Formular der Kundenakte merkt sich den Reiter (`return_to`). Übernommen wird nur ein Ziel innerhalb der Verwaltung und für dieselbe Firma.
+
+## Nachtrag 10.12.4 – Druckzonen automatisch, Komplett-Test
+- **Druckzonen werden automatisch erkannt.** Beim ersten Aufruf eines Produkts misst das System die Umrisse des Produktfotos (Vorder-, Rück- und Ärmelansicht) und setzt Brust links/rechts, Ärmel, Nacken, Rücken oben und Rücken groß passend zur Art des Artikels (Oberteil, Hose, Kopfbedeckung, Tasche/Handtuch). Ein Nachpflegen nach dem Einpflegen ist nicht mehr nötig.
+- Wechselt das Foto, werden die Zonen neu berechnet. Von Hand angepasste Zonen bleiben unangetastet; im Zonen-Editor stellt „Wieder automatisch erkennen“ den Automatikstand her.
+- Unter „Produkte“ setzt „Druckzonen automatisch erkennen“ alle automatischen Zonen auf einmal; der Cronjob erledigt bis zu 100 Produkte pro Lauf. Ohne erkennbares Foto werden die Zonen eines Geschwisterartikels (andere Farbe) übernommen.
+- **Katalogbilder:** Dateien mit `_back` werden automatisch zur Rückansicht, mit `_side` zur Ärmelansicht (z. B. `JN840_navy_back.jpg`).
+- **Komplett-Test aller Funktionen** (Shop, Bestellung, Freigabe, Umtausch, Exporte, alle Sprachen, Handyansicht). Behoben:
+  - Kundenakte, „Regeln & Budget“: Speichern von Budget, PIN, Mengenlimits und Ausstattungsprofilen endete auf einer leeren Seite.
+  - Lieferantenkatalog: Die Preisvorschau ließ Übergrößen-Aufpreise weg und rundete brutto falsch.
+  - Firmenshop: „Warenwert netto“ enthielt den Versand und war größer als brutto; unter Artikeln ohne Veredelung stand „none“.
+  - Neuer Kunde: Die Prüfung des Shop-Kurznamens im Browser wirkte nicht (auch beim Lexware-Kontaktfeld).
+  - Firmenkunden-Cockpit zählte offene Registrierungen als aktive Konten.
+  - „Vorschau beenden“ führt zurück in die Kundenakte statt in die Kundenliste.
+
+## 10.13.0 – Weniger Klicks im Alltag
+- **Neue Registrierungen auf der Startseite:** Verantwortliche sehen offene Registrierungen direkt auf der Startseite ihres Firmenshops und können sie dort mit „Zugang freigeben“ oder „Ablehnen“ entscheiden (bisher versteckt unter „Mitarbeiter“).
+- **Neue Firma:** Nach „Firma anlegen“ öffnet sich direkt der Reiter „Mitarbeiter“, um den ersten Verantwortlichen anzulegen.
+- **Eingaben bleiben stehen:** Endet ein Formular mit einer Fehlermeldung (z. B. Shop-Kurzname vergeben, Lieferadresse fehlt), sind alle Eingaben wieder im Formular eingetragen. Passwörter, PINs und Schlüssel werden bewusst nicht gemerkt.
+
+## Nachtrag 10.13.1 – Katalogbilder mit beliebigen Dateinamen
+- Bilder werden jetzt auch erkannt, wenn der Dateiname nicht mit `Artikelnummer_Farbe` beginnt: Artikelnummer und Farbe dürfen irgendwo im Namen stehen, auch mit Bindestrich oder Leerzeichen (`Foto JN-840 Navy front.jpg`), mit deutscher Suchfarbe (`JN840 schwarz.jpg`, nur wenn eindeutig) oder zusammengeschrieben (`8001_greyheather.jpg`). Bei Artikeln mit nur einer Farbe reicht die Artikelnummer.
+- Was trotzdem nicht erkannt wird, steht unter „Dateien ohne passenden Katalogartikel“ mit einem Eingabefeld je Datei: Artikel und Farbe eintippen oder aus den Produkten ohne Bild wählen, „Zuordnen“ – die Datei wird umbenannt und zugeordnet.
+- Zweifarbige Artikel (black/red) wurden intern teils unter einem falschen Schlüssel gesucht; behoben.
+
+## 10.14.0 – Sicherheit und Belastbarkeit für Großkunden
+Vor dem ersten Großkunden wurde das System in drei Richtungen geprüft: Zugriffsschutz, Angriffe über Eingaben und Dateien, und ein Großkunde mit 1.500 Mitarbeitern und 20.000 Bestellungen. **Nach dem Hochladen unbedingt `/update.php` ausführen** (neue Datenbank-Indizes). Neu im Paket: `GO-LIVE-CHECKLISTE.md`.
+
+**Sicherheit**
+- Anmeldung: Passwort-Raten über viele IP-Adressen wird je Konto gestoppt; die Antwortzeit verrät nicht mehr, ob ein Konto existiert.
+- Firmen-PIN der Registrierung und „Passwort vergessen“ sind unabhängig von der IP gegen Erraten bzw. Mail-Fluten gedrosselt.
+- Zwei-Faktor- und Wiederherstellungscodes sind auch bei gleichzeitigen Anfragen nur einmal nutzbar.
+- Anonymisierte Konten bleiben endgültig gesperrt.
+- API-Schlüssel lassen sich auf eine Firma beschränken (Partner, Fan-Bande).
+- SVG-Logos: Skripte über XSLT und externe Verweise werden entfernt.
+- Interne Ordner (`app/`, `tests/`, `tools/`) und versteckte Dateien sind auch ohne mod_rewrite gesperrt; der Systemstatus prüft das mit.
+- Vorschau, Vorschau beenden und Datensicherung lassen sich nicht von fremden Seiten auslösen.
+- Sitzungen enden spätestens 12 Stunden nach der Anmeldung; `/api/v1/ping` nennt die Version nur mit Schlüssel.
+- Katalog-ZIPs werden höchstens bis 40 MB je Datei und 1 GB gesamt entpackt.
+- Die Verwaltung zeigt einen roten Hinweis, solange nach einem Upload `update.php` nicht gelaufen ist.
+
+**Großkunden-Tauglichkeit**
+- Datensicherung schreibt zeilenweise statt alles im Speicher (bisher 240 MB, jetzt 2 MB); Zeitzonen-Fehler bei der Wiederherstellung behoben.
+- Neue Indizes: Budget- und Mengenprüfung im Shop von 1,1 s auf 0,05 s.
+- Mitarbeiterlisten (Kundenakte und Firmenshop) seitenweise mit Suche.
+- CSV-Exporte werden gestreamt.
+- Hängt der Mailserver oder die Auftragszentrale, pausiert die Warteschlange 5 Minuten, statt jede Seite zu blockieren.
+- Umtausch mit Mehrkosten kann das Budget auch bei gleichzeitigen Anfragen nicht überschreiten.
+- Datenbankausfall zeigt einen verständlichen Hinweis statt einer leeren Seite.
+- Volle Festplatte hinterlässt keine abgeschnittenen Uploads.
+- Einrichtungslinks neuer Konten gelten 7 Tage (große Importe).
+
+## 10.15.0 – Produktbilder automatisch, Vier-Augen-Schutz, Großkunden-Tauglichkeit
+**Nach dem Hochladen unbedingt `/update.php` ausführen** (neue Spalten und Indizes). Bis dahin zeigt die Verwaltung den roten Hinweis „Datenbank-Update fehlt“ und der Firmenshop „Update erforderlich“.
+
+**Produktbilder kommen automatisch aus dem Daiber-Shop**
+- Nach dem Anlegen von Katalogprodukten lädt das System die Bilder jeder Farbe selbst von daiber.shop: vorne, hinten und Ärmel (Ärmel und Rücken nur bei Oberteilen bzw. Hosen). Kein Login, keine Dateinamen, kein Hochladen nötig.
+- Der Cronjob ergänzt alle 5 Minuten, was noch fehlt – auch für alle schon vorhandenen Produkte (Rückseiten- und Ärmelfotos inklusive). Druckzonen werden danach automatisch erkannt.
+- Katalog → Produktbilder: Knopf „Fehlende Bilder jetzt laden“, Schalter „Automatisch laden“ und Stand des letzten Abgleichs; beim Artikel „Bilder von Daiber laden“ für einzelne Artikel.
+- Eigene Fotos haben immer Vorrang. Artikel, die der Daiber-Shop nicht führt, werden genannt (dann wie bisher hochladen).
+- Das Logo am linken Ärmel erscheint auf dem Ärmelfoto, das rechte bleibt vorne – zwei Ärmel-Logos liegen nie übereinander.
+- Sicher: Verbindungen nur per HTTPS zu den drei festen Daiber-Adressen, nur echte Bilder werden gespeichert (verkleinert auf 1.400 px), bei Störungen pausiert der Abgleich 15 Minuten.
+
+**Vier-Augen-Schutz für Verantwortliche**
+- Verantwortliche können andere Verantwortliche nicht herabstufen, sperren, löschen oder deren Ein-/Austritt ändern – auch nicht per CSV oder manipuliertem Formular. Das macht nur die Verwaltung.
+- Neue Einstellung je Firma (Kundenakte → Regeln): „Verantwortliche dürfen weitere Verantwortliche ernennen“. Standard: aus.
+- Eigene Bestellungen und Umtausch-Anträge gibt immer eine andere verantwortliche Person frei (im Shop und per Mail-Link). Gibt es nur eine, darf sie selbst freigeben; das wird protokolliert.
+- Rollenänderungen und abgewiesene Versuche stehen 14 Tage im Dashboard unter „Heute zu erledigen“ und in der Kundenakte.
+- Menü-Zähler, Startseite und Freigabeseite zählen nur, was wirklich auf die eigene Entscheidung wartet.
+
+**Erinnerungen und Aufbewahrung**
+- Statt einer Mail je offener Bestellung bekommen Verantwortliche höchstens einmal am Tag eine Sammel-Erinnerung (offene Freigaben und Registrierungen, neue markiert, in ihrer Sprache) – und nur, wenn seit der letzten etwas Neues dazugekommen ist.
+- Das Aktivitätsprotokoll wird nach 24 Monaten automatisch gelöscht (einstellbar 6–120 Monate unter System → Systemstatus), versendete Mails nach 90, fehlgeschlagene nach 180 Tagen. Aufträge, Lexware- und Lohnabzug-Einträge bleiben immer.
+- Anfrageformular: Die Eingangsbestätigung geht höchstens einmal in 24 Stunden an dieselbe Adresse (auch mit +Zusatz oder Gmail-Punkten) und höchstens 30-mal je Stunde. Die Anfrage selbst kommt immer bei Yanik an.
+
+**Lexware**
+- Monats-Sammelrechnungen mit mehr als 300 Positionen werden automatisch in mehrere Entwürfe aufgeteilt (nach ganzen Kostenstellen, eine allein zu große Kostenstelle in „Teil 1 von 3“). Die Vorschau zeigt vorher genau, welche Entwürfe entstehen.
+- Ein Auftrag steht immer komplett in einem Entwurf und wird genau einmal berechnet. Scheitert ein Teil, wird nur dieser mit „Erneut senden“ nachgeholt.
+- Viele Entwürfe (z. B. 31 bei „je Kostenstelle“) gehen mit einem Klick raus; die Seite sendet den Rest selbst weiter.
+
+**Großkunden (1.500 Mitarbeitende, 20.000 Aufträge)**
+- Kundenakte „Kollektion & Design“: kompakte Artikelliste mit Suche, Kategorie und Seiten; das Bearbeitungsformular öffnet sich nur für den gewählten Artikel (Grossbau: 3,1 MB → 113 KB).
+- „Regeln & Budget“: Produktfreigaben je Profil öffnen sich auf Klick, mit Seiten und Sammelaktionen (926 KB → 131 KB).
+- Nach dem Speichern bleibt man in der Kundenakte und im Firmenshop unter „Mitarbeiter“ auf derselben Seite mit derselben Suche; die Rückmeldung steht direkt am bearbeiteten Eintrag.
+- Schneller: Verwaltungs-Startseite etwa 3×, Übergabe etwa 4×, Kundenakte etwa 2× so schnell; die Datenbankprüfung läuft nicht mehr bei jedem Seitenaufruf vollständig. Neue Indizes für Mail- und Übergabewarteschlange und Lohnabzug.
+
+**Übersetzungen**
+- Englisch, Polnisch, Türkisch, Russisch und Rumänisch gegengelesen und vereinheitlicht (z. B. Anrede in Mails, Mengen- und Budgettexte, Passwort-Seiten).

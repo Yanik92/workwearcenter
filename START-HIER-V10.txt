@@ -1,4 +1,4 @@
-WORKWEARCENTER (Yanik Textildruck) – VERSION 10.10.0
+WORKWEARCENTER (Yanik Textildruck) – VERSION 10.12.3
 ================================================
 
 Dieses Paket ist beides:
@@ -17,8 +17,12 @@ A) UPDATE EINER BESTEHENDEN INSTALLATION
 -------------------------------------------------------------------------------
 1. Webspace, Datenbank und config.php vollständig sichern (und Download prüfen).
 2. Inhalt des Ordners in das Stammverzeichnis hochladen, Programmdateien ersetzen.
-   Versteckte Dateien mitnehmen: .htaccess, .user.ini, uploads/.htaccess
+   Versteckte Dateien mitnehmen: .htaccess, .user.ini, uploads/.htaccess,
+   app/.htaccess, tests/.htaccess, tools/.htaccess
    config.php und den Ordner uploads NICHT überschreiben oder löschen.
+   FileZilla: bei „Zieldatei existiert bereits“ immer „Überschreiben“ wählen
+   (nicht „falls Quelle neuer“). Admin → Systemstatus → „Programmdateien
+   vollständig hochgeladen“ zeigt danach, ob jede Datei angekommen ist.
 3. Als Administrator anmelden → https://workwearcenter.de/update.php
    Sicherung bestätigen, Update einmal ausführen (legt die neuen Tabellen an).
    (Kommt das Update von einer Version vor 10.3: danach Admin → Inhalte →
@@ -50,11 +54,20 @@ Skripte) stehen in .htaccess-Dateien. Das wirkt nur unter Apache mit
 
 Bei nginx (oder wenn die Prüfung rot ist) diese Regeln beim Hoster eintragen:
 
+    location ~ /\.(?!well-known/)              { deny all; }
     location ~ ^/(app|tests|tools)/            { deny all; }
-    location ~ ^/uploads/.*\.(php\d?|phtml|phar|json|csv|xlsx?|zip|txt|sql)$ { deny all; }
-    location ~ ^/(config\.php|config\.example\.php|cron\.php|VERSION)$ { deny all; }
-    location ~ \.(md|sql|log|ini|bak|zip)$    { deny all; }
+    location ~ ^/uploads/.*\.(php\d?|pht|phtml|phar|phps|s?html?|xhtml|xml|json|csv|xlsx?|zip|txt|sql)$ { deny all; }
+    location ~ ^/uploads/.*\.svg$ {
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+    location ~ ^/(config\.php|config\.example\.php|cron\.php|install\.php|VERSION|[A-Z][A-Z0-9-]*\.txt)$ { deny all; }
+    location ~ \.(md|ya?ml|sql|log|ini|bak|zip)$ { deny all; }
     location / { try_files $uri $uri/ /index.php?$query_string; }
+
+(Die deny-Regeln müssen vor der PHP-Regel „location ~ \.php$“ des Hosters
+stehen. install.php erst nach der Einrichtung sperren. Außerdem in der
+PHP-Konfiguration: display_errors=Off, expose_php=Off.)
 
 Am sichersten: in der config.php 'private_dir' auf einen Ordner AUSSERHALB des
 Webroots setzen. Dort liegt dann die eingelesene Daiber-Liste mit Einkaufspreisen.
@@ -89,12 +102,17 @@ Lexware-Seite eine Monats-Sammelrechnung (optional je Kostenstelle). Es entstehe
 NUR Entwürfe – prüfen, finalisieren und versenden immer in Lexware. Jeder Auftrag
 kann nur einmal abgerechnet werden. Meldet Lexware eine Zeitüberschreitung, bleibt
 der Auftrag gesperrt, bis unter „Rechnungsentwürfe → Klären“ entschieden ist.
+Lexware nimmt höchstens 300 Positionen je Rechnung an: Größere Sammelrechnungen
+teilt das System ab 10.15 automatisch in mehrere Entwürfe auf (ganze Kostenstellen,
+sonst „Teil 1 von 3“), die Vorschau zeigt die Aufteilung vorher. Viele Entwürfe
+sendet die Seite automatisch in mehreren Durchgängen (Seite geöffnet lassen). Scheitert
+ein Teil, bleibt er in der Monatsübersicht stehen und wird mit „Erneut senden“ nachgeholt.
 Schlüssel widerrufen: in Lexware löschen und den Eintrag in der config.php leeren.
 
 -------------------------------------------------------------------------------
 VOR DEM ÖFFENTLICHEN START
 -------------------------------------------------------------------------------
-Siehe ABNAHME-CHECKLISTE-V10.md. Insbesondere Impressum (inkl. USt-IdNr.) und die
+Vor dem Start mit einem Großkunden: GO-LIVE-CHECKLISTE.md abarbeiten. Siehe auch ABNAHME-CHECKLISTE-V10.md. Insbesondere Impressum (inkl. USt-IdNr.) und die
 Datenschutzerklärung (Vorlage unter Admin → Inhalte → Datenschutz) fachlich prüfen.
 
 ROLLBACK

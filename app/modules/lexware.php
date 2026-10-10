@@ -15,16 +15,25 @@ declare(strict_types=1);
  * - Positionen werden mit Netto-Einzelpreis gesendet (taxType „net“); Lexware rechnet die Steuer
  *   je Steuersatz auf die Nettosumme – identisch zu pricing.php.
  * Ein Auftrag kann nur in genau einem Lexware-Beleg stehen (yw_lexware_document_orders).
+ * 10.15: Lexware nimmt höchstens 300 Positionen je Rechnung an. Größere Monats-Sammelrechnungen werden automatisch
+ * in mehrere Entwürfe geteilt (yw_lexware_month_plan), alle Teile vor dem Senden fest reserviert („planned“) und
+ * dann einzeln gesendet; ein fehlgeschlagener Teil („failed“) wird mit denselben Aufträgen erneut gesendet.
  */
 
 const YW_LEXWARE_DEFAULT_BASE='https://api.lexware.io';
 const YW_LEXWARE_APP_URL='https://app.lexware.de';
 const YW_LEXWARE_MIN_INTERVAL=0.6;
 const YW_LEXWARE_MAX_LINES=300;
+const YW_LEXWARE_UPDATE_HINT='Für Sammelrechnungen fehlt noch das Datenbank-Update 10.15. Bitte zuerst den Update-Assistenten (update.php) ausführen.';
 
 final class YwLexwareException extends RuntimeException {
     /** $uncertain: Die Anfrage kann trotz Fehler in Lexware angekommen sein (Zeitüberschreitung, 504). */
     public function __construct(string $message,public readonly int $status=0,public readonly bool $uncertain=false){parent::__construct($message);}
+}
+
+/** 10.15: Senden eines Entwurfs gescheitert. $stop: betrifft vermutlich jeden weiteren Teil genauso (Schlüssel, Tarif, Erreichbarkeit, unklares Ergebnis). */
+final class YwLexwareSendFailed extends DomainException {
+    public function __construct(string $message,public readonly bool $uncertain=false,public readonly bool $stop=false){parent::__construct($message);}
 }
 
 /* ---------- Konfiguration und Einstellungen ---------- */
@@ -70,11 +79,14 @@ function yw_lexware_audit_labels(): array {
         'lexware.contact_created'=>'Lexware: Kontakt angelegt',
         'lexware.contact_linked'=>'Lexware: Kontakt verknüpft',
         'lexware.contact_unlinked'=>'Lexware: Kontaktverknüpfung gelöst',
+        'lexware.invoice_planned'=>'Lexware: Sammelrechnung aufgeteilt, Aufträge zugeordnet',
         'lexware.invoice_created'=>'Lexware: Rechnungsentwurf angelegt',
         'lexware.invoice_failed'=>'Lexware: Rechnungsentwurf fehlgeschlagen',
         'lexware.invoice_uncertain'=>'Lexware: Ergebnis unklar – bitte prüfen',
         'lexware.document_refreshed'=>'Lexware: Belegstatus aktualisiert',
         'lexware.document_released'=>'Lexware: Belegverknüpfung entfernt',
+        'lexware.order_removed'=>'Lexware: Auftrag aus Entwurf genommen (nicht mehr freigegeben)',
+        'lexware.document_resend'=>'Lexware: Unklarer Entwurf nicht angekommen – erneut gesendet',
         'lexware.document_id_set'=>'Lexware: Beleg-ID nachgetragen',
         'lexware.error'=>'Lexware: Fehler',
         'payroll.exported'=>'Lohnabzug exportiert',
@@ -298,6 +310,26 @@ function yw_lexware_shipping_rate(array $order,float $companyRate): float {
     return $companyRate;
 }
 
+/* 10.15: Schlüssel der Rechnungspositionen – gleiche Schlüssel werden zu einer Position zusammengefasst.
+   Dieselben Funktionen nutzen die Positionen (yw_lexware_build_lines) und die Aufteilung (yw_lexware_month_plan). */
+function yw_lexware_item_net(array $it): int { $net=(int)($it['unit_net_cents']??0);return $net>0?$net:(int)($it['unit_price_cents']??0); }
+function yw_lexware_item_key(array $it): string { return 'i|'.$it['product_name'].'|'.$it['size'].'|'.yw_lexware_item_net($it).'|'.yw_rate_bp((float)($it['vat_rate']??19)); }
+function yw_lexware_shipping_key(array $o): string { return 's|'.(int)($o['shipping_net_cents']??0).'|'.yw_rate_bp((float)($o['shipping_rate']??19)); }
+/** Zwischenüberschrift eines Auftrags (nur bei Gruppierung nach Kostenstelle, sonst leer). */
+function yw_lexware_line_group(array $o,string $grouping): string {
+    if($grouping!=='cost_center')return '';
+    $cc=trim((string)($o['cost_center']??''));
+    return $cc!==''?'Kostenstelle: '.$cc:'Ohne Kostenstelle';
+}
+/** Alle Positionsschlüssel eines Auftrags inkl. Zwischenüberschrift – deren Anzahl in einer Rechnung = Lexware-Positionen. */
+function yw_lexware_order_line_keys(array $o,array $items,string $grouping): array {
+    $label=yw_lexware_line_group($o,$grouping);
+    $keys=$label!==''?['t|'.$label=>true]:[];
+    foreach($items as $it)$keys[$label."\n".yw_lexware_item_key($it)]=true;
+    if((int)($o['shipping_net_cents']??0)>0)$keys[$label."\n".yw_lexware_shipping_key($o)]=true;
+    return array_keys($keys);
+}
+
 /**
  * Baut die Rechnungspositionen (rein, testbar).
  * $orders: Bestellzeilen mit id, employee_name, cost_center, shipping_net_cents, shipping_rate (Prozent)
@@ -313,13 +345,13 @@ function yw_lexware_build_lines(array $orders,array $itemsByOrder,array $options
     $withNames=!empty($options['employee_names']);
     $groups=[];
     foreach($orders as $o){
-        $label=$grouping==='cost_center'?(trim((string)($o['cost_center']??''))!==''?'Kostenstelle: '.trim((string)$o['cost_center']):'Ohne Kostenstelle'):'';
+        $label=yw_lexware_line_group($o,$grouping);
         $ref=yw_order_number((int)$o['id']).($withNames && trim((string)($o['employee_name']??''))!==''?' ('.trim((string)$o['employee_name']).')':'');
         $groups[$label]['orders'][$ref]=true;
         foreach($itemsByOrder[(int)$o['id']]??[] as $it){
-            $net=(int)($it['unit_net_cents']??0);if($net<=0)$net=(int)($it['unit_price_cents']??0);
+            $net=yw_lexware_item_net($it);
             $rate=(float)($it['vat_rate']??19);
-            $key='i|'.$it['product_name'].'|'.$it['size'].'|'.$net.'|'.yw_rate_bp($rate);
+            $key=yw_lexware_item_key($it);
             $groups[$label]['lines'][$key]??=['name'=>(string)$it['product_name'],'size'=>(string)$it['size'],'net'=>$net,'vat'=>$rate,'qty'=>0,'refs'=>[]];
             $groups[$label]['lines'][$key]['qty']+=(int)$it['quantity'];
             $groups[$label]['lines'][$key]['refs'][$ref]=true;
@@ -327,7 +359,7 @@ function yw_lexware_build_lines(array $orders,array $itemsByOrder,array $options
         $shipNet=(int)($o['shipping_net_cents']??0);
         if($shipNet>0){
             $rate=(float)($o['shipping_rate']??19);
-            $key='s|'.$shipNet.'|'.yw_rate_bp($rate);
+            $key=yw_lexware_shipping_key($o);
             $groups[$label]['shipping'][$key]??=['name'=>'Versand','size'=>'','net'=>$shipNet,'vat'=>$rate,'qty'=>0,'refs'=>[]];
             $groups[$label]['shipping'][$key]['qty']++;
             $groups[$label]['shipping'][$key]['refs'][$ref]=true;
@@ -353,6 +385,9 @@ function yw_lexware_build_lines(array $orders,array $itemsByOrder,array $options
 /** Rechnungs-JSON für POST /v1/invoices (Entwurf, Nettopreise). */
 function yw_lexware_invoice_payload(string $contactId,array $lineItems,array $meta): array {
     $settings=$meta['settings']??yw_lexware_settings();
+    // 10.15: „Teil 2 von 3“ auch im Belegtitel, wenn er dann noch höchstens 25 Zeichen hat (in der Einleitung steht es immer).
+    $title=trim((string)$settings['title'])?:'Rechnung';$suffix=trim((string)($meta['title_suffix']??''));
+    if($suffix!=='' && mb_strlen($title.' '.$suffix)<=25)$settings['title']=$title.' '.$suffix;
     $payload=[
         'voucherDate'=>yw_lexware_date($meta['voucher_date']),
         'address'=>['contactId'=>$contactId],
@@ -394,49 +429,116 @@ function yw_lexware_document_for_order(int $orderId): ?array {
     catch(Throwable $e){return null;}
 }
 
-/**
- * Legt einen Rechnungsentwurf an. Reihenfolge schützt vor Doppelanlage:
- * 1. Beleg + Auftragszuordnung lokal reservieren (eindeutige Schlüssel), 2. Lexware aufrufen,
- * 3. Ergebnis speichern. Bei sicherem Fehler wird die Reservierung zurückgenommen, bei unklarem
- * Ergebnis (Zeitüberschreitung) bleibt sie als „unklar“ stehen, bis jemand in Lexware nachsieht.
- */
-function yw_lexware_create_invoice(int $companyId,array $orderIds,string $kind,?string $period,string $groupLabel,array $meta): array {
-    $company=yw_lexware_company($companyId);
+/** 10.15: Spalten für Teilrechnungen vorhanden (Update-Assistent ausgeführt)? */
+function yw_lexware_parts_ready(): bool {
+    static $ready=null;
+    if($ready===null){try{db()->query('SELECT part_no,part_count,line_grouping FROM yw_lexware_documents LIMIT 0');$ready=true;}catch(Throwable $e){$ready=false;}}
+    return $ready;
+}
+
+/** Firma kann Rechnungsentwürfe bekommen: Lexware-Kontakt verknüpft und API-Schlüssel hinterlegt. Rückgabe: Kontakt-ID. */
+function yw_lexware_check_ready(array $company): string {
     $contactId=(string)($company['lexware_contact_id']??'');
     if(!yw_lexware_uuid_ok($contactId))throw new DomainException('Diese Firma ist noch nicht mit einem Lexware-Kontakt verknüpft. Bitte zuerst unter System → Lexware Office den Kontakt anlegen oder verknüpfen.');
     if(!yw_lexware_enabled())throw new DomainException('Lexware Office ist nicht eingerichtet (lexware_api_key in der config.php).');
-    sort($orderIds);
-    $dedupe=$kind==='order'?'order:'.(int)$orderIds[0]:'monthly:'.$companyId.':'.$period.':'.substr(hash('sha256',$groupLabel.'|'.implode(',',$orderIds)),0,40);
-    $settings=yw_lexware_settings();
+    return $contactId;
+}
+
+/** 10.15: Meldung für einen Auftrag, der allein mehr Positionen hat, als Lexware je Rechnung annimmt. */
+function yw_lexware_too_big_message(int $orderId,int $lines): string {
+    return 'Auftrag '.yw_order_number($orderId).' hat allein '.$lines.' Positionen – Lexware nimmt höchstens '.YW_LEXWARE_MAX_LINES.' je Rechnung an. Er wird nicht übertragen und bleibt offen; bitte in Lexware von Hand abrechnen.';
+}
+
+/**
+ * Reserviert Rechnungsentwürfe lokal (Status „planned“) samt Auftragszuordnung – alle oder keiner, in einer Transaktion.
+ * Ab hier steht jeder Auftrag in genau einem Entwurf (Primärschlüssel order_id), auch wenn das Senden später scheitert.
+ * $docs: Liste von ['ids'=>Auftrags-IDs,'kind'=>'order'|'monthly','period','label','part','of','grouping'=>'none'|'cost_center']
+ * Rückgabe: Beleg-IDs in derselben Reihenfolge.
+ */
+function yw_lexware_reserve(int $companyId,array $docs): array {
+    $all=[];foreach($docs as $d)foreach($d['ids'] as $id)$all[]=(int)$id;
+    if(!$all)throw new DomainException('Keine Aufträge ausgewählt.');
+    if(count($all)!==count(array_unique($all)))throw new DomainException('Ein Auftrag darf nur in einem Entwurf stehen. Keine Doppelanlage.');
+    $parts=yw_lexware_parts_ready();
+    foreach($docs as $d)if(($d['kind']??'')!=='order' && !$parts)throw new DomainException(YW_LEXWARE_UPDATE_HINT);
+    sort($all);
+    $settings=yw_lexware_settings();$docIds=[];
     try{
         db()->beginTransaction();
-        $in=implode(',',array_fill(0,count($orderIds),'?'));
-        $q=db()->prepare("SELECT id,status FROM orders WHERE company_id=? AND id IN ($in) FOR UPDATE");$q->execute(array_merge([$companyId],$orderIds));
+        $in=implode(',',array_fill(0,count($all),'?'));
+        $q=db()->prepare("SELECT id,status FROM orders WHERE company_id=? AND id IN ($in) FOR UPDATE");$q->execute(array_merge([$companyId],$all));
         $rows=$q->fetchAll();
-        if(count($rows)!==count($orderIds))throw new DomainException('Mindestens ein Auftrag gehört nicht zu dieser Firma.');
+        if(count($rows)!==count($all))throw new DomainException('Mindestens ein Auftrag gehört nicht zu dieser Firma.');
         foreach($rows as $r)if($r['status']!=='approved')throw new DomainException('Nur freigegebene Aufträge können abgerechnet werden ('.yw_order_number((int)$r['id']).' ist nicht freigegeben).');
-        $q=db()->prepare("SELECT order_id FROM yw_lexware_document_orders WHERE order_id IN ($in) FOR UPDATE");$q->execute($orderIds);
-        if($taken=$q->fetchAll(PDO::FETCH_COLUMN))throw new DomainException('Bereits in einem Lexware-Beleg: '.implode(', ',array_map(fn($id)=>yw_order_number((int)$id),$taken)).'. Keine Doppelanlage.');
-        [$orders,$items]=yw_lexware_load_orders($companyId,$orderIds);
-        $built=yw_lexware_build_lines($orders,$items,['grouping'=>$meta['grouping']??'none','employee_names'=>$settings['employee_names']==='1','unit'=>$settings['unit']]);
-        $priced=count($built['calc']);
-        if($priced===0)throw new DomainException('Keine abrechenbaren Positionen.');
-        if(count($built['lineItems'])>YW_LEXWARE_MAX_LINES)throw new DomainException('Die Rechnung hätte '.count($built['lineItems']).' Positionen; Lexware erlaubt höchstens '.YW_LEXWARE_MAX_LINES.'. Bitte „Je Kostenstelle eine eigene Rechnung“ wählen.');
-        $expected=yw_invoice_totals($built['calc']);
-        $ins=db()->prepare("INSERT INTO yw_lexware_documents(dedupe_key,company_id,kind,order_id,period,group_label,status,net_cents,gross_cents,line_count,created_by) VALUES(?,?,?,?,?,?,'creating',?,?,?,?)");
-        $ins->execute([$dedupe,$companyId,$kind,$kind==='order'?(int)$orderIds[0]:null,$period,$groupLabel!==''?mb_substr($groupLabel,0,190):null,$expected['net'],$expected['gross'],count($built['lineItems']),!empty($_SESSION['admin_id'])?(int)$_SESSION['admin_id']:null]);
-        $docId=(int)db()->lastInsertId();
-        $link=db()->prepare('INSERT INTO yw_lexware_document_orders(order_id,document_id) VALUES(?,?)');
-        foreach($orderIds as $id)$link->execute([$id,$docId]);
+        $q=db()->prepare("SELECT order_id FROM yw_lexware_document_orders WHERE order_id IN ($in) FOR UPDATE");$q->execute($all);
+        if($taken=$q->fetchAll(PDO::FETCH_COLUMN))throw new DomainException('Bereits in einem Lexware-Beleg: '.implode(', ',array_map(fn($id)=>yw_order_number((int)$id),array_slice($taken,0,10))).(count($taken)>10?' und '.(count($taken)-10).' weitere':'').'. Keine Doppelanlage.');
+        [$orders,$items]=yw_lexware_load_orders($companyId,$all);
+        $byId=[];foreach($orders as $o)$byId[(int)$o['id']]=$o;
+        foreach($docs as $d){
+            $orderIds=array_map('intval',$d['ids']);sort($orderIds);
+            $kind=(string)$d['kind'];$label=(string)($d['label']??'');$part=(int)($d['part']??0);$of=(int)($d['of']??0);$period=$d['period']??null;
+            $grouping=($d['grouping']??'none')==='cost_center'?'cost_center':'none';
+            $built=yw_lexware_build_lines(array_map(fn($id)=>$byId[$id],$orderIds),$items,['grouping'=>$grouping,'employee_names'=>$settings['employee_names']==='1','unit'=>$settings['unit']]);
+            if(!$built['calc'])throw new DomainException('Keine abrechenbaren Positionen.');
+            if(count($built['lineItems'])>YW_LEXWARE_MAX_LINES)throw new DomainException(count($orderIds)===1?yw_lexware_too_big_message($orderIds[0],count($built['lineItems'])):'Der Entwurf hätte '.count($built['lineItems']).' Positionen; Lexware nimmt höchstens '.YW_LEXWARE_MAX_LINES.' an. Bitte die Vorschau neu laden.');
+            $expected=yw_invoice_totals($built['calc']);
+            $dedupe=$kind==='order'?'order:'.$orderIds[0]:'monthly:'.$companyId.':'.$period.':'.substr(hash('sha256',$label.'|'.$part.'/'.$of.'|'.implode(',',$orderIds)),0,40);
+            $cols='dedupe_key,company_id,kind,order_id,period,group_label,status,net_cents,gross_cents,line_count,created_by';
+            $vals=[$dedupe,$companyId,$kind,$kind==='order'?$orderIds[0]:null,$period,$label!==''?mb_substr($label,0,190):null,'planned',$expected['net'],$expected['gross'],count($built['lineItems']),!empty($_SESSION['admin_id'])?(int)$_SESSION['admin_id']:null];
+            if($parts){$cols.=',part_no,part_count,line_grouping';array_push($vals,$part>0?$part:null,$of>0?$of:null,$grouping);}
+            db()->prepare("INSERT INTO yw_lexware_documents($cols) VALUES(".implode(',',array_fill(0,count($vals),'?')).")")->execute($vals);
+            $docId=(int)db()->lastInsertId();$docIds[]=$docId;
+            foreach(array_chunk($orderIds,500) as $chunk)db()->prepare('INSERT INTO yw_lexware_document_orders(order_id,document_id) VALUES'.implode(',',array_fill(0,count($chunk),'(?,?)')))->execute(array_merge(...array_map(fn($id)=>[$id,$docId],$chunk)));
+        }
         db()->commit();
     }catch(PDOException $e){
         if(db()->inTransaction())db()->rollBack();
         if((string)$e->getCode()==='23000')throw new DomainException('Für diese Aufträge wird gerade bereits ein Lexware-Beleg angelegt. Keine Doppelanlage.');
         throw $e;
     }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();throw $e;}
+    return $docIds;
+}
 
-    $payload=yw_lexware_invoice_payload($contactId,$built['lineItems'],$meta+['settings'=>$settings]);
+/**
+ * Sendet einen reservierten Entwurf („planned“ oder „failed“) an Lexware. Reihenfolge schützt vor Doppelanlage:
+ * 1. nur eine Anfrage kann den Beleg auf „creating“ setzen, 2. Lexware aufrufen, 3. Ergebnis speichern.
+ * Unklares Ergebnis (Zeitüberschreitung) → „uncertain“, bis jemand in Lexware nachsieht. Sicherer Fehler →
+ * „failed“: Die Aufträge bleiben diesem Entwurf zugeordnet und er kann erneut gesendet werden (10.15, Teilrechnungen);
+ * mit $release (Einzelauftrag) wird die Reservierung wie bisher zurückgenommen.
+ */
+function yw_lexware_send_document(int $docId,array $meta=[],bool $release=false): array {
+    $q=db()->prepare('SELECT * FROM yw_lexware_documents WHERE id=?');$q->execute([$docId]);$doc=$q->fetch();
+    if(!$doc)throw new DomainException('Beleg nicht gefunden.');
+    $companyId=(int)$doc['company_id'];$kind=(string)$doc['kind'];$period=$doc['period']!==null?(string)$doc['period']:null;
+    $company=yw_lexware_company($companyId);
+    $contactId=yw_lexware_check_ready($company);
+    $claim=db()->prepare("UPDATE yw_lexware_documents SET status='creating',last_error=NULL WHERE id=? AND status IN ('planned','failed')");$claim->execute([$docId]);
+    if(!$claim->rowCount())throw new DomainException('Dieser Entwurf wird bereits gesendet oder ist schon in Lexware angelegt. Keine Doppelanlage.');
+    $orderIds=[];$expected=null;
     try{
+        $q=db()->prepare('SELECT order_id FROM yw_lexware_document_orders WHERE document_id=? ORDER BY order_id');$q->execute([$docId]);$orderIds=array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN));
+        [$orders,$items]=yw_lexware_load_orders($companyId,$orderIds);
+        // Inzwischen stornierte Aufträge nicht berechnen: aus dem Entwurf lösen (nur bei geplanten/fehlgeschlagenen Teilen möglich).
+        $dropped=array_map(fn($o)=>(int)$o['id'],array_filter($orders,fn($o)=>$o['status']!=='approved'));
+        if($dropped){
+            db()->prepare('DELETE FROM yw_lexware_document_orders WHERE document_id=? AND order_id IN ('.implode(',',array_fill(0,count($dropped),'?')).')')->execute(array_merge([$docId],$dropped));
+            foreach($dropped as $id)audit_log('lexware.order_removed','order',$id,['company_id'=>$companyId,'document_id'=>$docId,'period'=>$period]);
+            $orders=array_values(array_filter($orders,fn($o)=>$o['status']==='approved'));$orderIds=array_map(fn($o)=>(int)$o['id'],$orders);
+        }
+        if(!$orders){
+            db()->prepare('DELETE FROM yw_lexware_document_orders WHERE document_id=?')->execute([$docId]);
+            db()->prepare('DELETE FROM yw_lexware_documents WHERE id=?')->execute([$docId]);
+            throw new DomainException('Keine freigegebenen Aufträge mehr in diesem Entwurf – er wurde entfernt.');
+        }
+        $settings=yw_lexware_settings();
+        $grouping=($doc['line_grouping']??($meta['grouping']??'none'))==='cost_center'?'cost_center':'none';
+        $built=yw_lexware_build_lines($orders,$items,['grouping'=>$grouping,'employee_names'=>$settings['employee_names']==='1','unit'=>$settings['unit']]);
+        if(!$built['calc'])throw new DomainException('Keine abrechenbaren Positionen.');
+        if(count($built['lineItems'])>YW_LEXWARE_MAX_LINES)throw new DomainException(count($orders)===1?yw_lexware_too_big_message($orderIds[0],count($built['lineItems'])):'Der Entwurf hätte '.count($built['lineItems']).' Positionen; Lexware nimmt höchstens '.YW_LEXWARE_MAX_LINES.' an.');
+        $expected=yw_invoice_totals($built['calc']);
+        db()->prepare('UPDATE yw_lexware_documents SET net_cents=?,gross_cents=?,line_count=? WHERE id=?')->execute([$expected['net'],$expected['gross'],count($built['lineItems']),$docId]);
+        if(!$meta)$meta=$kind==='order'?yw_lexware_order_meta($orders[0],$company):yw_lexware_month_meta($company,(string)$period,count($orders),(string)($doc['group_label']??''),$grouping,(int)($doc['part_no']??0),(int)($doc['part_count']??0));
+        $payload=yw_lexware_invoice_payload($contactId,$built['lineItems'],$meta+['settings'=>$settings]);
         $result=yw_lexware_request('POST','/v1/invoices',$payload);
         $lexId=(string)($result['id']??'');
         if(!yw_lexware_uuid_ok($lexId))throw new YwLexwareException('Lexware hat keine gültige Beleg-ID zurückgegeben. Bitte in Lexware prüfen.',0,true);
@@ -444,19 +546,53 @@ function yw_lexware_create_invoice(int $companyId,array $orderIds,string $kind,?
         $uncertain=$e instanceof YwLexwareException && $e->uncertain;
         $message=$e instanceof YwLexwareException||$e instanceof DomainException?$e->getMessage():'Technischer Fehler beim Senden an Lexware.';
         if(!$e instanceof YwLexwareException && !$e instanceof DomainException)error_log('WorkwearCenter Lexware: '.$e->getMessage());
+        // Nur Fehler im Inhalt dieses Belegs betreffen die übrigen Teile nicht; Schlüssel, Tarif, Erreichbarkeit schon.
+        $stop=$uncertain || ($e instanceof YwLexwareException && !in_array($e->status,[400,404,406,409,415,422],true)) || (!$e instanceof YwLexwareException && !$e instanceof DomainException);
         if($uncertain){
             db()->prepare("UPDATE yw_lexware_documents SET status='uncertain',last_error=? WHERE id=?")->execute([mb_substr($message,0,500),$docId]);
-        }else{
+        }elseif($release){
             db()->prepare('DELETE FROM yw_lexware_document_orders WHERE document_id=?')->execute([$docId]);
             db()->prepare('DELETE FROM yw_lexware_documents WHERE id=?')->execute([$docId]);
+        }else{
+            db()->prepare("UPDATE yw_lexware_documents SET status='failed',last_error=? WHERE id=? AND status='creating'")->execute([mb_substr($message,0,500),$docId]);
         }
-        foreach($orderIds as $id)audit_log($uncertain?'lexware.invoice_uncertain':'lexware.invoice_failed','order',(int)$id,['company_id'=>$companyId,'kind'=>$kind,'period'=>$period,'error'=>mb_substr($message,0,300)]);
-        throw new DomainException($message.($uncertain?' Der Auftrag bleibt gesperrt, bis du unter System → Lexware Office die Beleg-ID nachträgst oder die Sperre aufhebst.':''));
+        foreach($orderIds as $id)audit_log($uncertain?'lexware.invoice_uncertain':'lexware.invoice_failed','order',(int)$id,['company_id'=>$companyId,'kind'=>$kind,'period'=>$period,'document_id'=>$docId,'error'=>mb_substr($message,0,300)]);
+        throw new YwLexwareSendFailed($message.($uncertain?($kind==='order'?' Der Auftrag bleibt':' Die Aufträge dieses Entwurfs bleiben').' gesperrt, bis du unter System → Lexware Office die Beleg-ID nachträgst oder die Sperre aufhebst.':''),$uncertain,$stop);
     }
     db()->prepare("UPDATE yw_lexware_documents SET status='created',lexware_id=?,voucher_status='draft',last_error=NULL WHERE id=?")->execute([$lexId,$docId]);
     $doc=yw_lexware_refresh_document($docId,false);
     foreach($orderIds as $id)audit_log('lexware.invoice_created','order',(int)$id,['company_id'=>$companyId,'document_id'=>$docId,'lexware_id'=>$lexId,'kind'=>$kind,'period'=>$period,'voucher_number'=>$doc['voucher_number']??null]);
-    return $doc+['expected'=>$expected];
+    return $doc+['expected'=>$expected,'orders'=>count($orderIds)];
+}
+
+/** Rechnungsentwurf für feste Aufträge sofort anlegen (Einzelauftrag): reservieren, senden; bei sicherem Fehler Reservierung zurücknehmen. */
+function yw_lexware_create_invoice(int $companyId,array $orderIds,string $kind,?string $period,string $groupLabel,array $meta): array {
+    yw_lexware_check_ready(yw_lexware_company($companyId));
+    [$docId]=yw_lexware_reserve($companyId,[['ids'=>$orderIds,'kind'=>$kind,'period'=>$period,'label'=>$groupLabel,'grouping'=>$meta['grouping']??'none']]);
+    return yw_lexware_send_document($docId,$meta,true);
+}
+
+/**
+ * 10.15: Sendet reservierte Entwürfe nacheinander. Ein fehlgeschlagener Teil hält die übrigen nicht auf (er bleibt
+ * „fehlgeschlagen“ und wird später erneut gesendet); bei Fehlern, die alle Teile betreffen, und nach $budget Sekunden
+ * wird abgebrochen – die übrigen bleiben „geplant“. Angelegte Teile werden nie erneut gesendet.
+ * Rückgabe: ['created'=>[Belege],'failed'=>[Bezeichnung=>Meldung],'pending'=>Anzahl nicht gesendeter Entwürfe,'stopped'=>abgebrochen statt Zeitbudget]
+ */
+function yw_lexware_send_documents(array $docIds,float $budget=20.0): array {
+    if(function_exists('set_time_limit'))@set_time_limit(180);
+    if(function_exists('ignore_user_abort'))ignore_user_abort(true); // Abbruch im Browser darf keinen Teil halb gesendet zurücklassen
+    $start=microtime(true);$out=['created'=>[],'failed'=>[],'pending'=>0,'stopped'=>false];$stop=false;
+    foreach($docIds as $docId){
+        if($stop || microtime(true)-$start>$budget){$out['pending']++;continue;}
+        $q=db()->prepare('SELECT * FROM yw_lexware_documents WHERE id=?');$q->execute([(int)$docId]);$title=($d=$q->fetch())?yw_lexware_doc_title($d):'Beleg '.(int)$docId;
+        try{
+            $doc=yw_lexware_send_document((int)$docId);$out['created'][]=$doc;
+            audit_log('lexware.invoice_created','company',(int)$doc['company_id'],['company_id'=>(int)$doc['company_id'],'document_id'=>(int)$doc['id'],'period'=>$doc['period'],'part'=>(int)($doc['part_count']??0)>1?$doc['part_no'].'/'.$doc['part_count']:null,'orders'=>(int)$doc['orders'],'voucher_number'=>$doc['voucher_number']??null]);
+        }catch(YwLexwareSendFailed $e){$out['failed'][$title]=$e->getMessage();$stop=$e->stop;}
+        catch(DomainException $e){$out['failed'][$title]=$e->getMessage();$stop=true;}
+    }
+    $out['stopped']=$stop;
+    return $out;
 }
 
 /** Belegnummer und Status aus Lexware nachladen (Belegnummer vergibt Lexware spätestens beim Finalisieren). */
@@ -496,13 +632,76 @@ function yw_lexware_month_batches(array $orders,string $grouping): array {
     return $batches;
 }
 
-function yw_lexware_month_meta(array $company,string $month,int $count,string $label,string $grouping): array {
+/** 10.15: Aufträge je Kostenstelle in Rechnungsreihenfolge (natürlich sortiert, ohne Kostenstelle zuletzt): [['center','ids']]. */
+function yw_lexware_cost_center_groups(array $orders): array {
+    $by=[];foreach($orders as $o)$by['#'.trim((string)($o['cost_center']??''))][]=(int)$o['id'];
+    uksort($by,fn($a,$b)=>(($a==='#')<=>($b==='#'))?:strnatcasecmp((string)$a,(string)$b));
+    $out=[];foreach($by as $k=>$ids)$out[]=['center'=>substr((string)$k,1),'ids'=>$ids];
+    return $out;
+}
+
+/** 10.15: Kostenstellen eines Teils als Text, z. B. „Kostenstellen: KST-1000 bis KST-1007“. */
+function yw_lexware_centers_label(array $centers): string {
+    $named=array_values(array_filter(array_map('strval',$centers),fn($c)=>$c!==''));$none=count($named)<count($centers);
+    if(!$named)return 'Ohne Kostenstelle';
+    $text=count($named)===1?'Kostenstelle: '.$named[0]:'Kostenstellen: '.(count($named)<=3?implode(', ',$named):$named[0].' bis '.$named[count($named)-1]);
+    return mb_substr($text.($none?' und ohne Kostenstelle':''),0,190);
+}
+
+/**
+ * 10.15: Plant die Rechnungsentwürfe einer Monats-Sammelrechnung (rein, testbar).
+ * Lexware nimmt höchstens $max Positionen je Rechnung an. Was nicht in eine Rechnung passt, wird automatisch geteilt:
+ * zuerst nach ganzen Kostenstellen (der Reihe nach aufgefüllt), eine allein zu große Kostenstelle nach Aufträgen
+ * (aufsteigende Auftragsnummer). Die Positionen eines Auftrags stehen immer in genau einem Entwurf; ein Auftrag,
+ * der allein mehr als $max Positionen hat, wird nicht verplant und unter too_big gemeldet.
+ * Rückgabe: ['parts'=>[['label','part','of','ids','lines']],'too_big'=>[Auftrags-ID=>Positionen],'grouping'=>'none'|'cost_center']
+ * part/of: „Teil 2 von 3“ (0/0 = ungeteilt).
+ */
+function yw_lexware_month_plan(array $orders,array $itemsByOrder,string $grouping,int $max=YW_LEXWARE_MAX_LINES): array {
+    $lineGrouping=$grouping==='cost_center'?'cost_center':'none';
+    $keys=[];$tooBig=[];$fit=[];
+    foreach($orders as $o){
+        $id=(int)$o['id'];$k=yw_lexware_order_line_keys($o,$itemsByOrder[$id]??[],$lineGrouping);
+        if(count($k)>$max){$tooBig[$id]=count($k);continue;}
+        $keys[$id]=array_fill_keys($k,true);$fit[]=$o;
+    }
+    $unit=static function(array $ids,string $center) use ($keys): array {$set=[];foreach($ids as $id)$set+=$keys[$id];return ['ids'=>$ids,'keys'=>$set,'centers'=>[$center]];};
+    $parts=[];
+    foreach(yw_lexware_month_batches($fit,$grouping) as $label=>$batchIds){
+        $in=array_flip($batchIds);$groups=yw_lexware_cost_center_groups(array_filter($fit,fn($o)=>isset($in[(int)$o['id']])));
+        // Ganze Kostenstellen, wo sie hineinpassen; sonst deren Aufträge einzeln.
+        $units=[];
+        foreach($groups as $g){$u=$unit($g['ids'],$g['center']);if(count($u['keys'])<=$max){$units[]=$u;continue;}foreach($g['ids'] as $id)$units[]=$unit([$id],$g['center']);}
+        // Der Reihe nach auffüllen, bis die nächste Einheit nicht mehr passt (gleiche Artikel zählen je Rechnung nur einmal).
+        $packed=[];$cur=null;
+        foreach($units as $u){
+            if($cur!==null){$merged=$cur['keys']+$u['keys'];if(count($merged)<=$max){$cur=['ids'=>array_merge($cur['ids'],$u['ids']),'keys'=>$merged,'centers'=>array_merge($cur['centers'],$u['centers'])];continue;}$packed[]=$cur;}
+            $cur=$u;
+        }
+        if($cur!==null)$packed[]=$cur;
+        $n=count($packed);
+        foreach($packed as $i=>$p){
+            $ids=$p['ids'];sort($ids);
+            $parts[]=['label'=>(string)$label!==''?(string)$label:($n>1 && count($groups)>1?yw_lexware_centers_label(array_values(array_unique($p['centers']))):''),'part'=>$n>1?$i+1:0,'of'=>$n>1?$n:0,'ids'=>$ids,'lines'=>count($p['keys'])];
+        }
+    }
+    return ['parts'=>$parts,'too_big'=>$tooBig,'grouping'=>$lineGrouping];
+}
+
+/** 10.15: Prüfsumme der Vorschau – angelegt wird nur, was der Admin so gesehen hat. */
+function yw_lexware_plan_hash(array $plan,string $month,string $grouping): string {
+    return hash('sha256',json_encode([$month,$grouping,array_map(fn($p)=>[$p['label'],$p['part'],$p['of'],$p['ids']],$plan['parts']),array_keys($plan['too_big'])],JSON_UNESCAPED_UNICODE));
+}
+
+function yw_lexware_month_meta(array $company,string $month,int $count,string $label,string $grouping,int $part=0,int $of=0): array {
     $start=new DateTimeImmutable($month.'-01',new DateTimeZone('Europe/Berlin'));
+    $partText=$part>0 && $of>1?'Teil '.$part.' von '.$of:'';
     return [
         'voucher_date'=>new DateTimeImmutable('today',new DateTimeZone('Europe/Berlin')),
         'shipping'=>['shippingType'=>'deliveryperiod','shippingDate'=>yw_lexware_date($start),'shippingEndDate'=>yw_lexware_date($start->modify('last day of this month'))],
-        'introduction'=>'Sammelrechnung '.yw_payroll_month_label($month).': '.$count.' Auftr'.($count===1?'ag':'äge').' aus dem WorkwearCenter-Shop „'.$company['shop_name'].'“'.($label!==''?' – '.$label:'').'.',
+        'introduction'=>'Sammelrechnung '.yw_payroll_month_label($month).($partText!==''?' – '.$partText:'').': '.$count.' Auftr'.($count===1?'ag':'äge').' aus dem WorkwearCenter-Shop „'.$company['shop_name'].'“'.($label!==''?' – '.$label:'').'.',
         'grouping'=>$grouping==='cost_center'?'cost_center':'none',
+        'title_suffix'=>$partText!==''?'('.$partText.')':'',
     ];
 }
 
@@ -525,9 +724,20 @@ function yw_lexware_doc_badge(array $doc): string {
     [$label,$class]=match($status){
         'created'=>[match((string)($doc['voucher_status']??'draft')){'draft'=>'Entwurf in Lexware','open'=>'Offen (finalisiert)','paid'=>'Bezahlt','voided'=>'Storniert in Lexware',default=>'In Lexware'},'approved'],
         'uncertain'=>['Unklar – bitte in Lexware prüfen','rejected'],
+        'planned'=>['Noch nicht gesendet','pending'],
+        'failed'=>['Fehlgeschlagen – erneut senden','rejected'],
         default=>['Wird angelegt …','pending'],
     };
     return '<span class="badge '.$class.'">'.e($label).'</span>';
+}
+
+/** 10.15: Bezeichnung eines Belegs, z. B. „Sammelrechnung Oktober 2025 · Teil 2 von 4 · Kostenstellen: KST-1005 bis KST-1009“. */
+function yw_lexware_doc_title(array $doc): string {
+    if(($doc['kind']??'')==='order')return 'Auftrag '.yw_order_number((int)$doc['order_id']);
+    $parts=['Sammelrechnung '.yw_payroll_month_label((string)$doc['period'])];
+    if((int)($doc['part_count']??0)>1)$parts[]='Teil '.(int)$doc['part_no'].' von '.(int)$doc['part_count'];
+    if(trim((string)($doc['group_label']??''))!=='')$parts[]=(string)$doc['group_label'];
+    return implode(' · ',$parts);
 }
 
 function yw_lexware_doc_link(array $doc): string {
@@ -542,8 +752,13 @@ function yw_lexware_doc_actions(array $doc,string $return): string {
     $stale=$doc['status']==='uncertain' || ($doc['status']==='creating' && strtotime((string)$doc['updated_at'])<time()-300);
     if($stale){
         $html.='<details class="details"><summary>Klären</summary><div class="details-inner"><p class="muted">Schau in Lexware Office unter Rechnungen nach, ob der Entwurf angekommen ist.</p>'
-            .'<form method="post" class="form-stack">'.$hidden.'<input type="hidden" name="action" value="lexware_document_set_id"><label>Lexware-Beleg-ID (aus der Adresszeile des Belegs)<input name="lexware_id" pattern="[0-9a-fA-F-]{36}" required></label><button class="btn small primary">Ist angekommen – ID speichern</button></form>'
+            .'<form method="post" class="form-stack">'.$hidden.'<input type="hidden" name="action" value="lexware_document_set_id"><label>Lexware-Beleg-ID (aus der Adresszeile des Belegs)<input name="lexware_id" pattern="[0-9a-fA-F\-]{36}" required></label><button class="btn small primary">Ist angekommen – ID speichern</button></form>'
+            .($doc['kind']!=='order'?'<form method="post" data-confirm="Wirklich erneut senden? Nur wenn der Beleg in Lexware NICHT existiert.">'.$hidden.'<input type="hidden" name="action" value="lexware_document_resend"><button class="btn small primary">Ist nicht angekommen – erneut senden</button></form>':'')
             .'<form method="post" data-confirm="Sperre wirklich aufheben? Nur wenn der Beleg in Lexware NICHT existiert.">'.$hidden.'<input type="hidden" name="action" value="lexware_document_release"><button class="btn small danger">Ist nicht angekommen – Sperre aufheben</button></form></div></details>';
+    }elseif(in_array($doc['status'],['planned','failed'],true)){
+        // 10.15: Nichts in Lexware angelegt – erneut senden (gleiche Aufträge, gleicher Teil) oder verwerfen.
+        $html.='<form method="post" class="inline-form">'.$hidden.'<input type="hidden" name="action" value="lexware_document_send"><button class="btn small primary">'.($doc['status']==='failed'?'Erneut senden':'Jetzt senden').'</button></form>'
+            .'<details class="details"><summary>Verwerfen</summary><div class="details-inner"><p class="muted">In Lexware wurde für diesen Entwurf nichts angelegt. Verworfene Aufträge gelten wieder als nicht abgerechnet und erscheinen in der nächsten Vorschau.</p><form method="post" data-confirm="Entwurf wirklich verwerfen?">'.$hidden.'<input type="hidden" name="action" value="lexware_document_release"><button class="btn small danger">Entwurf verwerfen</button></form></div></details>';
     }elseif($doc['status']==='created'){
         $html.='<details class="details"><summary>Verknüpfung entfernen</summary><div class="details-inner"><p class="muted">Nur wenn der Entwurf in Lexware gelöscht wurde. Danach können die Aufträge erneut abgerechnet werden.</p><form method="post" data-confirm="Verknüpfung wirklich entfernen? Die Aufträge gelten dann als nicht abgerechnet.">'.$hidden.'<input type="hidden" name="action" value="lexware_document_release"><button class="btn small danger">Verknüpfung entfernen</button></form></div></details>';
     }
@@ -556,7 +771,7 @@ function yw_lexware_order_card(array $o): string {
     $html='<section class="card" id="lexware"><h2>Lexware Office</h2>';
     $doc=yw_lexware_document_for_order($orderId);
     if($doc){
-        $html.='<p>'.yw_lexware_doc_badge($doc).'</p><p>'.($doc['kind']==='monthly'?'In der Sammelrechnung '.e(yw_payroll_month_label((string)$doc['period'])).($doc['group_label']?' ('.e((string)$doc['group_label']).')':'').'<br>':'')
+        $html.='<p>'.yw_lexware_doc_badge($doc).'</p><p>'.($doc['kind']!=='order'?'In der '.e(yw_lexware_doc_title($doc)).'<br>':'')
             .'<strong>Belegnummer:</strong> '.e((string)($doc['voucher_number']?:'noch keine (vergibt Lexware beim Finalisieren)')).'<br><span class="muted">ID '.e((string)($doc['lexware_id']?:'–')).'</span></p>';
         if(!empty($doc['last_error']))$html.='<p class="muted">'.e((string)$doc['last_error']).'</p>';
         if($o['status']==='cancelled')$html.='<div class="flash error">Der Auftrag wurde nach dem Rechnungsentwurf storniert – bitte den Beleg in Lexware anpassen.</div>';
@@ -573,6 +788,7 @@ function yw_lexware_order_card(array $o): string {
     $stored=(int)($o['gross_total_cents']??0);
     $html.='<p>Kunde Nr. '.e((string)($c['lexware_customer_number']?:'–')).' · '.count($built['calc']).' Positionen · '.money($expected['gross']).' brutto</p>';
     if($stored>0 && $stored!==$expected['gross'])$html.='<p class="muted">Hinweis: Lexware rechnet '.money($expected['gross']).', gespeichert sind '.money($stored).' (Bestellung vor 10.11 mit Rundung je Stück).</p>';
+    if(count($built['lineItems'])>YW_LEXWARE_MAX_LINES)return $html.'<div class="flash error">'.e(yw_lexware_too_big_message($orderId,count($built['lineItems']))).'</div></section>';
     $html.='<form method="post">'.csrf_field().'<input type="hidden" name="action" value="lexware_invoice_order"><input type="hidden" name="order_id" value="'.$orderId.'"><input type="hidden" name="return" value="order:'.$orderId.'"><button class="btn small primary">Rechnungsentwurf in Lexware erzeugen</button></form><p class="muted">Wird nicht finalisiert – du prüfst und versendest die Rechnung in Lexware.</p>';
     return $html.'</section>';
 }
@@ -588,7 +804,7 @@ function yw_lexware_customer_card(array $company): void {
     try{$q=db()->prepare('SELECT d.*,(SELECT COUNT(*) FROM yw_lexware_document_orders l WHERE l.document_id=d.id) orders FROM yw_lexware_documents d WHERE d.company_id=? ORDER BY d.id DESC LIMIT 10');$q->execute([$id]);$docs=$q->fetchAll();}catch(Throwable $e){}
     if($docs){
         echo '<div class="table-wrap"><table class="table"><thead><tr><th>Beleg</th><th>Aufträge</th><th>Brutto</th><th>Status</th></tr></thead><tbody>';
-        foreach($docs as $d)echo '<tr><td>'.e($d['kind']==='monthly'?'Sammelrechnung '.yw_payroll_month_label((string)$d['period']).($d['group_label']?' · '.$d['group_label']:''):'Auftrag '.yw_order_number((int)$d['order_id'])).'<br><span class="muted">'.e((string)($d['voucher_number']?:'ohne Nummer')).'</span></td><td>'.(int)$d['orders'].'</td><td>'.money((int)$d['gross_cents']).'</td><td>'.yw_lexware_doc_badge($d).'</td></tr>';
+        foreach($docs as $d)echo '<tr><td>'.e(yw_lexware_doc_title($d)).'<br><span class="muted">'.e((string)($d['voucher_number']?:'ohne Nummer')).'</span></td><td>'.(int)$d['orders'].'</td><td>'.money((int)$d['gross_cents']).'</td><td>'.yw_lexware_doc_badge($d).'</td></tr>';
         echo '</tbody></table></div>';
     }
     echo '</section>';
@@ -609,7 +825,7 @@ function yw_lexware_admin_page(): void {
         .'<div class="grid2"><label>Belegtitel <small>höchstens 25 Zeichen</small><input name="title" maxlength="25" value="'.e($settings['title']).'"></label><label>Einheit der Positionen<input name="unit" maxlength="40" value="'.e($settings['unit']).'"></label></div>'
         .'<label>Einleitung <small>davor steht automatisch Auftrag bzw. Monat</small><textarea name="introduction" rows="2" maxlength="1500">'.e($settings['introduction']).'</textarea></label>'
         .'<label>Schlusstext <small>leer = Standard aus Lexware</small><textarea name="remark" rows="2" maxlength="2000">'.e($settings['remark']).'</textarea></label>'
-        .'<label>Standard für Sammelrechnungen<select name="grouping">';
+        .'<label>Standard für Sammelrechnungen <small>über '.YW_LEXWARE_MAX_LINES.' Positionen wird automatisch in mehrere Entwürfe aufgeteilt</small><select name="grouping">';
     foreach(yw_lexware_grouping_options() as $k=>$l)echo '<option value="'.e($k).'" '.($settings['grouping']===$k?'selected':'').'>'.e($l).'</option>';
     echo '</select></label><label class="check"><input type="checkbox" name="employee_names" value="1" '.($settings['employee_names']==='1'?'checked':'').'><span>Namen der Besteller in den Positionstexten nennen (sonst nur Auftragsnummern)</span></label><button class="btn">Einstellungen speichern</button></form></section>';
 
@@ -631,8 +847,8 @@ function yw_lexware_admin_page(): void {
     else{
         echo '<div class="table-wrap"><table class="table"><thead><tr><th>Angelegt</th><th>Firma</th><th>Beleg</th><th>Brutto</th><th>Status</th><th></th></tr></thead><tbody>';
         foreach($docs as $d){
-            $what=$d['kind']==='monthly'?'Sammelrechnung '.yw_payroll_month_label((string)$d['period']).($d['group_label']?' · '.$d['group_label']:'').' ('.(int)$d['orders'].' Aufträge)':'<a href="'.e(yw_order_url((int)$d['order_id'])).'">'.e(yw_order_number((int)$d['order_id'])).'</a>';
-            echo '<tr><td>'.e(date('d.m.Y H:i',(int)strtotime((string)$d['created_at']))).'</td><td>'.e($d['legal_name']).'</td><td>'.($d['kind']==='monthly'?e($what):$what).'<br><span class="muted">'.e((string)($d['voucher_number']?:'ohne Nummer')).'</span>'.(!empty($d['last_error'])?'<br><span class="muted">'.e((string)$d['last_error']).'</span>':'').'</td><td>'.money((int)$d['gross_cents']).'</td><td>'.yw_lexware_doc_badge($d).'<br>'.yw_lexware_doc_link($d).'</td><td>'.yw_lexware_doc_actions($d,'lexware').'</td></tr>';
+            $what=$d['kind']!=='order'?e(yw_lexware_doc_title($d).' ('.(int)$d['orders'].' Aufträge)'):'<a href="'.e(yw_order_url((int)$d['order_id'])).'">'.e(yw_order_number((int)$d['order_id'])).'</a>';
+            echo '<tr><td>'.e(date('d.m.Y H:i',(int)strtotime((string)$d['created_at']))).'</td><td>'.e($d['legal_name']).'</td><td>'.$what.'<br><span class="muted">'.e((string)($d['voucher_number']?:'ohne Nummer')).'</span>'.(!empty($d['last_error'])?'<br><span class="muted">'.e((string)$d['last_error']).'</span>':'').'</td><td>'.money((int)$d['gross_cents']).'</td><td>'.yw_lexware_doc_badge($d).'<br>'.yw_lexware_doc_link($d).'</td><td>'.yw_lexware_doc_actions($d,'lexware').'</td></tr>';
         }
         echo '</tbody></table></div>';
     }
@@ -675,32 +891,62 @@ function yw_lexware_admin_company(array $company,array $settings): void {
     // Monats-Sammelrechnung
     $month=yw_payroll_month($_GET['monat']??(new DateTimeImmutable('first day of last month'))->format('Y-m'));
     $grouping=(string)($_GET['gruppierung']??$settings['grouping']);if(!isset(yw_lexware_grouping_options()[$grouping]))$grouping='none';
+    $hidden=csrf_field().'<input type="hidden" name="company_id" value="'.$id.'"><input type="hidden" name="return" value="company:'.$id.':'.e($month).'">';
     echo '<hr><h4>Monats-Sammelrechnung (Entwurf)</h4><form method="get" class="filter-bar"><input type="hidden" name="tab" value="lexware"><input type="hidden" name="company" value="'.$id.'"><label>Monat der Freigabe<input type="month" name="monat" value="'.e($month).'"></label><label>Aufteilung<select name="gruppierung">';
     foreach(yw_lexware_grouping_options() as $k=>$l)echo '<option value="'.e($k).'" '.($grouping===$k?'selected':'').'>'.e($l).'</option>';
     echo '</select></label><button class="btn">Vorschau</button></form>';
+    echo '<p class="muted">Lexware nimmt höchstens '.YW_LEXWARE_MAX_LINES.' Positionen je Rechnung an. Größere Sammelrechnungen teilt das WorkwearCenter automatisch auf: zuerst nach ganzen Kostenstellen, eine allein zu große Kostenstelle in aufeinanderfolgende Teile („Teil 1 von 3“). Die Positionen eines Auftrags stehen immer zusammen in einem Entwurf, jeder Auftrag wird genau einmal berechnet.</p>';
+    $ready=yw_lexware_parts_ready();
+    if(!$ready)echo '<div class="flash error">'.e(YW_LEXWARE_UPDATE_HINT).' <a href="/update.php">Zum Update-Assistenten</a></div>';
+    // 10.15: Entwürfe dieses Monats – fehlgeschlagene oder noch nicht gesendete Teile hier erneut senden.
+    $docs=[];
+    if($ready)try{$q=db()->prepare("SELECT d.*,(SELECT COUNT(*) FROM yw_lexware_document_orders l WHERE l.document_id=d.id) orders FROM yw_lexware_documents d WHERE d.company_id=? AND d.period=? AND d.kind<>'order' ORDER BY d.id");$q->execute([$id,$month]);$docs=$q->fetchAll();}catch(Throwable $e){}
+    if($docs){
+        echo '<div class="table-wrap"><table class="table"><thead><tr><th>Entwurf</th><th>Aufträge</th><th>Positionen</th><th>Brutto</th><th>Status</th><th></th></tr></thead><tbody>';
+        foreach($docs as $d)echo '<tr><td>'.e(yw_lexware_doc_title($d)).'<br><span class="muted">'.e((string)($d['voucher_number']?:'ohne Nummer')).'</span>'.(!empty($d['last_error'])?'<br><span class="muted">'.e((string)$d['last_error']).'</span>':'').'</td><td>'.(int)$d['orders'].'</td><td>'.(int)$d['line_count'].'</td><td>'.money((int)$d['gross_cents']).'</td><td>'.yw_lexware_doc_badge($d).'<br>'.yw_lexware_doc_link($d).'</td><td>'.yw_lexware_doc_actions($d,'company:'.$id.':'.$month).'</td></tr>';
+        echo '</tbody></table></div>';
+        $pending=count(array_filter($docs,fn($d)=>in_array($d['status'],['planned','failed'],true)));
+        // Nach abgelaufenem Zeitbudget einmalig automatisch weiter senden (höchstens 2 Minuten nach dem letzten Durchgang).
+        $weiter=$_SESSION['lexware_weiter']??null;$auto=false;
+        if(is_array($weiter) && (int)($weiter[0]??0)===$id && (string)($weiter[1]??'')===$month){unset($_SESSION['lexware_weiter']);$auto=$pending>0 && (int)($weiter[2]??0)>=time()-120;}
+        if($pending)echo '<form method="post" class="space-top"'.($auto?' data-lexware-weiter':'').'>'.$hidden.'<input type="hidden" name="action" value="lexware_invoice_pending"><input type="hidden" name="month" value="'.e($month).'"><button class="btn primary">'.($pending===1?'Ausstehenden Entwurf':$pending.' ausstehende Entwürfe').' jetzt an Lexware senden</button></form><p class="muted">Gesendet werden nur fehlgeschlagene und noch nicht gesendete Teile mit ihren bisherigen Aufträgen – bereits angelegte Teile nie ein zweites Mal.</p>';
+    }
     [$open,$billed]=yw_lexware_month_orders($id,$month);
     if($billed)echo '<p class="muted">'.count($billed).' Auftr'.(count($billed)===1?'ag ist':'äge sind').' in diesem Monat bereits in Lexware-Belegen und werden nicht erneut berechnet.</p>';
     if(!$open){echo '<p class="muted">Keine offenen, freigegebenen Aufträge in '.e(yw_payroll_month_label($month)).'.</p>';return;}
     [$orders,$items]=yw_lexware_load_orders($id,$open);
-    $stored=array_sum(array_map(fn($o)=>(int)$o['gross_total_cents'],$orders));
-    foreach(yw_lexware_month_batches($orders,$grouping) as $label=>$ids){
-        $batchOrders=array_values(array_filter($orders,fn($o)=>in_array((int)$o['id'],$ids,true)));
-        $built=yw_lexware_build_lines($batchOrders,$items,['grouping'=>$grouping==='cost_center'?'cost_center':'none','employee_names'=>$settings['employee_names']==='1','unit'=>$settings['unit']]);
-        $t=yw_invoice_totals($built['calc']);
-        echo '<div class="card" style="margin-top:12px"><h4>'.e($label!==''?$label:'Sammelrechnung '.yw_payroll_month_label($month)).' · '.count($ids).' Auftr'.(count($ids)===1?'ag':'äge').' · '.count($built['lineItems']).' Positionen</h4>';
+    $plan=yw_lexware_month_plan($orders,$items,$grouping);
+    foreach($plan['too_big'] as $orderId=>$lines)echo '<div class="flash error">'.e(yw_lexware_too_big_message((int)$orderId,$lines)).' <a href="'.e(yw_order_url((int)$orderId)).'">Auftrag öffnen</a></div>';
+    if(!$plan['parts'])return;
+    $byId=[];foreach($orders as $o)$byId[(int)$o['id']]=$o;
+    $previews=[];$sumParts=0;$stored=0;
+    foreach($plan['parts'] as $p){
+        $built=yw_lexware_build_lines(array_map(fn($oid)=>$byId[$oid],$p['ids']),$items,['grouping'=>$plan['grouping'],'employee_names'=>$settings['employee_names']==='1','unit'=>$settings['unit']]);
+        $t=yw_invoice_totals($built['calc']);$sumParts+=$t['gross'];
+        foreach($p['ids'] as $oid)$stored+=(int)$byId[$oid]['gross_total_cents'];
+        $previews[]=['title'=>yw_lexware_doc_title(['kind'=>'monthly','period'=>$month,'part_no'=>$p['part'],'part_count'=>$p['of'],'group_label'=>$p['label']]),'part'=>$p,'built'=>$built,'totals'=>$t];
+    }
+    $n=count($previews);
+    echo '<div class="flash info"><strong>'.($n===1?'Es entsteht 1 Rechnungsentwurf':'Es entstehen '.$n.' Rechnungsentwürfe').'</strong>'.($n>1?' (höchstens '.YW_LEXWARE_MAX_LINES.' Positionen je Rechnung)':'').':<ol>';
+    foreach($previews as $pv)echo '<li>'.e($pv['title']).' – '.count($pv['part']['ids']).' Auftr'.(count($pv['part']['ids'])===1?'ag':'äge').', '.count($pv['built']['lineItems']).' Positionen, '.money($pv['totals']['gross']).' brutto</li>';
+    echo '</ol></div>';
+    foreach($previews as $pv){
+        $t=$pv['totals'];
+        echo '<details class="details"'.($n===1?' open':'').'><summary>'.e($pv['title']).' · '.count($pv['part']['ids']).' Auftr'.(count($pv['part']['ids'])===1?'ag':'äge').' · '.count($pv['built']['lineItems']).' Positionen</summary><div class="details-inner">';
         echo '<div class="table-wrap"><table class="table"><thead><tr><th>Position</th><th>Menge</th><th>Netto je Einheit</th><th>USt.</th><th>Netto</th></tr></thead><tbody>';
-        foreach($built['lineItems'] as $li){
+        foreach($pv['built']['lineItems'] as $li){
             if($li['type']==='text'){echo '<tr><td colspan="5"><strong>'.e($li['name']).'</strong> <span class="muted">'.e($li['description']).'</span></td></tr>';continue;}
             $unitNet=(int)round((float)$li['unitPrice']['netAmount']*100);
             echo '<tr><td>'.e($li['name']).'<br><span class="muted">'.e($li['description']).'</span></td><td>'.(int)$li['quantity'].' '.e($li['unitName']).'</td><td>'.money($unitNet).'</td><td>'.e((string)$li['unitPrice']['taxRatePercentage']).' %</td><td>'.money($unitNet*(int)$li['quantity']).'</td></tr>';
         }
         echo '</tbody></table></div><p><strong>Netto</strong> '.money($t['net']);
         foreach($t['by_rate'] as $bp=>$r)echo ' · <strong>USt. '.e(rtrim(rtrim(number_format($bp/100,2,',',''),'0'),',')).' %</strong> '.money($r['tax']).' auf '.money($r['net']);
-        echo ' · <strong>Brutto</strong> '.money($t['gross']).'</p>';
-        echo '<form method="post">'.$hidden.'<input type="hidden" name="action" value="lexware_invoice_monthly"><input type="hidden" name="month" value="'.e($month).'"><input type="hidden" name="grouping" value="'.e($grouping).'"><input type="hidden" name="batch" value="'.e($label).'"><input type="hidden" name="order_ids" value="'.e(implode(',',$ids)).'"><button class="btn primary" '.(empty($company['lexware_contact_id'])?'disabled title="Zuerst Kontakt verknüpfen"':'').'>Entwurf in Lexware anlegen</button></form></div>';
+        echo ' · <strong>Brutto</strong> '.money($t['gross']).'</p></div></details>';
     }
-    $sumBatches=0;foreach(yw_lexware_month_batches($orders,$grouping) as $label=>$ids){$sumBatches+=yw_invoice_totals(yw_lexware_build_lines(array_values(array_filter($orders,fn($o)=>in_array((int)$o['id'],$ids,true))),$items,['grouping'=>'none'])['calc'])['gross'];}
-    if($sumBatches!==$stored)echo '<p class="muted">Summe der einzelnen Bestellungen: '.money($stored).'. Weil Lexware die Steuer je Steuersatz auf die Rechnungssumme rechnet, kann die Sammelrechnung um wenige Cent abweichen ('.money(abs($sumBatches-$stored)).').</p>';
+    $disabled=empty($company['lexware_contact_id'])?' disabled title="Zuerst Kontakt verknüpfen"':(!$ready?' disabled title="Zuerst Datenbank-Update ausführen"':'');
+    echo '<form method="post" class="space-top">'.$hidden.'<input type="hidden" name="action" value="lexware_invoice_monthly"><input type="hidden" name="month" value="'.e($month).'"><input type="hidden" name="grouping" value="'.e($grouping).'"><input type="hidden" name="plan" value="'.e(yw_lexware_plan_hash($plan,$month,$grouping)).'"><button class="btn primary"'.$disabled.'>'.($n===1?'Entwurf in Lexware anlegen':$n.' Rechnungsentwürfe in Lexware anlegen').'</button></form>';
+    if($n>1)echo '<p class="muted">Die Aufträge werden zuerst allen Teilen fest zugeordnet, dann nacheinander gesendet. Scheitert ein Teil, bleiben die anderen bestehen; der fehlgeschlagene Teil kann oben erneut gesendet werden.</p>';
+    if($sumParts!==$stored)echo '<p class="muted">Summe der einzelnen Bestellungen: '.money($stored).'. Weil Lexware die Steuer je Steuersatz auf die Rechnungssumme rechnet, kann die Sammelrechnung um wenige Cent abweichen ('.money(abs($sumParts-$stored)).').</p>';
 }
 
 /* ---------- Aktionen ---------- */
@@ -708,7 +954,27 @@ function yw_lexware_admin_company(array $company,array $settings): void {
 function yw_lexware_return_url(string $return): string {
     if(preg_match('/^order:(\d+)$/',$return,$m))return yw_order_url((int)$m[1]).'#lexware';
     if(preg_match('/^company:(\d+)$/',$return,$m))return '/admin?tab=lexware&company='.(int)$m[1];
+    if(preg_match('/^company:(\d+):(\d{4}-\d{2})$/D',$return,$m))return '/admin?tab=lexware&company='.(int)$m[1].'&monat='.yw_payroll_month($m[2]);
     return '/admin?tab=lexware';
+}
+
+/** 10.15: Ergebnis mehrerer gesendeter Entwürfe als eine verständliche Meldung. */
+function yw_lexware_flash_result(int $companyId,string $month,array $result,int $total,array $tooBig): void {
+    $created=count($result['created']);$gross=array_sum(array_map(fn($d)=>(int)$d['gross_cents'],$result['created']));$orders=array_sum(array_map(fn($d)=>(int)($d['orders']??0),$result['created']));
+    $text='Sammelrechnung '.yw_payroll_month_label($month).': '.($total===1?($created?'Entwurf':'Kein Entwurf'):$created.' von '.$total.' Rechnungsentwürfen').' in Lexware angelegt'.($created?' ('.$orders.' Auftr'.($orders===1?'ag':'äge').', '.money($gross).' brutto)':'').'.';
+    $failed=$result['failed'];
+    foreach(array_slice($failed,0,3,true) as $title=>$message)$text.=' '.$title.': '.rtrim($message).(preg_match('/[.!?…]$/u',rtrim($message))?'':'.');
+    if(count($failed)>3)$text.=' Weitere '.(count($failed)-3).' Entwürfe sind fehlgeschlagen.';
+    // Nur das Zeitbudget je Aufruf ist abgelaufen: Die Seite sendet die übrigen Entwürfe automatisch weiter (assets/app.js, data-lexware-weiter).
+    $auto=$result['pending'] && !$failed && empty($result['stopped']);
+    if($auto){$_SESSION['lexware_weiter']=[$companyId,$month,time()];$text.=' '.$result['pending'].' weitere'.($result['pending']===1?'r Entwurf wird':' Entwürfe werden').' jetzt automatisch nacheinander gesendet – bitte diese Seite geöffnet lassen.';}
+    else{
+        if($result['pending'])$text.=' '.$result['pending'].' '.($result['pending']===1?'Entwurf wurde':'Entwürfe wurden').' noch nicht gesendet.';
+        if($failed || $result['pending'])$text.=' Mit „Ausstehende Entwürfe jetzt an Lexware senden“ erneut versuchen – bereits angelegte Teile werden nicht doppelt angelegt.';
+        elseif($created)$text.=' Bitte in Lexware prüfen und finalisieren.';
+    }
+    if($tooBig)$text.=' Nicht übernommen, weil ein Auftrag allein mehr als '.YW_LEXWARE_MAX_LINES.' Positionen hat: '.implode(', ',array_map(fn($id)=>yw_order_number((int)$id),$tooBig)).' – bitte in Lexware von Hand abrechnen.';
+    flash($failed || ($result['pending'] && !$auto) || $tooBig?'error':'success',$text);
 }
 
 function yw_lexware_admin_action(string $action): never {
@@ -762,20 +1028,45 @@ function yw_lexware_admin_action(string $action): never {
                 flash('success','Rechnungsentwurf in Lexware angelegt'.(!empty($doc['voucher_number'])?' ('.$doc['voucher_number'].')':'').'. Bitte in Lexware prüfen und finalisieren.');
                 break;
             case 'lexware_invoice_monthly':
+                // 10.15: Alle Teile der Vorschau in einem Schritt fest zuordnen, dann nacheinander senden.
                 $month=yw_payroll_month($_POST['month']??'');$grouping=(string)($_POST['grouping']??'none');if(!isset(yw_lexware_grouping_options()[$grouping]))$grouping='none';
-                $batch=is_string($_POST['batch']??null)?$_POST['batch']:'';
-                $posted=array_values(array_filter(array_map('intval',explode(',',is_string($_POST['order_ids']??null)?$_POST['order_ids']:''))));
-                [$open]=yw_lexware_month_orders($companyId,$month);
-                [$orders]=yw_lexware_load_orders($companyId,$open);
-                $batches=yw_lexware_month_batches($orders,$grouping);
-                $ids=$batches[$batch]??[];
-                sort($ids);sort($posted);
-                if(!$ids || $ids!==$posted)throw new DomainException('Die Aufträge haben sich seit der Vorschau geändert. Bitte Vorschau neu laden und prüfen.');
-                $company=yw_lexware_company($companyId);
-                $doc=yw_lexware_create_invoice($companyId,$ids,'monthly',$month,$batch,yw_lexware_month_meta($company,$month,count($ids),$batch,$grouping));
-                audit_log('lexware.invoice_created','company',$companyId,['company_id'=>$companyId,'document_id'=>(int)$doc['id'],'period'=>$month,'orders'=>count($ids),'voucher_number'=>$doc['voucher_number']??null]);
-                flash('success','Sammelrechnung '.yw_payroll_month_label($month).($batch!==''?' ('.$batch.')':'').' als Entwurf in Lexware angelegt ('.count($ids).' Aufträge, '.money((int)$doc['gross_cents']).').');
                 $return='/admin?tab=lexware&company='.$companyId.'&monat='.$month.'&gruppierung='.$grouping;
+                if(!yw_lexware_parts_ready())throw new DomainException(YW_LEXWARE_UPDATE_HINT);
+                yw_lexware_check_ready(yw_lexware_company($companyId));
+                [$open]=yw_lexware_month_orders($companyId,$month);
+                [$orders,$items]=yw_lexware_load_orders($companyId,$open);
+                $plan=yw_lexware_month_plan($orders,$items,$grouping);
+                if(!$plan['parts'] || !hash_equals(yw_lexware_plan_hash($plan,$month,$grouping),is_string($_POST['plan']??null)?$_POST['plan']:''))throw new DomainException('Die Aufträge haben sich seit der Vorschau geändert. Bitte Vorschau neu laden und prüfen.');
+                $docIds=yw_lexware_reserve($companyId,array_map(fn($p)=>['ids'=>$p['ids'],'kind'=>'monthly','period'=>$month,'label'=>$p['label'],'part'=>$p['part'],'of'=>$p['of'],'grouping'=>$plan['grouping']],$plan['parts']));
+                audit_log('lexware.invoice_planned','company',$companyId,['company_id'=>$companyId,'period'=>$month,'documents'=>count($docIds),'orders'=>array_sum(array_map(fn($p)=>count($p['ids']),$plan['parts'])),'skipped'=>array_keys($plan['too_big'])]);
+                yw_lexware_flash_result($companyId,$month,yw_lexware_send_documents($docIds),count($docIds),array_keys($plan['too_big']));
+                break;
+            case 'lexware_invoice_pending':
+                // 10.15: Fehlgeschlagene oder nicht gesendete Teile eines Monats erneut senden (gleiche Aufträge, gleicher Teil).
+                $month=yw_payroll_month($_POST['month']??'');
+                $return='/admin?tab=lexware&company='.$companyId.'&monat='.$month;
+                if(!yw_lexware_parts_ready())throw new DomainException(YW_LEXWARE_UPDATE_HINT);
+                yw_lexware_check_ready(yw_lexware_company($companyId));
+                $q=db()->prepare("SELECT id FROM yw_lexware_documents WHERE company_id=? AND period=? AND kind<>'order' AND status IN ('planned','failed') ORDER BY id");$q->execute([$companyId,$month]);
+                $docIds=array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN));
+                if(!$docIds)throw new DomainException('Für diesen Monat stehen keine Entwürfe mehr aus.');
+                yw_lexware_flash_result($companyId,$month,yw_lexware_send_documents($docIds),count($docIds),[]);
+                break;
+            case 'lexware_document_resend':
+            case 'lexware_document_send':
+                $docId=(int)($_POST['document_id']??0);
+                $q=db()->prepare('SELECT * FROM yw_lexware_documents WHERE id=?');$q->execute([$docId]);$doc=$q->fetch();
+                if(!$doc)throw new DomainException('Beleg nicht gefunden.');
+                if($action==='lexware_document_resend'){
+                    // 10.15: Unklarer Teil laut Prüfung nicht in Lexware angekommen → mit denselben Aufträgen als derselbe Teil erneut senden.
+                    if($doc['kind']==='order')throw new DomainException('Für Einzelaufträge bitte „Sperre aufheben“ und den Entwurf neu erzeugen.');
+                    $q=db()->prepare("UPDATE yw_lexware_documents SET status='failed',last_error='Laut Prüfung nicht in Lexware angekommen.' WHERE id=? AND (status='uncertain' OR (status='creating' AND updated_at<NOW()-INTERVAL 5 MINUTE))");$q->execute([$docId]);
+                    if(!$q->rowCount())throw new DomainException('Beleg nicht gefunden oder bereits geklärt.');
+                    audit_log('lexware.document_resend','company',(int)$doc['company_id'],['company_id'=>(int)$doc['company_id'],'document_id'=>$docId,'period'=>$doc['period'],'status'=>$doc['status']]);
+                }
+                $doc=yw_lexware_send_document($docId,[],$doc['kind']==='order');
+                if($doc['kind']!=='order')audit_log('lexware.invoice_created','company',(int)$doc['company_id'],['company_id'=>(int)$doc['company_id'],'document_id'=>$docId,'period'=>$doc['period'],'orders'=>(int)$doc['orders'],'voucher_number'=>$doc['voucher_number']??null]);
+                flash('success',yw_lexware_doc_title($doc).' als Entwurf in Lexware angelegt ('.(int)$doc['orders'].' Auftr'.((int)$doc['orders']===1?'ag':'äge').', '.money((int)$doc['gross_cents']).'). Bitte in Lexware prüfen und finalisieren.');
                 break;
             case 'lexware_document_refresh':
                 $doc=yw_lexware_refresh_document((int)($_POST['document_id']??0));
@@ -798,14 +1089,17 @@ function yw_lexware_admin_action(string $action): never {
                 $docId=(int)($_POST['document_id']??0);
                 $q=db()->prepare('SELECT * FROM yw_lexware_documents WHERE id=?');$q->execute([$docId]);$doc=$q->fetch();
                 if(!$doc)throw new DomainException('Beleg nicht gefunden.');
+                // Ein Entwurf, der gerade gesendet wird, darf nicht freigegeben werden (sonst Doppelberechnung möglich).
+                if($doc['status']==='creating' && strtotime((string)$doc['updated_at'])>=time()-300)throw new DomainException('Dieser Entwurf wird gerade an Lexware gesendet. Bitte in fünf Minuten erneut prüfen.');
                 $ids=db()->prepare('SELECT order_id FROM yw_lexware_document_orders WHERE document_id=?');$ids->execute([$docId]);$orderIds=$ids->fetchAll(PDO::FETCH_COLUMN);
                 db()->beginTransaction();
+                $del=db()->prepare('DELETE FROM yw_lexware_documents WHERE id=? AND status=?');$del->execute([$docId,$doc['status']]);
+                if(!$del->rowCount())throw new DomainException('Der Beleg wurde inzwischen verändert. Bitte die Seite neu laden.');
                 db()->prepare('DELETE FROM yw_lexware_document_orders WHERE document_id=?')->execute([$docId]);
-                db()->prepare('DELETE FROM yw_lexware_documents WHERE id=?')->execute([$docId]);
                 db()->commit();
                 foreach($orderIds as $oid)audit_log('lexware.document_released','order',(int)$oid,['company_id'=>(int)$doc['company_id'],'lexware_id'=>$doc['lexware_id'],'status'=>$doc['status']]);
                 audit_log('lexware.document_released','company',(int)$doc['company_id'],['company_id'=>(int)$doc['company_id'],'lexware_id'=>$doc['lexware_id'],'orders'=>count($orderIds)]);
-                flash('success','Verknüpfung entfernt. Die Aufträge können erneut abgerechnet werden.');
+                flash('success',(in_array($doc['status'],['planned','failed'],true)?'Entwurf verworfen.':'Verknüpfung entfernt.').' Die Aufträge können erneut abgerechnet werden.');
                 break;
             default:
                 throw new DomainException('Aktion unbekannt.');

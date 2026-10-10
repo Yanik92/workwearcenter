@@ -1,14 +1,16 @@
 <?php
 declare(strict_types=1);
 
-function render_company_product_customization_form(array $company,array $product): void {
+/** 10.15: $closeUrl gesetzt = geöffnet unter der Zeile der Artikelliste (Kundenakte), mit „Schließen“ statt Aufklappen. */
+function render_company_product_customization_form(array $company,array $product,?string $closeUrl=null): void {
     $decorations=company_product_decorations($product);
     $rows=min(20,max(5,count($decorations)));
     $positionOptions=decoration_position_options();
     $methodOptions=decoration_method_options();
     // Inaktive, bereits verknüpfte Motive bleiben auswählbar, damit eine
     // andere Produktänderung die historische Zuordnung nicht still entfernt.
-    $motifs=yw_company_decoration_motifs((int)$company['id'],true);
+    static $motifCache=[]; // Kollektion mit 300 Produkten: Motive einmal je Firma statt je Produkt laden
+    $motifs=$motifCache[(int)$company['id']]??=yw_company_decoration_motifs((int)$company['id'],true);
 
     $front=company_product_front_image($product);
     $customFront=yw_local_image_path((string)($product['preview_front_path']??''),['company-products']);
@@ -17,6 +19,9 @@ function render_company_product_customization_form(array $company,array $product
     $displayName=company_product_display_name($product);
     $override=$product['price_override_cents']===null ? '' : number_format((int)$product['price_override_cents']/100,2,',','');
 
+    if($closeUrl!==null){
+        echo '<div class="collection-product-editor collection-inline-editor" id="bearbeiten-'.(int)$product['id'].'"><div class="collection-editor-head"><strong>'.e($displayName).' bearbeiten</strong><a class="btn small" href="'.e($closeUrl).'#produkt-'.(int)$product['id'].'">Schließen</a></div>';
+    }else{
     echo '<details class="collection-product-editor"><summary>';
     echo '<div class="collection-product-summary">';
     echo '<div class="collection-product-mini">';
@@ -29,8 +34,10 @@ function render_company_product_customization_form(array $company,array $product
         echo '<span class="collection-standard">Standard</span>';
     }
     echo '</div></summary>';
+    }
 
-    echo '<div class="collection-product-body"><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field();
+    // 10.15: in der Artikelliste warnt der Browser vor dem Verlassen mit ungespeicherten Änderungen (assets/app.js)
+    echo '<div class="collection-product-body"><form method="post" enctype="multipart/form-data" class="form-stack"'.($closeUrl!==null?' data-unsaved-warning':'').'>'.csrf_field();
     echo '<input type="hidden" name="action" value="update_company_product_customization">';
     echo '<input type="hidden" name="return_tab" value="companies">';
     echo '<input type="hidden" name="company_id" value="'.(int)$company['id'].'">';
@@ -106,7 +113,7 @@ function render_company_product_customization_form(array $company,array $product
     echo '</div>';
     echo '<p class="muted">Eigene Vorschaubilder sind nur noch nötig, wenn das automatische Bild einmal nicht passt – sie haben dann Vorrang.</p>';
     echo '<button class="btn primary" type="submit">Shop-Produkt speichern</button>';
-    echo '</form></div></details>';
+    echo '</form></div>'.($closeUrl!==null?'</div>':'</details>');
 }
 
 function delete_company_product_preview(string $path): void {
@@ -137,7 +144,7 @@ function upload_company_product_preview(?array $file,string $old=''): string {
     }
 
     $name='shop-product-'.bin2hex(random_bytes(10)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)){
+    if(!yw_move_upload($tmp,$dir.'/'.$name)){
         throw new RuntimeException('Vorschaubild konnte nicht gespeichert werden.');
     }
 
@@ -401,7 +408,7 @@ function company_portal_style(array $company): string {
     [$primary,$accent]=yw_shop_colors($company);
     $vars='--cp-primary:'.$primary.';--cp-accent:'.$accent.';--cp-on-primary:'.yw_shop_on_color($primary).';--cp-on-accent:'.yw_shop_on_color($accent)
         .';--cp-primary-ink:'.yw_shop_ink($primary).';--cp-accent-ink:'.yw_shop_ink($accent).';--shop-primary:'.$primary.';--shop-accent:'.$accent;
-    return '<link rel="stylesheet" href="/assets/shop.css?v='.e(app_version()).'"><style>:root{'.e($vars).'}</style>';
+    return '<link rel="stylesheet" href="'.e(asset_url('assets/shop.css')).'"><style>:root{'.e($vars).'}</style>';
 }
 
 /** Kleine Strich-Icons wie im Mustershop. */
@@ -479,7 +486,7 @@ function company_portal_header(array $company,array $account,string $section): v
     if($manager){
         $nav['freigaben']=[t('nav.approvals'),$slug.'/freigaben','check'];
         $nav['mitarbeiter']=[t('nav.people'),$slug.'/mitarbeiter','users'];
-        $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$q->execute([(int)$company['id']]);$pending=(int)$q->fetchColumn();
+        $pending=yw_pending_decision_count((int)$company['id'],(int)$account['id']); // 10.15: wie die Seite „Freigaben“, ohne eigene Bestellungen
     }
     $nav['profil']=[t('nav.profile'),$slug.'/profil','user'];
     $hasLogo=yw_company_logo_path($company)!=='';
@@ -593,8 +600,11 @@ function yw_shop_short_line(array $p): string {
         $line=decoration_position_label((string)($d['position']??'')).' · '.decoration_method_label((string)($d['method']??''));
         return count($decorations)>1?$line.' · +'.(count($decorations)-1):$line;
     }
+    // Gespeichert ist der Schlüssel (none/print/embroidery/mixed) – nie roh anzeigen.
     $type=trim((string)($p['decoration_type']??''));
-    return $type!==''?$type:'';
+    if($type===''||$type==='none')return '';
+    if($type==='mixed')return decoration_method_label('print').' & '.decoration_method_label('embroidery');
+    return decoration_method_label($type);
 }
 
 /** Ein Preis für Karte/Detail: Eigenanteil oder Hinweis, dass die Firma zahlt. */
@@ -779,7 +789,9 @@ function employee_account_login_page(string $slug): void {
         $password=(string)($_POST['password']??'');
         $loginKey='employee-'.(int)$company['id'].'-'.hash('sha256',$email);
 
-        if(login_throttled($loginKey)){
+        // Pro IP (8 Versuche) und zusätzlich IP-unabhängig je Konto (25 Versuche) wie bei der Verwaltung,
+        // damit verteiltes Passwort-Raten über viele Adressen ebenfalls gebremst wird.
+        if(login_throttled($loginKey) || login_throttled($loginKey,25,false)){
             $error=t('auth.too_many');
         }else{
             $stmt=db()->prepare("SELECT * FROM employee_accounts WHERE company_id=? AND email=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) LIMIT 1");
@@ -794,7 +806,7 @@ function employee_account_login_page(string $slug): void {
                 if(password_needs_rehash((string)$account['password_hash'],PASSWORD_DEFAULT)){
                     db()->prepare('UPDATE employee_accounts SET password_hash=? WHERE id=?')->execute([password_hash($password,PASSWORD_DEFAULT),(int)$account['id']]);
                 }
-                clear_login_failures($loginKey);
+                clear_login_failures($loginKey);clear_login_failures($loginKey,false);
                 session_regenerate_id(true);
                 $_SESSION['employee_account_id']=(int)$account['id'];
                 $_SESSION['employee_auth_version']=(int)($account['auth_version']??1);
@@ -808,7 +820,7 @@ function employee_account_login_page(string $slug): void {
                 redirect('/'.$company['slug']);
             }
 
-            record_login_failure($loginKey);
+            record_login_failure($loginKey);record_login_failure($loginKey,false);
             $error=t('auth.login_failed');
         }
     }
@@ -875,7 +887,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
         verify_csrf();
         $action=(string)($_POST['action']??'');
 
-        if($manager && $action==='registration_decision' && $section==='mitarbeiter') yw_registration_decision($company,$account);
+        if($manager && $action==='registration_decision' && in_array($section,['mitarbeiter','overview'],true)) yw_registration_decision($company,$account,$section==='overview'?'':'/mitarbeiter');
         if($manager && in_array($action,['customer_employee_add','customer_employee_save','customer_employee_import','customer_employee_link','customer_employee_anonymize'],true) && $section==='mitarbeiter') yw_customer_employee_action($company,$account,$action);
         if($action==='order' && $section==='produkte'){
             place_account_order($company,$account);
@@ -946,7 +958,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
 
     echo '</main>';
     company_portal_footer($company);
-    echo '<script src="/assets/shop.js?v='.e(app_version()).'" defer></script>';
+    echo '<script src="'.e(asset_url('assets/shop.js')).'" defer></script>';
     render_foot();
 }
 
@@ -998,15 +1010,28 @@ function company_portal_overview(array $company,array $account): void {
     }
 
     if($manager){
-        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending' ORDER BY o.id ASC");
-        $q->execute([(int)$company['id']]);$pending=$q->fetchAll();
-        echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>'.e(t('overview.approvals_title')).'</h2><p>'.e(count($pending)?tn('overview.approvals_waiting',count($pending)):t('overview.approvals_none')).'</p></div><span class="cp-count">'.count($pending).'</span></div>';
+        // 10.15: wie Menü-Zähler und „Freigaben“ – eigene Bestellungen nicht, solange eine andere Person freigeben kann; nur die ersten 4 laden
+        $others=yw_other_manager_count((int)$company['id'],(int)$account['id'])>0;
+        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending'".($others?' AND NOT (o.employee_account_id<=>?)':'')." ORDER BY o.id ASC LIMIT 4");
+        $q->execute($others?[(int)$company['id'],(int)$account['id']]:[(int)$company['id']]);$pending=$q->fetchAll();$pendingCount=yw_pending_decision_count((int)$company['id'],(int)$account['id']);
+        echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>'.e(t('overview.approvals_title')).'</h2><p>'.e($pendingCount?tn('overview.approvals_waiting',$pendingCount):t('overview.approvals_none')).'</p></div><span class="cp-count">'.$pendingCount.'</span></div>';
         if($pending){
             echo '<ul class="cp-mini-items">';
             foreach(array_slice($pending,0,4) as $o){$g=(int)($o['gross_total_cents']??0);if($g<=0)$g=(int)$o['total_cents'];echo '<li><span>#'.(int)$o['id'].'</span> '.e($o['employee_name']!==''?$o['employee_name']:t('common.unknown')).' · '.e(yw_date((string)$o['created_at'],'short')).'<b>'.money($g).'</b></li>';}
             echo '</ul><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/freigaben">'.e(t('overview.review_now')).'</a></div>';
         }else echo '<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/freigaben">'.e(t('overview.view_orders')).'</a></div>';
         echo '</section>';
+        // Offene Registrierungen direkt auf der Startseite entscheiden
+        $q=db()->prepare("SELECT id,name,email,created_at FROM employee_accounts WHERE company_id=? AND registration_status='pending' AND role='employee' ORDER BY id ASC");
+        $q->execute([(int)$company['id']]);$registrations=$q->fetchAll();
+        if($registrations){
+            echo '<section class="cp-card cp-registrations-card"><div class="cp-card-head"><div><h2>'.e(t('overview.registrations_title')).'</h2><p>'.e(tn('overview.registrations_waiting',count($registrations))).'</p></div><span class="cp-count">'.count($registrations).'</span></div><ul class="cp-registration-list">';
+            foreach(array_slice($registrations,0,6) as $r){
+                $form=fn(string $decision,string $class,string $label)=>'<form method="post">'.csrf_field().'<input type="hidden" name="action" value="registration_decision"><input type="hidden" name="account_id" value="'.(int)$r['id'].'"><input type="hidden" name="decision" value="'.$decision.'"><button class="cp-btn '.$class.'" type="submit">'.e($label).'</button></form>';
+                echo '<li><div><strong>'.e((string)$r['name']).'</strong><span>'.e((string)$r['email']).' · '.e(yw_date((string)$r['created_at'],'short')).'</span></div><div class="cp-action-row">'.$form('rejected','reject',t('approvals.reject')).$form('approved','approve',t('people.approve_access')).'</div></li>';
+            }
+            echo '</ul>'.(count($registrations)>6?'<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/mitarbeiter">'.e(t('overview.registrations_all')).'</a></div>':'').'</section>';
+        }
     }elseif($last){
         echo '<section class="cp-card cp-shop-card"><h2>'.e(t('overview.collection_title')).'</h2><p>'.e(t('overview.collection_text')).'</p><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte">'.e(t('overview.to_collection')).' '.yw_shop_icon('arrow').'</a></div></section>';
     }
@@ -1191,7 +1216,9 @@ function company_portal_approvals(array $company,array $account): void {
     $orders=$stmt->fetchAll();
     $itemsByOrder=order_items_grouped(array_column($orders,'id'));
 
-    $pendingStmt=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$pendingStmt->execute([(int)$company['id']]);$pending=(int)$pendingStmt->fetchColumn();
+    $others=yw_other_manager_count((int)$company['id'],(int)$account['id']); // 10.15: Vier-Augen-Prinzip wie in yw_order_decide()
+    // 10.15: eigene Bestellungen warten nicht auf „deine Entscheidung“, solange eine andere Person freigeben kann
+    $pending=yw_pending_decision_count((int)$company['id'],(int)$account['id']);
 
     echo '<div class="cp-section-head"><div><h1>'.e(t('nav.approvals')).'</h1><p>'.e(t('approvals.intro')).'</p></div></div>';
     if($pending>0) echo '<div class="cp-manager-alert">'.tn('approvals.pending_alert',$pending,['count'=>'<strong>'.$pending.'</strong>']).'</div>';
@@ -1220,7 +1247,9 @@ function company_portal_approvals(array $company,array $account): void {
         echo company_portal_progress($o);
         echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>'.e(t('cart.total')).'</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.employee')).'</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.company')).'</span><strong>'.money($companyShare).'</strong></div></div>';
         if($status==='pending'){
-            echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000" placeholder="'.e(t('approvals.note_placeholder')).'"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button><button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button></form></div>';
+            $own=(int)($o['employee_account_id']??0)===(int)$account['id'];
+            if($own)echo '<div class="cp-manager-alert">'.e($others>0?t('decide.own_order'):t('approvals.own_order_single')).'</div>';
+            echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000" placeholder="'.e(t('approvals.note_placeholder')).'"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button>'.($own&&$others>0?'':'<button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button>').'</form></div>';
         }
         elseif(!empty($o['decision_note']))echo '<div class="cp-manager-alert"><strong>'.e(t('orders.decision_note')).'</strong><br>'.nl2br(e((string)$o['decision_note'])).'</div>';
         echo '</article>';

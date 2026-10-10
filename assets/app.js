@@ -52,18 +52,66 @@
   });
 
   // Sprungziele wie #mitarbeiter öffnen den passenden Aufklappbereich.
-  var openHashTarget = function () {
+  // 10.15: auch wenn das Ziel in einem zugeklappten Bereich liegt (z. B. #profil-3, #budget-12); nach dem
+  // Speichern steht die Rückmeldung direkt am Ziel statt oben auf der Seite.
+  var openHashTarget = function (afterSave) {
     if (!location.hash) return;
-    var el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
-    if (el instanceof HTMLDetailsElement) { el.open = true; el.scrollIntoView({ block: 'start' }); }
+    var el = null;
+    try { el = document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch (e) { return; }
+    if (!el) return;
+    var opened = false;
+    for (var d = el.closest('details'); d; d = d.parentElement ? d.parentElement.closest('details') : null) { if (!d.open) opened = true; d.open = true; }
+    var flash = afterSave === true ? document.querySelector('[data-flash]') : null;
+    if (flash && !el.contains(flash) && el.parentNode) {
+      // Rückmeldung direkt über das Ziel; der Abstand beim Springen schließt sie ein (auch beim Sprung des Browsers selbst).
+      // Liegt das Ziel in einem mehrspaltigen Raster, einer Zeile oder Tabelle (z. B. Probeshop-Kacheln), steht sie über dem Ganzen statt als schmale Kachel daneben.
+      var ref = el;
+      for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        var ps = window.getComputedStyle(p);
+        if ((ps.display.indexOf('grid') !== -1 && ps.gridTemplateColumns.trim().split(/\s+/).length > 1) || (ps.display.indexOf('flex') !== -1 && ps.flexDirection.indexOf('row') === 0) || ps.display.indexOf('table') === 0) ref = p; else break;
+      }
+      ref.parentNode.insertBefore(flash, ref);
+      var gap = Math.max(0, el.getBoundingClientRect().top - flash.getBoundingClientRect().top);
+      // Abstand zur festen Kopfzeile: der größere Wert von Ziel und Meldung (z. B. #grenze-12 hat selbst keinen).
+      var margin = Math.max(parseFloat(window.getComputedStyle(el).scrollMarginTop) || 0, parseFloat(window.getComputedStyle(flash).scrollMarginTop) || 0);
+      el.style.scrollMarginTop = (margin + gap) + 'px';
+      el.scrollIntoView({ block: 'start' });
+    } else if (opened || el instanceof HTMLDetailsElement) el.scrollIntoView({ block: 'start' });
   };
-  openHashTarget();
+  openHashTarget(true);
   window.addEventListener('hashchange', openHashTarget);
+
+  // 10.15: Lexware – nach abgelaufenem Zeitbudget die übrigen Rechnungsentwürfe automatisch weiter senden (app/modules/lexware.php).
+  document.querySelectorAll('form[data-lexware-weiter]').forEach(function (form) {
+    var button = form.querySelector('button');
+    if (button) { button.disabled = true; button.textContent = 'Wird automatisch weiter gesendet …'; }
+    window.setTimeout(function () { form.submit(); }, 1200);
+  });
 
   document.querySelectorAll('[data-select-all]').forEach(function (toggle) {
     toggle.addEventListener('change', function () {
       document.querySelectorAll('input[name="order_ids[]"]').forEach(function (box) { box.checked = toggle.checked; });
     });
+  });
+
+  // 10.15: „Alle auf dieser Seite“ – setzt alle Kästchen mit dem genannten Namen im selben Formular
+  // (auch Kästchen, die per form="…" außerhalb des Formulars stehen).
+  document.querySelectorAll('[data-check-all]').forEach(function (toggle) {
+    toggle.addEventListener('change', function () {
+      var form = toggle.form || toggle.closest('form');
+      if (!form) return;
+      Array.prototype.forEach.call(form.elements, function (box) {
+        if (box.type === 'checkbox' && box.name === toggle.dataset.checkAll) box.checked = toggle.checked;
+      });
+    });
+  });
+
+  // 10.15: Ungespeicherte Häkchen (z. B. Kollektion) nicht durch Blättern oder Bearbeiten verlieren.
+  document.querySelectorAll('form[data-unsaved-warning]').forEach(function (form) {
+    var dirty = false;
+    document.addEventListener('change', function (event) { if (event.target === form || event.target.form === form) dirty = true; });
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (event) { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   });
 
   /* ---------- Firmenshop: Vorder-/Rückansicht ---------- */
@@ -227,14 +275,23 @@
     function num(el) { return parseFloat(String(el.value || '').replace(',', '.')) || 0; }
     function update() {
       var chosen = colors.filter(function (c) { return c.checked && !c.disabled; });
-      var ek = chosen.length ? Math.max.apply(null, chosen.map(function (c) { return parseFloat(c.dataset.ek) || 0; })) : parseFloat(form.dataset.ek) || 0;
+      // Wie beim Anlegen: je Farbe gilt der höchste Einkaufspreis der gewählten Größen (Übergrößen-Aufpreis).
+      var checkedSizes = sizes.filter(function (s) { return s.checked; }).map(function (s) { return s.value; });
+      function colorEk(c) {
+        var base = parseFloat(c.dataset.ek) || 0, ps = {}, sz = [];
+        try { ps = JSON.parse(c.dataset.ps || '{}') || {}; sz = JSON.parse(c.dataset.sz || '[]') || []; } catch (e) { return base; }
+        var used = sz.filter(function (s) { return checkedSizes.indexOf(s) !== -1; });
+        if (!used.length) used = sz;
+        return used.reduce(function (m, s) { return Math.max(m, parseFloat(ps[s]) || 0); }, base);
+      }
+      var ek = chosen.length ? Math.max.apply(null, chosen.map(colorEk)) : parseFloat(form.dataset.ek) || 0;
       var mode = form.querySelector('input[name="price_mode"]:checked').value;
       if (factor) factor.disabled = mode !== 'factor';
       if (fixed) fixed.disabled = mode !== 'fixed';
       var vk = mode === 'fixed' ? num(fixed) : Math.ceil(ek * num(factor) * 10 - 1e-9) / 10;
       out.ek && (out.ek.textContent = eur(ek));
       out.vk && (out.vk.textContent = vk > 0 ? eur(vk) : '–');
-      out.brutto && (out.brutto.textContent = vk > 0 ? eur(vk * 1.19) : '–');
+      out.brutto && (out.brutto.textContent = vk > 0 ? eur(Math.round(Math.round(vk * 100) * 119 / 100) / 100) : '–'); // wie gross_from_net: in Cent runden
       out.marge && (out.marge.textContent = vk > 0 ? eur(vk - ek) : '–');
       var n = chosen.length;
       out.count && (out.count.textContent = n === 1 ? '1 Produkt' : n + ' Produkte');
@@ -261,6 +318,117 @@
       });
     });
     update();
+  });
+
+  /* ---------- 10.12.1: Katalogbilder in Paketen hochladen (große Auswahl sprengt sonst post_max_size) ---------- */
+  document.querySelectorAll('[data-katalog-upload]').forEach(function (form) {
+    if (!window.fetch || !window.FormData) return;
+    var input = form.querySelector('input[type="file"]');
+    var status = form.querySelector('[data-katalog-upload-status]');
+    var button = form.querySelector('button[type="submit"]');
+    var maxBytes = parseInt(form.dataset.maxBytes, 10) || 7000000;
+    var maxFiles = parseInt(form.dataset.maxFiles, 10) || 20;
+    form.addEventListener('submit', function (ev) {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      ev.preventDefault();
+      var tooBig = files.filter(function (f) { return f.size > maxBytes; });
+      files = files.filter(function (f) { return f.size <= maxBytes; });
+      var batches = [], cur = [], curSize = 0;
+      files.forEach(function (f) {
+        if (cur.length && (cur.length >= maxFiles || curSize + f.size > maxBytes)) { batches.push(cur); cur = []; curSize = 0; }
+        cur.push(f); curSize += f.size;
+      });
+      if (cur.length) batches.push(cur);
+      var done = 0, uploaded = 0, assigned = 0, problems = tooBig.map(function (f) { return f.name + ': zu groß für den Upload, bitte per FTP ablegen'; });
+      button.disabled = true;
+      function finish() {
+        var msg = uploaded + ' Bilddatei(en) übernommen, ' + assigned + ' Produkt(e) zugeordnet.';
+        if (problems.length) msg += ' Nicht übernommen: ' + problems.slice(0, 6).join(' · ') + (problems.length > 6 ? ' …' : '');
+        status.textContent = msg + ' Zuordnung wird geprüft …';
+        // Abschluss als normales Formular: der Server zeigt dann die vollständige Rückmeldung (fehlende und unbekannte Dateien).
+        var f = document.createElement('form');
+        f.method = 'post'; f.action = form.getAttribute('action') || window.location.pathname + window.location.search;
+        [['csrf', form.querySelector('input[name="csrf"]').value], ['action', 'katalog_images_assign'], ['upload_summary', msg]].forEach(function (kv) {
+          var i = document.createElement('input'); i.type = 'hidden'; i.name = kv[0]; i.value = kv[1]; f.appendChild(i);
+        });
+        document.body.appendChild(f); f.submit();
+      }
+      function next() {
+        if (done >= batches.length) { finish(); return; }
+        status.textContent = 'Paket ' + (done + 1) + ' von ' + batches.length + ' wird übertragen …';
+        var fd = new FormData();
+        fd.append('csrf', form.querySelector('input[name="csrf"]').value);
+        fd.append('action', 'katalog_images_upload');
+        fd.append('ajax', '1');
+        batches[done].forEach(function (f) { fd.append('katalog_images[]', f, f.name); });
+        fetch(form.getAttribute('action') || window.location.pathname + window.location.search, { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (j.ok) { uploaded += j.files; assigned += j.assigned; problems = problems.concat(j.problems || []); }
+            else problems.push(j.error);
+          })
+          .catch(function () { problems.push('Paket ' + (done + 1) + ' konnte nicht übertragen werden'); })
+          .then(function () { done++; next(); });
+      }
+      if (!batches.length) { finish(); return; }
+      next();
+    });
+  });
+  /* ---------- 10.15: Bilder aus dem Daiber-Shop laden – Aufrufe nacheinander, bis nichts mehr offen ist ---------- */
+  document.querySelectorAll('[data-autosubmit]').forEach(function (el) {
+    el.addEventListener('change', function () { if (el.form) el.form.submit(); });
+  });
+  document.querySelectorAll('[data-katalog-fetch]').forEach(function (form) {
+    if (!window.fetch || !window.FormData) return;
+    var status = document.querySelector('[data-katalog-fetch-status="' + form.id + '"]');
+    var buttons = Array.prototype.slice.call(document.querySelectorAll('button[form="' + form.id + '"]')).concat(Array.prototype.slice.call(form.querySelectorAll('button[type="submit"]')));
+    var running = false;
+    function say(text) { if (status) status.textContent = text; }
+    function post(extra) {
+      var fd = new FormData(form);
+      fd.append('ajax', '1');
+      Object.keys(extra || {}).forEach(function (k) { fd.append(k, extra[k]); });
+      return fetch(form.getAttribute('action') || window.location.pathname + window.location.search, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+    }
+    function run() {
+      if (running) return;
+      running = true;
+      buttons.forEach(function (b) { b.disabled = true; });
+      var loaded = 0, assigned = 0, rounds = 0, idle = 0, lastRemaining = -1, notfound = [], offline = false, error = '';
+      say('Bilder werden aus dem Daiber-Shop geladen …');
+      function finish() {
+        var msg = error ? error : (offline && !loaded ? 'Der Daiber-Shop ist gerade nicht erreichbar. Der Cronjob versucht es in 15 Minuten erneut.' : (!loaded && !assigned && lastRemaining === 0 && !notfound.length ? 'Alles aktuell: Alle Katalogprodukte haben ihre Bilder schon.' : loaded + ' Bild(er) aus dem Daiber-Shop geladen, ' + assigned + ' Produkt(e) zugeordnet.'));
+        if (notfound.length) msg += ' Im Daiber-Shop nicht gefunden: ' + notfound.slice(0, 10).join(', ') + ' – diese Bilder bitte selbst hochladen.';
+        say(msg + ' Seite wird aktualisiert …');
+        post({ finish: msg, finish_type: error || (offline && !loaded) ? 'error' : 'success' }).catch(function () {}).then(function () {
+          var target = window.location.pathname + window.location.search.replace(/([?&])bilder=laden(&|$)/, '$1').replace(/[?&]$/, '');
+          if (form.id === 'katalog-fetch-all') window.location.hash = 'bilder';
+          // Nur der Anker ändert sich: dann neu laden, sonst springt der Browser nur zur Stelle
+          if (target === window.location.pathname + window.location.search) window.location.reload(); else window.location.href = target;
+        });
+      }
+      function next() {
+        rounds++;
+        post({}).then(function (j) {
+          if (!j.ok) { error = j.error || 'Bilder konnten nicht geladen werden.'; finish(); return; }
+          if (j.busy) {
+            // Cronjob oder anderes Fenster gleicht gerade ab: kurz warten und erneut versuchen
+            if (rounds >= 80) { error = j.message; finish(); return; }
+            say('Gerade läuft schon ein Abgleich (Cronjob) – es geht gleich weiter …'); setTimeout(next, 8000); return;
+          }
+          loaded += j.loaded; assigned += j.assigned; offline = j.offline;
+          (j.notfound || []).forEach(function (s) { if (notfound.indexOf(s) < 0) notfound.push(s); });
+          // Ohne Fortschritt (nichts geladen, nicht weniger offen) nach drei Runden aufhören – der Cronjob macht weiter
+          idle = (j.loaded === 0 && lastRemaining >= 0 && j.remaining >= lastRemaining) ? idle + 1 : 0; lastRemaining = j.remaining;
+          if (j.remaining > 0 && !j.offline && rounds < 80 && idle < 3) { say(loaded + ' Bild(er) geladen, ' + assigned + ' Produkt(e) zugeordnet – noch ' + j.remaining + ' Artikel …'); next(); }
+          else finish();
+        }).catch(function () { error = 'Die Verbindung wurde unterbrochen. Bereits geladene Bilder sind gespeichert, der Rest folgt über den Cronjob.'; finish(); });
+      }
+      next();
+    }
+    form.addEventListener('submit', function (ev) { ev.preventDefault(); run(); });
+    if (form.dataset.auto === '1') run();
   });
   /* ---------- 10.9: Logo-Ebenen exakt auf die sichtbare Bildfläche legen ---------- */
   function fitMockupLayers() {
@@ -421,4 +589,60 @@
       }).then(function () { button.disabled = false; button.textContent = 'Korrekturabzug als PNG herunterladen'; });
     });
   });
+})();
+
+/*
+ * Nach einer Fehlermeldung die Eingaben wieder ins Formular eintragen (siehe yw_remember_input() in
+ * app/functions.php). Gesucht wird das Formular mit derselben Aktion; bei mehreren gleichartigen
+ * Formularen (z. B. je Produkt) muss auch die versteckte ID übereinstimmen.
+ */
+(function () {
+  var node = document.getElementById('yw-old-input');
+  if (!node) return;
+  var old;
+  try { old = JSON.parse(node.textContent || ''); } catch (e) { return; }
+  if (!old || !old.action || !old.data) return;
+  var data = old.data;
+
+  function lookup(name) {
+    var m = name.match(/^([^\[]+)((?:\[[^\]]*\])*)$/);
+    if (!m) return undefined;
+    var value = data[m[1]], parts = (m[2].match(/\[([^\]]*)\]/g) || []).map(function (p) { return p.slice(1, -1); });
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] === '') return Array.isArray(value) ? value : (value && typeof value === 'object' ? Object.keys(value).map(function (k) { return value[k]; }) : []);
+      if (value === undefined || value === null || typeof value !== 'object') return undefined;
+      value = value[parts[i]];
+    }
+    return value;
+  }
+
+  var forms = Array.prototype.filter.call(document.querySelectorAll('form'), function (form) {
+    var a = form.querySelector('input[type=hidden][name=action]');
+    return a && a.value === old.action;
+  });
+  var form = forms.length === 1 ? forms[0] : forms.filter(function (f) {
+    var ids = f.querySelectorAll('input[type=hidden][name$="id"]');
+    return ids.length > 0 && Array.prototype.every.call(ids, function (i) { var v = lookup(i.name); return v === undefined || String(v) === i.value; });
+  })[0];
+  if (!form) return;
+
+  Array.prototype.forEach.call(form.elements, function (el) {
+    if (!el.name || el.disabled || /^(hidden|password|file|submit|button|reset)$/.test(el.type)) return;
+    var value = lookup(el.name);
+    if (el.type === 'checkbox') {
+      if (/\[\]$/.test(el.name)) el.checked = Array.isArray(value) && value.map(String).indexOf(el.value) !== -1;
+      else el.checked = value !== undefined && (el.value === 'on' || String(value) === el.value);
+    } else if (el.type === 'radio') {
+      if (value !== undefined) el.checked = String(value) === el.value;
+    } else if (el.tagName === 'SELECT' && el.multiple) {
+      var list = Array.isArray(value) ? value.map(String) : [];
+      Array.prototype.forEach.call(el.options, function (o) { o.selected = list.indexOf(o.value) !== -1; });
+    } else if (value !== undefined && typeof value !== 'object') {
+      el.value = String(value);
+    } else return;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  var details = form.closest('details');
+  if (details) details.open = true;
 })();

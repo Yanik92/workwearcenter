@@ -1,5 +1,5 @@
 Options -Indexes
-<FilesMatch "\.(php[0-9]?|phtml|phar|cgi|pl|py|sh)$">
+<FilesMatch "\.(php[0-9]?|pht|phtml|phar|phps|cgi|pl|py|sh)$">
     Require all denied
 </FilesMatch>
 
@@ -8,8 +8,13 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
+# HTML/XML aus Uploads nie als Seite ausliefern (die Anwendung legt hier nur Bilder ab)
+<FilesMatch "\.(s?html?|xhtml|xml|xsl)$">
+    Require all denied
+</FilesMatch>
+
 # Logo-Dateien (SVG) nie als eigenständige Seite mit Skriptrechten ausliefern
 <FilesMatch "\.svg$">
-    Header set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'"
+    Header set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox"
     Header set X-Content-Type-Options "nosniff"
 </FilesMatch>

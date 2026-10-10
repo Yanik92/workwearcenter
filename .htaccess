@@ -12,7 +12,12 @@ DirectoryIndex index.php
     Require all denied
 </FilesMatch>
 
-<FilesMatch "\.(sql|log|ini|bak|dist|md|zip|rar|7z|tar|gz)$">
+<FilesMatch "\.(sql|log|ini|bak|dist|md|ya?ml|zip|rar|7z|tar|gz)$">
+    Require all denied
+</FilesMatch>
+
+# Versteckte Dateien (.htaccess, .user.ini, .gitignore, .git …) nie ausliefern
+<FilesMatch "^\.">
     Require all denied
 </FilesMatch>
 
@@ -31,12 +36,14 @@ DirectoryIndex index.php
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
     # Selbst bei einer fehlerhaften Fremdkonfiguration nie Skripte aus Uploads ausführen.
-    RewriteRule ^uploads/.*\.(?:php[0-9]?|phtml|phar)$ - [F,L,NC]
+    RewriteRule ^uploads/.*\.(?:php[0-9]?|pht|phtml|phar|phps|shtml)$ - [F,L,NC]
 
     # Let's-Encrypt/ACME-Prüfungen nicht durch PHP routen
     RewriteRule ^\.well-known/ - [L]
+    # Sonst keine versteckten Ordner wie .git ausliefern
+    RewriteRule (^|/)\. - [F,L]
 
-    # Interne Anwendungsdateien nicht direkt ausliefern
+    # Interne Anwendungsdateien nicht direkt ausliefern (zusätzlich eigene .htaccess in app/, tests/, tools/)
     RewriteRule ^app/ - [F,L]
     RewriteRule ^tests/ - [F,L]
     RewriteRule ^tools/ - [F,L]

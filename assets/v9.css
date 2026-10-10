@@ -614,3 +614,15 @@ a.cp-btn.cp-btn-light:hover{border-color:var(--cp-accent,#e85d00);color:var(--cp
 .katalog-list-upload{padding:18px 22px}
 @media(max-width:1000px){.katalog-article{grid-template-columns:1fr}.katalog-side{position:static}.katalog-head{grid-template-columns:1fr}}
 @media(max-width:700px){.katalog-image-ways{grid-template-columns:1fr}.katalog-article-title h2{font-size:1.3rem}.katalog-stats{display:grid;grid-template-columns:1fr 1fr}.katalog-stats div{min-width:0}.katalog-stats dd{font-size:1.05rem}.katalog-search{flex-direction:column}}
+/* 10.13.1: unbekannte Bilddateien von Hand zuordnen */
+.katalog-rename-list{display:grid;gap:8px;margin:10px 0 14px}
+.katalog-rename-list label{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,260px);gap:10px;align-items:center;margin:0}
+.katalog-rename-list .mono{overflow-wrap:anywhere;font-size:.86rem}
+@media (max-width:640px){.katalog-rename-list label{grid-template-columns:1fr}}
+.inline-form{display:inline-flex;margin:0}
+/* 10.15: Bilder automatisch aus dem Daiber-Shop */
+.katalog-daiber{display:grid;gap:10px;padding:16px;border:1px solid #cfe3d8;background:#f3faf6;border-radius:12px;margin:0 0 18px}
+.katalog-daiber-run{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.katalog-daiber-run>div{flex:1 1 320px;min-width:0}.katalog-daiber h4{margin:0 0 4px}.katalog-daiber p{margin:0 0 4px}
+.katalog-daiber-toggle .check{display:inline-flex!important;background:#fff;margin:0}
+.katalog-own{margin:4px 0 4px}

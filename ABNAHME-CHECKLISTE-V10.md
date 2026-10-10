@@ -5,7 +5,7 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 ## Sicherung und Update
 
 - [ ] Webspace, Datenbank und `config.php` separat gesichert.
-- [ ] Versteckte Dateien `.htaccess`, `.user.ini` und `uploads/.htaccess` übertragen.
+- [ ] Versteckte Dateien `.htaccess`, `.user.ini`, `uploads/.htaccess`, `app/.htaccess`, `tests/.htaccess` und `tools/.htaccess` übertragen.
 - [ ] `/update.php` als Administrator erfolgreich ausgeführt.
 - [ ] Admin → Systemstatus zeigt das Datenbankschema als erfüllt.
 - [ ] Admin → Systemstatus: „Interne Dateien gesperrt“ ist grün (sonst Webserver-Sperren laut START-HIER eintragen).

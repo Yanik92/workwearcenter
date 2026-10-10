@@ -36,7 +36,10 @@ function employee_register_page_by_slug(string $slug): void {
             if(!(int)$company['active']) throw new DomainException(t('err.shop_unavailable'));
             [$pinRequired,$approvalRequired]=yw_registration_policy($company['registration_mode']);
             $pin=is_string($_POST['pin']??null)?$_POST['pin']:'';
-            if($pinRequired && !password_verify($pin,(string)$company['registration_pin_hash'])) throw new DomainException(t('reg.pin_invalid'));
+            // Firmen-PIN zusätzlich IP-unabhängig je Firma drosseln (30 Fehlversuche / 15 Minuten), sonst lässt sie sich über viele Adressen erraten.
+            $pinKey='register-pin-'.(int)$company['id'];
+            if($pinRequired && login_throttled($pinKey,30,false)) throw new DomainException(t('reg.too_many'));
+            if($pinRequired && !password_verify($pin,(string)$company['registration_pin_hash'])){db()->rollBack();record_login_failure($pinKey,false);throw new DomainException(t('reg.pin_invalid'));}
             $q=db()->prepare('SELECT id FROM employee_accounts WHERE company_id=? AND email=? FOR UPDATE');
             $q->execute([$company['id'],$email]);
             if($q->fetchColumn()){
@@ -71,7 +74,7 @@ function employee_register_page_by_slug(string $slug): void {
     yw_shop_auth_page($company,t('reg.page_title',['shop'=>$company['shop_name']]),$intro,$card);
 }
 
-function yw_registration_decision(array $company,array $actor): never {
+function yw_registration_decision(array $company,array $actor,string $back='/mitarbeiter'): never {
     verify_csrf();
     $target=null;$decision='';$changed=0;
     try {
@@ -95,7 +98,8 @@ function yw_registration_decision(array $company,array $actor): never {
         if(db()->inTransaction()) db()->rollBack();
         flash('error',t('people.registration_failed'));
     }
-    redirect('/'.$company['slug'].'/mitarbeiter');
+    // 10.15: in der Personenliste mit derselben Suche und Seite zurück
+    redirect($back==='/mitarbeiter'?yw_people_return_url((string)$company['slug'],'personen'):'/'.$company['slug']);
 }
 
 function company_portal_people(array $company,array $account): void {

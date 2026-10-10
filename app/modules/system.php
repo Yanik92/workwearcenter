@@ -38,7 +38,7 @@ function upload_product_image(?array $file,string $old=''): string {
     $dir=dirname(__DIR__, 2).'/uploads/products';
     if(!is_dir($dir) && !mkdir($dir,0755,true) && !is_dir($dir)) throw new RuntimeException('Produktbild-Ordner konnte nicht erstellt werden.');
     $name='product-'.bin2hex(random_bytes(8)).'.'.$ext;
-    if(!move_uploaded_file($tmp,$dir.'/'.$name)) throw new RuntimeException('Produktbild konnte nicht gespeichert werden.');
+    if(!yw_move_upload($tmp,$dir.'/'.$name)) throw new RuntimeException('Produktbild konnte nicht gespeichert werden.');
     return 'uploads/products/'.$name;
 }
 

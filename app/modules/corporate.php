@@ -9,6 +9,7 @@ require_once __DIR__.'/registration.php';
 require_once __DIR__.'/handover.php';
 require_once __DIR__.'/api.php';
 require_once __DIR__.'/katalog.php';
+require_once __DIR__.'/katalog_daiber.php';
 require_once __DIR__.'/content.php';
 require_once __DIR__.'/mockup.php';
 require_once __DIR__.'/admin_customer.php';
@@ -28,13 +29,36 @@ function yw_locked_company(int $id): array {
     return $company;
 }
 
-function yw_schema_ready(): bool {
+/**
+ * Ist die Datenbank auf dem Stand dieser Programmdateien? Volle Prüfung (~40 Abfragen) nur, wenn sich die
+ * Prüfliste geändert hat (neue Programmdateien) oder $full verlangt wird (update.php, Systemstatus); sonst
+ * genügt der Vergleich mit der Marke in site_settings aus yw_schema_state() – dieselbe eine Abfrage, die auch
+ * den roten Hinweis „Datenbank-Update fehlt“ speist. Nur ein bestandener Lauf setzt die Marke, ein fehlgeschlagener
+ * verwirft sie; solange etwas fehlt, wird bei jedem Aufruf neu geprüft, damit „Update erforderlich“ direkt nach
+ * update.php verschwindet.
+ */
+function yw_schema_ready(bool $full=false): bool {
     static $ready=false;
-    if($ready)return true; // pro Anfrage nur einmal prüfen
+    if($ready&&!$full)return true; // pro Anfrage nur einmal prüfen
+    $signature=yw_schema_signature();
+    if(!$full && hash_equals($signature,yw_schema_state()['signature']))return $ready=true;
     $current='Versionsmarke 10.12.0';
     try {
-        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.12.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.12.0 fehlt – bitte update.php ausführen';return false;}
-        foreach([
+        if(!db()->query("SELECT 1 FROM yw_schema_versions WHERE version='10.12.0'")->fetchColumn()){$GLOBALS['yw_schema_problem']='Datenbankstand 10.12.0 fehlt – bitte update.php ausführen';yw_schema_forget();return $ready=false;}
+        foreach(yw_schema_probes() as $current) db()->query($current);
+        // Marke liegt in derselben Datenbank: eine zurückgespielte ältere Sicherung bringt ihre alte Marke mit und wird neu geprüft.
+        if(!hash_equals($signature,yw_schema_state()['signature']))try{db()->prepare("REPLACE INTO site_settings(setting_key,setting_value) VALUES('schema_checked',?)")->execute([$signature]);yw_schema_state(true);}catch(Throwable $ignored){}
+        return $ready=true;
+    }
+    catch(Throwable $e) { $GLOBALS['yw_schema_problem']=$e->getMessage().' – Prüfung: '.$current; yw_schema_forget(); return $ready=false; }
+}
+
+/** Kennung der Prüfliste samt verlangtem Datenbankstand; ändert sich mit jedem Programmpaket, das neue Spalten verlangt. */
+function yw_schema_signature(): string { return sha1(YW_SCHEMA_REQUIRED.'|10.12.0|'.implode('|',yw_schema_probes())); }
+
+/** Prüfabfragen: Spalten und Tabellen, die diese Programmdateien voraussetzen (neue Versionen hier ergänzen). */
+function yw_schema_probes(): array {
+    return [
             'SELECT tracking_number,tracking_carrier,tracking_url FROM orders LIMIT 0',
             'SELECT image_back_path,image_sleeve_path,print_zones_json FROM products LIMIT 0',
             'SELECT file_path FROM yw_decoration_motifs LIMIT 0',
@@ -76,10 +100,11 @@ function yw_schema_ready(): bool {
             'SELECT language FROM employee_accounts LIMIT 0',
             'SELECT shop_languages FROM companies LIMIT 0',
             'SELECT language FROM yw_mail_queue LIMIT 0',
-        ] as $current) db()->query($current);
-        return $ready=true;
-    }
-    catch(Throwable $e) { $GLOBALS['yw_schema_problem']=$e->getMessage().' – Prüfung: '.$current; return false; }
+            // 10.15: Sammel-Erinnerung an Verantwortliche, Vier-Augen-Schutz
+            'SELECT reminder_digest_at FROM employee_accounts LIMIT 0',
+            'SELECT managers_can_appoint FROM companies LIMIT 0',
+            'SELECT part_no,part_count,line_grouping FROM yw_lexware_documents LIMIT 0',
+        ];
 }
 
 /** Technischer Grund, warum die Datenbank als nicht bereit gilt (nur für Admins anzeigen). */
@@ -89,9 +114,10 @@ function yw_schema_problem(): string { return (string)($GLOBALS['yw_schema_probl
 function yw_company_setup_steps(array $company): array {
     $id=(int)$company['id'];
     $count=static function(string $sql,array $params): int {try{$q=db()->prepare($sql);$q->execute($params);return (int)$q->fetchColumn();}catch(Throwable $e){return 0;}};
-    $products=$count('SELECT COUNT(*) FROM company_products WHERE company_id=?',[$id]);
-    $managers=$count("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND registration_status='approved'",[$id]);
-    $employees=$count("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved'",[$id]);
+    // Zähler kommen in der Verwaltung schon gruppiert mit der Firmenliste (yw_admin_companies), sonst einzeln.
+    $products=isset($company['setup_products'])?(int)$company['setup_products']:$count('SELECT COUNT(*) FROM company_products WHERE company_id=?',[$id]);
+    $managers=isset($company['setup_managers'])?(int)$company['setup_managers']:$count("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND role='manager' AND active=1 AND registration_status='approved'",[$id]);
+    $employees=isset($company['setup_employees'])?(int)$company['setup_employees']:$count("SELECT COUNT(*) FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved'",[$id]);
     $deliveryOk=($company['delivery_mode']??'company')==='pickup' || trim((string)($company['delivery_address']??''))!=='';
     $registrationSafe=($company['registration_mode']??'approval')!=='open' || (int)($company['approval_required']??1)===1;
     $base='/admin?tab=companies&company='.$id;

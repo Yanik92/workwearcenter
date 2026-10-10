@@ -200,7 +200,7 @@ function yw_handover_enqueue(int $orderId): void {
 
 /** Freigegebene Bestellungen ohne Übergabedatensatz (z. B. aus der Zeit vor Version 10). */
 function yw_handover_missing_count(): int {
-    try{return (int)db()->query("SELECT COUNT(*) FROM orders o LEFT JOIN yw_handover h ON h.order_id=o.id AND h.event='order.approved' WHERE o.status='approved' AND h.id IS NULL")->fetchColumn();}
+    try{return (int)db()->query("SELECT COUNT(*) FROM orders o WHERE o.status='approved' AND NOT EXISTS (SELECT 1 FROM yw_handover h WHERE h.order_id=o.id AND h.event='order.approved')")->fetchColumn();} // NOT EXISTS: etwa halb so teuer wie LEFT JOIN … IS NULL
     catch(Throwable $e){return 0;}
 }
 
@@ -351,6 +351,8 @@ function yw_handover_deliver(int $id): bool {
     $message=$error!==''?$error:('HTTP '.$status.($response!==''?': '.preg_replace('/\s+/',' ',strip_tags($response)):''));
     db()->prepare('UPDATE yw_handover SET status=?,attempts=?,available_at=?,last_http_status=?,last_error=? WHERE id=?')
         ->execute([$finalFailure?'failed':'pending',$attempts,$next,$status?:null,mb_substr($message,0,500),$id]);
+    // Gegenstelle gestört: Stapel abbrechen, Seitenaufrufe 5 Minuten nicht mit Versuchen (je bis 10 s) belasten.
+    $GLOBALS['yw_handover_failed']=true;try{set_site_setting('handover_pause_until',(string)(time()+300));}catch(Throwable $ignored){}
     if($finalFailure)yw_handover_alert_admins((int)$row['order_id'],$message);
     return false;
 }
@@ -366,13 +368,15 @@ function yw_handover_alert_admins(int $orderId,string $message): void {
 function yw_process_handover_queue(int $limit=5): int {
     if(!yw_handover_push_enabled() || yw_handover_config_issues())return 0;
     $limit=max(1,min(100,$limit));
+    if($limit<5 && (int)current_site_setting('handover_pause_until','0')>time())return 0; // nach Fehler: nur der Cronjob versucht es
     $locked=(int)db()->query("SELECT GET_LOCK('yanik_workwear_handover_worker',0)")->fetchColumn()===1;
     if(!$locked)return 0;
     $sent=0;
     try{
         db()->exec("UPDATE yw_handover SET status='pending' WHERE status='sending' AND available_at<=NOW()");
-        $ids=db()->query("SELECT id FROM yw_handover WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
-        foreach($ids as $id)if(yw_handover_deliver((int)$id))$sent++;
+        $ids=db()->query("SELECT id FROM yw_handover IGNORE INDEX FOR ORDER BY (PRIMARY) WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN); // wie Mailwarteschlange
+        $GLOBALS['yw_handover_failed']=false;
+        foreach($ids as $id){if(yw_handover_deliver((int)$id))$sent++;if(!empty($GLOBALS['yw_handover_failed']))break;}
     }finally{
         try{db()->query("SELECT RELEASE_LOCK('yanik_workwear_handover_worker')");}catch(Throwable $ignored){}
     }
@@ -539,7 +543,8 @@ function yw_admin_handover(): void {
     try{foreach(db()->query('SELECT status,COUNT(*) n FROM yw_handover GROUP BY status') as $r)$counts[(string)$r['status']]=(int)$r['n'];}catch(Throwable $e){}
     $missing=yw_handover_missing_count();
     $modeLabels=['off'=>'Ausgeschaltet – Aufträge werden gesammelt','push'=>'Senden (Push)','pull'=>'Abholen (Pull-API)','both'=>'Senden und Abholen'];
-    $lastOk=null;try{$lastOk=db()->query("SELECT MAX(COALESCE(acknowledged_at,delivered_at)) FROM yw_handover")->fetchColumn();}catch(Throwable $e){}
+    // Wie MAX(COALESCE(acknowledged_at,delivered_at)), aber über den Index (acknowledged_at,delivered_at) statt aller Übergaben.
+    $lastOk=null;try{$lastOk=db()->query("SELECT GREATEST(COALESCE(a,d),COALESCE(d,a)) FROM (SELECT (SELECT MAX(acknowledged_at) FROM yw_handover) a,(SELECT MAX(delivered_at) FROM yw_handover WHERE acknowledged_at IS NULL) d) x")->fetchColumn();}catch(Throwable $e){}
 
     echo '<section class="card"><div class="title-row"><div><h2>Verbindung zur Auftragsverwaltung</h2><p class="muted">Jeder freigegebene Auftrag wird automatisch als vollständiger Datensatz an deine Auftragsverwaltung übergeben.</p></div><span class="badge '.($c['mode']==='off'?'pending':($issues?'rejected':'approved')).'">'.($c['mode']==='off'?'Nicht verbunden':($issues?'Konfiguration prüfen':'Aktiv')).'</span></div>';
     echo '<div class="release-checks">';
@@ -559,7 +564,15 @@ function yw_admin_handover(): void {
     if($missing>0)echo '<div class="flash info space-top"><strong>'.$missing.' ältere freigegebene Aufträge</strong> (aus der Zeit vor Version 10) haben noch keinen Übergabedatensatz.<form method="post" class="space-top actions" data-confirm="Ältere Aufträge für die Übergabe vorbereiten?">'.csrf_field().'<input type="hidden" name="action" value="handover_backfill"><input type="hidden" name="return_tab" value="handover"><label class="check"><input type="checkbox" name="only_open" value="1" checked><span>Nur noch nicht ausgelieferte Aufträge</span></label><button class="btn small">Für Übergabe vorbereiten</button></form></div>';
     echo '</section>';
 
-    $rows=[];try{$rows=db()->query("SELECT h.*,c.legal_name FROM yw_handover h JOIN orders o ON o.id=h.order_id JOIN companies c ON c.id=o.company_id ORDER BY FIELD(h.status,'failed','manual','pending','sending','delivered','acknowledged'),h.id DESC LIMIT 100")->fetchAll();}catch(Throwable $e){}
+    // Die letzten 100, Probleme zuerst: je Status die neuesten 100 über den Index (status,id) statt alle Übergaben zu sortieren,
+    // dann nur diese vollständig laden. Status außerhalb der Liste (z. B. storniert) stehen wie bei FIELD() vorn.
+    $rows=[];try{
+        $statusOrder="'failed','manual','pending','sending','delivered','acknowledged'";$join='JOIN orders o ON o.id=h.order_id JOIN companies c ON c.id=o.company_id';
+        $parts=["(SELECT h.id,h.status FROM yw_handover h IGNORE INDEX FOR ORDER BY (PRIMARY) $join WHERE h.status NOT IN ($statusOrder) ORDER BY h.id DESC LIMIT 100)"];
+        foreach(explode(',',$statusOrder) as $status)$parts[]="(SELECT h.id,h.status FROM yw_handover h IGNORE INDEX FOR ORDER BY (PRIMARY) $join WHERE h.status=$status ORDER BY h.id DESC LIMIT 100)";
+        $ids=array_map('intval',db()->query('SELECT id FROM ('.implode(' UNION ALL ',$parts).") x ORDER BY FIELD(status,$statusOrder),id DESC LIMIT 100")->fetchAll(PDO::FETCH_COLUMN));
+        if($ids)$rows=db()->query("SELECT h.*,c.legal_name FROM yw_handover h $join WHERE h.id IN (".implode(',',$ids).") ORDER BY FIELD(h.status,$statusOrder),h.id DESC")->fetchAll();
+    }catch(Throwable $e){}
     echo '<section class="card"><div class="title-row"><div><h2>Übergabeprotokoll</h2><p class="muted">Die letzten 100 Übergaben, Probleme zuerst.</p></div></div>';
     if(!$rows){echo '<div class="empty">Noch keine freigegebenen Aufträge.</div></section>';return;}
     echo '<div class="table-wrap"><table class="table"><thead><tr><th>Auftrag</th><th>Firma</th><th>Status</th><th>Versuche</th><th>Referenz / Hinweis</th><th></th></tr></thead><tbody>';

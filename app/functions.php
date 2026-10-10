@@ -5,14 +5,101 @@ require_once __DIR__.'/i18n.php'; // 10.12: Übersetzungen, Zahlen- und Datumsfo
 
 function db(): PDO { global $pdo; return $pdo; }
 function cfg(string $key): mixed { global $config; return $config[$key] ?? null; }
+/** Upload speichern; bei vollem Speicher bleibt sonst eine abgeschnittene Datei liegen. */
+function yw_move_upload(string $tmp,string $target): bool { $existed=file_exists($target); if(move_uploaded_file($tmp,$target))return true; if(!$existed)@unlink($target); return false; }
+/** Exporte: Zeilen ungepuffert einzeln vom Server holen statt das ganze Ergebnis in den PHP-Speicher; im Callback keine weiteren Abfragen. */
+function yw_each_row(string $sql,array $params,callable $fn): void {
+    $pdo=db();$buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);$q=null;
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,false);
+    try{$q=$pdo->prepare($sql);$q->execute($params);foreach($q as $row)$fn($row);}
+    finally{if($q)$q->closeCursor();$pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);}
+}
 function e(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function path_only(): string { return '/' . ltrim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/'), '/'); }
 function is_post(): bool { return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'; }
-function redirect(string $url): never { header('Location: ' . $url, true, 303); exit; }
+function redirect(string $url): never { yw_remember_input(); header('Location: ' . yw_admin_return_target($url), true, 303); exit; }
+/**
+ * Nach einer Fehlermeldung sollen die Eingaben nicht verloren gehen: Endet ein Formular mit einer
+ * Fehler-Meldung, merkt sich die Sitzung die Eingaben (ohne Passwörter, PINs und Schlüssel) für den
+ * nächsten Seitenaufruf; assets/app.js trägt sie wieder in dasselbe Formular ein.
+ */
+function yw_remember_input(): void {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || (($_SESSION['flash'][0] ?? '') !== 'error') || empty($_POST['action'])) return;
+    $clean = static function (array $data, int $depth = 0) use (&$clean): array {
+        $out = [];
+        foreach ($data as $key => $value) {
+            if (preg_match('/^(csrf|return_to|action)$|pass|secret|token|^pin$|_pin$|api_?key|otp|iban/i', (string)$key)) continue;
+            if (is_array($value)) { if ($depth < 4) $out[$key] = $clean($value, $depth + 1); }
+            elseif (is_scalar($value)) $out[$key] = mb_substr((string)$value, 0, 20000);
+        }
+        return $out;
+    };
+    $json = json_encode(['action' => (string)$_POST['action'], 'data' => $clean($_POST)], JSON_UNESCAPED_UNICODE);
+    if (is_string($json) && strlen($json) <= 200000) $_SESSION['old_input'] = $json;
+}
+/** Gemerkte Eingaben einmalig für assets/app.js ausgeben. */
+function yw_old_input_script(): string {
+    $json = $_SESSION['old_input'] ?? null; unset($_SESSION['old_input']);
+    if (!is_string($json) || $json === '') return '';
+    return '<script type="application/json" id="yw-old-input">' . str_replace(['<', '>', '&'], ['\\u003c', '\\u003e', '\\u0026'], $json) . '</script>';
+}
+/**
+ * Kundenakte: Nach dem Speichern zurück in denselben Reiter (z. B. „Kollektion & Design“) statt auf die
+ * Übersicht oder – bei einem Fehler – auf die Kundenliste. Die Formulare der Kundenakte tragen dafür
+ * return_to (siehe csrf_field()); übernommen wird nur ein Ziel derselben Firma innerhalb von /admin.
+ */
+function yw_admin_return_target(string $url): string {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || path_only() !== '/admin') return $url;
+    // 10.15: return_to trägt auch Suche, Seite und Filter der Listen; wird nur bereinigt neu aufgebaut übernommen.
+    [$backCompany, $backTab, $back] = yw_customer_return_to((string)($_POST['return_to'] ?? ''));
+    if ($back === '') return $url;
+    if (!str_starts_with($url, '/admin?tab=companies')) return $url;
+    $anchor = (string)(parse_url($url, PHP_URL_FRAGMENT) ?? '');
+    parse_str((string)(parse_url($url, PHP_URL_QUERY) ?? ''), $q);
+    $sameCompany = isset($q['company']) && (int)$q['company'] === $backCompany;
+    $isError = (($_SESSION['flash'][0] ?? '') === 'error') && !isset($q['company']);
+    if (!$sameCompany && !$isError) return $url;
+    // Ziel nennt einen anderen Reiter oder eigene Listenparameter: dann gilt das Ziel.
+    if ($sameCompany && isset($q['bereich']) && ((string)$q['bereich'] !== $backTab || array_diff_key($q, ['tab' => 1, 'company' => 1, 'bereich' => 1]))) return $url;
+    return $back . ($anchor !== '' ? '#' . $anchor : '');
+}
+/**
+ * 10.15: Suche, Seite und Filter der Listen in der Kundenakte (Mitarbeiter, Kollektion, Regeln) –
+ * nur bekannte Parameter, bereinigt. Damit landet man nach dem Speichern wieder an derselben Stelle.
+ */
+function yw_customer_list_state(array $q): array {
+    $state = [];
+    $enums = ['anzeige' => ['kollektion', 'katalog', 'alle'], 'profil_anzeige' => ['alle', 'freigegeben', 'offen']];
+    foreach (['suche' => 's', 'seite' => 'p', 'artikel' => 's', 'kategorie' => 's', 'anzeige' => 'e', 'aseite' => 'p', 'produkt' => 'i', 'grenzen_suche' => 's', 'grenzen_kategorie' => 's', 'grenzen_seite' => 'p', 'profil' => 'i', 'profil_suche' => 's', 'profil_kategorie' => 's', 'profil_anzeige' => 'e', 'profil_seite' => 'p'] as $key => $type) {
+        $v = $q[$key] ?? null;
+        if (!is_string($v)) continue;
+        $v = trim($v);
+        if ($type === 's') { $v = trim(mb_substr($v, 0, 120)); if ($v !== '') $state[$key] = $v; }
+        elseif ($type === 'e') { if (in_array($v, $enums[$key], true)) $state[$key] = $v; }
+        elseif (preg_match('/^[1-9]\d{0,8}$/D', $v) && ($type === 'i' || $v !== '1')) $state[$key] = $v;
+    }
+    return $state;
+}
+/** Adresse eines Reiters der Kundenakte mit Listenzustand. */
+function yw_customer_state_url(int $companyId, string $tab = 'uebersicht', array $state = []): string {
+    return '/admin?' . http_build_query(['tab' => 'companies', 'company' => $companyId] + ($tab !== '' && $tab !== 'uebersicht' ? ['bereich' => $tab] : []) + ($tab !== '' && $tab !== 'uebersicht' ? yw_customer_list_state($state) : []));
+}
+/** return_to eines Formulars prüfen: [Firma, Reiter, bereinigte Adresse] oder [0, '', ''] – nie ein fremdes Ziel. */
+function yw_customer_return_to(string $back): array {
+    if (!str_starts_with($back, '/admin?') || strlen($back) > 2000) return [0, '', ''];
+    parse_str((string)parse_url($back, PHP_URL_QUERY), $b);
+    if (($b['tab'] ?? '') !== 'companies' || !is_string($b['company'] ?? null) || !preg_match('/^[1-9]\d{0,9}$/D', $b['company'])) return [0, '', ''];
+    $tab = is_string($b['bereich'] ?? null) && preg_match('/^[a-z]{1,30}$/D', $b['bereich']) ? $b['bereich'] : 'uebersicht';
+    return [(int)$b['company'], $tab, yw_customer_state_url((int)$b['company'], $tab, $b)];
+}
 function random_token(): string { return bin2hex(random_bytes(32)); }
 function yw_dummy_password_hash(): string {
-    // Valid bcrypt cost-12 hash used only to equalise unknown-account logins.
-    return '$2y$12$wLhB7ybs9BxhwD8cCvQ9IeBQCTPBN55VjA61nFj8s8Q8z7yR5q72K';
+    // Gültiger bcrypt-Hash nur zum Angleichen der Laufzeit bei unbekannten Konten. Die Kosten müssen zu den
+    // echten Hashes (PASSWORD_DEFAULT) passen, sonst verrät die Antwortzeit, ob eine E-Mail-Adresse ein Konto hat.
+    static $hash=null;
+    if($hash!==null)return $hash;
+    $cost=defined('PASSWORD_BCRYPT_DEFAULT_COST')?(int)PASSWORD_BCRYPT_DEFAULT_COST:10;
+    return $hash=match($cost){10=>'$2y$10$M6.6jedFguQBYO8TzUpBXOes370qu3dzreffMmOTaYDGo243rk9qG',12=>'$2y$12$wLhB7ybs9BxhwD8cCvQ9IeBQCTPBN55VjA61nFj8s8Q8z7yR5q72K',default=>password_hash('yw-dummy',PASSWORD_DEFAULT)};
 }
 function money(int $cents): string { return yw_money($cents); } // Format je Sprache (Deutsch: 1.234,56 €)
 function color_ok(string $color): bool { return (bool)preg_match('/^#[0-9a-f]{6}$/i', $color); }
@@ -76,11 +163,29 @@ function csrf(): string {
     if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(24));
     return $_SESSION['csrf'];
 }
-function csrf_field(): string { return '<input type="hidden" name="csrf" value="' . e(csrf()) . '">'; }
+function csrf_field(): string {
+    $field = '<input type="hidden" name="csrf" value="' . e(csrf()) . '">';
+    // In der Kundenakte merkt sich jedes Formular den aktuellen Reiter (siehe yw_admin_return_target()).
+    if (path_only() === '/admin' && ($_GET['tab'] ?? '') === 'companies' && (int)($_GET['company'] ?? 0) > 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+        // 10.15: mit Suche, Seite und Filtern der Liste
+        $bereich = is_string($_GET['bereich'] ?? null) ? $_GET['bereich'] : '';
+        $back = yw_customer_state_url((int)$_GET['company'], preg_match('/^[a-z]{1,30}$/D', $bereich) ? $bereich : 'uebersicht', $_GET);
+        $field .= '<input type="hidden" name="return_to" value="' . e($back) . '">';
+    }
+    return $field;
+}
 function verify_csrf(): void {
     if (empty($_SESSION['csrf']) || !is_string($_POST['csrf'] ?? null) || !hash_equals((string)$_SESSION['csrf'], $_POST['csrf'])) {
+        // Ist der Upload größer als post_max_size, verwirft PHP das ganze Formular – dann ehrlich sagen, woran es liegt.
+        if (!$_POST && !$_FILES && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+            http_response_code(413); exit('<!doctype html><meta charset="utf-8"><title>Upload zu groß</title><body style="font-family:system-ui;max-width:640px;margin:60px auto;padding:0 20px;line-height:1.6"><h1>Upload zu groß</h1><p>Die Dateien waren zusammen ' . e(number_format((int)$_SERVER['CONTENT_LENGTH'] / 1048576, 1, ',', '.')) . ' MB groß, der Server nimmt höchstens ' . e((string)ini_get('post_max_size')) . ' auf einmal an. Bitte weniger oder kleinere Dateien wählen, große Bildmengen per FTP ablegen.</p><p>Mit der Zurück-Taste des Browsers zurück zur Seite.</p></body>');
+        }
         http_response_code(419); exit('Sicherheitsprüfung fehlgeschlagen. Bitte Seite neu laden.');
     }
+}
+/** GET-Links mit Wirkung (Vorschau, Sicherung): Aufruf von fremden Seiten aus abweisen (Browser senden Sec-Fetch-Site). */
+function yw_block_cross_site_get(): void {
+    if (strtolower((string)($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '')) === 'cross-site') { http_response_code(403); exit('Dieser Link funktioniert nur aus der Verwaltung heraus. Bitte die Seite direkt öffnen.'); }
 }
 function flash(string $type, string $message): void { $_SESSION['flash'] = [$type, $message]; }
 function take_flash(): ?array { $flash = $_SESSION['flash'] ?? null; unset($_SESSION['flash']); return $flash; }
@@ -298,17 +403,24 @@ function yw_smtp_deliver(string $to,string $subject,string $message,string $from
 
 function yw_deliver_queued_mail(int $id): bool {
     try{$claim=db()->prepare("UPDATE yw_mail_queue SET status='sending',available_at=DATE_ADD(NOW(),INTERVAL 15 MINUTE) WHERE id=? AND status='pending' AND available_at<=NOW()");$claim->execute([$id]);if(!$claim->rowCount())return false;$q=db()->prepare("SELECT * FROM yw_mail_queue WHERE id=? AND status='sending'");$q->execute([$id]);$row=$q->fetch();if(!$row)return false;yw_mail_transport((string)$row['to_email'],(string)$row['subject'],(string)$row['body'],($row['reply_to']??'')!==''?(string)$row['reply_to']:null,yw_lang_valid($row['language']??null)?(string)$row['language']:'de');db()->prepare("UPDATE yw_mail_queue SET status='sent',sent_at=NOW(),last_error=NULL WHERE id=? AND status='sending'")->execute([$id]);return true;}
-    catch(Throwable $e){$next=(new DateTimeImmutable())->modify('+'.min(60,2**min(6,(int)($row['attempts']??0))).' minutes')->format('Y-m-d H:i:s');try{db()->prepare("UPDATE yw_mail_queue SET attempts=attempts+1,status=IF(attempts>=7,'failed','pending'),available_at=?,last_error=? WHERE id=?")->execute([$next,mb_substr($e->getMessage(),0,500),$id]);}catch(Throwable $ignored){}error_log('WorkwearCenter mail queue: '.$e->getMessage());return false;}
+    catch(Throwable $e){$next=(new DateTimeImmutable())->modify('+'.min(60,2**min(6,(int)($row['attempts']??0))).' minutes')->format('Y-m-d H:i:s');try{db()->prepare("UPDATE yw_mail_queue SET attempts=attempts+1,status=IF(attempts>=7,'failed','pending'),available_at=?,last_error=? WHERE id=?")->execute([$next,mb_substr($e->getMessage(),0,500),$id]);}catch(Throwable $ignored){}error_log('WorkwearCenter mail queue: '.$e->getMessage());
+        // Mailserver gestört: Stapel abbrechen und Seitenaufrufe 5 Minuten nicht mit Zustellversuchen (je bis 15 s) belasten.
+        $GLOBALS['yw_mail_failed']=true;try{if(function_exists('set_site_setting'))set_site_setting('mail_pause_until',(string)(time()+300));}catch(Throwable $ignored){}
+        return false;}
 }
 
 function yw_process_mail_queue(int $limit=3): void {
     $limit=max(1,min(100,$limit));
+    // Kleine Stapel (nach Seitenaufrufen) pausieren nach einem Zustellfehler; der Cronjob versucht es weiter.
+    if($limit<10 && function_exists('current_site_setting') && (int)current_site_setting('mail_pause_until','0')>time()) return;
     $locked=(int)db()->query("SELECT GET_LOCK('yanik_workwear_mail_worker',0)")->fetchColumn()===1;
     if(!$locked) return;
     try{
         db()->exec("UPDATE yw_mail_queue SET status='pending' WHERE status='sending' AND available_at<=NOW()");
-        $ids=db()->query("SELECT id FROM yw_mail_queue WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
-        foreach($ids as $id)yw_deliver_queued_mail((int)$id);
+        // Index (status,id,available_at) statt Durchlauf aller Mails in id-Reihenfolge (der Optimierer schätzt das bei kleinem LIMIT falsch).
+        $ids=db()->query("SELECT id FROM yw_mail_queue IGNORE INDEX FOR ORDER BY (PRIMARY) WHERE status='pending' AND available_at<=NOW() ORDER BY id LIMIT ".$limit)->fetchAll(PDO::FETCH_COLUMN);
+        $GLOBALS['yw_mail_failed']=false;
+        foreach($ids as $id){yw_deliver_queued_mail((int)$id);if(!empty($GLOBALS['yw_mail_failed']))break;}
     }finally{
         try{db()->query("SELECT RELEASE_LOCK('yanik_workwear_mail_worker')");}catch(Throwable $ignored){}
     }
@@ -316,14 +428,13 @@ function yw_process_mail_queue(int $limit=3): void {
 
 function yw_cleanup_expired_security_rows(): void {
     // Diese Tabellen sind reine Sicherheits-/Transportdaten und dürfen nicht
-    // unbegrenzt wachsen. Fach-, Bestell- und Auditdaten werden nicht berührt.
+    // unbegrenzt wachsen. Fach- und Bestelldaten werden nicht berührt; Mailwarteschlange und
+    // Aktivitätsprotokoll räumt yw_retention_prune() stapelweise auf (10.15, app/modules/admin_tools.php).
     try {
         db()->exec("DELETE FROM yw_login_attempts WHERE started_at<DATE_SUB(NOW(),INTERVAL 1 DAY)");
         db()->exec("DELETE FROM yw_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
         db()->exec("DELETE FROM yw_admin_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
-        // Datensparsamkeit (DSGVO Art. 5): versendete Mails enthalten Namen und Bestelldaten
-        // und werden nach 90 Tagen entfernt; erledigte Anfragen nach 24 Monaten.
-        db()->exec("DELETE FROM yw_mail_queue WHERE status='sent' AND sent_at<DATE_SUB(NOW(),INTERVAL 90 DAY)");
+        // Datensparsamkeit (DSGVO Art. 5): erledigte Anfragen nach 24 Monaten.
         db()->exec("DELETE FROM inquiries WHERE status='done' AND created_at<DATE_SUB(NOW(),INTERVAL 24 MONTH)");
     } catch(Throwable $e) {
         error_log('WorkwearCenter security cleanup failed: '.$e->getMessage());
@@ -415,7 +526,7 @@ function upload_logo(?array $file, ?string $oldPath = null): ?string {
     $relative = 'uploads/logos/' . $name;
     $dir=dirname(__DIR__).'/uploads/logos';
     if(!is_dir($dir) && !mkdir($dir,0755,true) && !is_dir($dir)) throw new RuntimeException('Logo-Ordner konnte nicht erstellt werden.');
-    if (!move_uploaded_file($tmp, dirname(__DIR__) . '/' . $relative)) throw new RuntimeException('Logo konnte nicht gespeichert werden.');
+    if (!yw_move_upload($tmp, dirname(__DIR__) . '/' . $relative)) throw new RuntimeException('Logo konnte nicht gespeichert werden.');
     return $relative;
 }
 
@@ -444,6 +555,85 @@ function app_version(): string {
     $file = dirname(__DIR__) . '/VERSION';
     $value = is_file($file) ? trim((string)file_get_contents($file)) : '';
     return $version = ($value !== '' ? $value : 'unbekannt');
+}
+
+/**
+ * Adresse einer Datei aus assets/ mit Prüfsumme als Cache-Schlüssel.
+ * Ändert sich die Datei auf dem Server, lädt jeder Browser sie neu – unabhängig von der Versionsnummer.
+ */
+function asset_url(string $path): string {
+    static $cache=[];
+    if(isset($cache[$path]))return $cache[$path];
+    $file=dirname(__DIR__).'/'.$path;
+    $stamp=is_file($file)?substr(md5(filemtime($file).'-'.filesize($file)),0,10):app_version();
+    return $cache[$path]='/'.$path.'?v='.rawurlencode($stamp);
+}
+
+/** Prüfsumme wie in app/data/dateien.json: Zeilenenden vereinheitlicht (FTP im Textmodus ändert sie). */
+function yw_file_checksum(string $file): ?string {
+    $data=@file_get_contents($file);
+    return $data===false?null:sha1(str_replace("\r\n","\n",$data));
+}
+
+/**
+ * Vergleicht die Programmdateien auf dem Server mit der Liste aus dem Release (app/data/dateien.json).
+ * Findet Dateien, die beim FTP-Upload übersprungen wurden oder unvollständig angekommen sind.
+ * Rückgabe: null ohne Liste, sonst ['version'=>…, 'stale'=>[Pfade], 'missing'=>[Pfade]].
+ */
+function yw_file_integrity(?string $prefix=null): ?array {
+    static $cache=[];
+    $key=(string)$prefix;
+    if(array_key_exists($key,$cache))return $cache[$key];
+    $root=dirname(__DIR__);
+    $list=@json_decode((string)@file_get_contents($root.'/app/data/dateien.json'),true);
+    if(!is_array($list)||!is_array($list['files']??null))return $cache[$key]=null;
+    $stale=[];$missing=[];
+    foreach($list['files'] as $path=>$sum){
+        $path=(string)$path;
+        if($prefix!==null&&!str_starts_with($path,$prefix))continue;
+        if(str_contains($path,'..'))continue;
+        $actual=yw_file_checksum($root.'/'.$path);
+        if($actual===null)$missing[]=$path;
+        elseif(!hash_equals((string)$sum,$actual))$stale[]=$path;
+    }
+    return $cache[$key]=['version'=>(string)($list['version']??''),'stale'=>$stale,'missing'=>$missing];
+}
+
+/** Hinweis für Administratoren, wenn Design-Dateien (assets/) nicht zur installierten Version passen. */
+function yw_asset_integrity_notice(): string {
+    $r=yw_file_integrity('assets/');
+    if(!$r||(!$r['stale']&&!$r['missing']))return '';
+    $files=array_merge($r['stale'],$r['missing']);
+    return '<div class="flash error"><strong>Design-Dateien auf dem Server sind nicht aktuell.</strong> Deshalb sehen manche Seiten verschoben aus. Bitte diese Dateien aus dem Paket '.e($r['version']).' per FTP erneut hochladen und vorhandene Dateien dabei <em>immer überschreiben</em> (FileZilla fragt sonst ggf. „nur wenn neuer“): '.e(implode(', ',array_slice($files,0,8))).(count($files)>8?' …':'').'. Danach im Browser Strg+F5 drücken.</div>';
+}
+
+/** Letzter Datenbankstand, den dieses Programmpaket braucht (siehe app/migrations.php). */
+const YW_SCHEMA_REQUIRED='10.15.0';
+/**
+ * Datenbankstand in einer Abfrage je Anfrage: Ist YW_SCHEMA_REQUIRED eingetragen (roter Hinweis), und für welche
+ * Prüfliste wurde diese Datenbank zuletzt vollständig geprüft (Schnellweg in yw_schema_ready)? Fehlt eine Tabelle,
+ * gilt beides als nicht erfüllt. $refresh liest neu (nach dem Setzen der Marke).
+ */
+function yw_schema_state(bool $refresh=false): array {
+    static $state=null;
+    if($state!==null&&!$refresh)return $state;
+    $state=['required'=>false,'signature'=>''];
+    try{$q=db()->prepare("SELECT (SELECT COUNT(*) FROM yw_schema_versions WHERE version=?) required,(SELECT setting_value FROM site_settings WHERE setting_key='schema_checked') signature");$q->execute([YW_SCHEMA_REQUIRED]);$row=$q->fetch();$state=['required'=>(int)($row['required']??0)>0,'signature'=>(string)($row['signature']??'')];}catch(Throwable $e){}
+    return $state;
+}
+/**
+ * Marke verwerfen, wenn eine Tabelle oder Spalte fehlt, obwohl die Programmdateien gleich geblieben sind (z. B. einzelne
+ * ältere Tabelle zurückgespielt): Der nächste Aufruf prüft wieder vollständig und sperrt wie früher mit „Update erforderlich“.
+ */
+function yw_schema_forget(): void {
+    if(yw_schema_state()['signature']==='')return;
+    try{db()->exec("DELETE FROM site_settings WHERE setting_key='schema_checked'");}catch(Throwable $ignored){}
+    yw_schema_state(true);
+}
+/** Roter Hinweis in der Verwaltung, solange nach einem Upload der Update-Assistent noch nicht gelaufen ist. */
+function yw_schema_notice(): string {
+    if(yw_schema_state()['required'])return '';
+    return '<div class="flash error"><strong>Datenbank-Update fehlt.</strong> Die neuen Programmdateien sind hochgeladen, die Datenbank aber noch nicht angepasst. Bitte jetzt den <a href="/update.php">Update-Assistenten</a> ausführen, sonst funktionieren einzelne Bereiche nicht.</div>';
 }
 
 function yw_site_logo_path(): string {
@@ -499,7 +689,8 @@ function render_head(string $title, ?array $brand = null): void {
         $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
     }
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
-    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/v9.css?v='.e(app_version()).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="/assets/site.css?v='.e(app_version()).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
+    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
 }
-function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '">' . e($f[1]) . '</div>'; }
-function render_foot(): void { echo '<script src="/assets/app.js?v='.e(app_version()).'" defer></script></body></html>'; }
+// 10.15: data-flash – assets/app.js setzt die Rückmeldung nach dem Speichern an das Sprungziel (z. B. #person-12).
+function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '" data-flash>' . e($f[1]) . '</div>'; }
+function render_foot(): void { echo yw_old_input_script().'<script src="'.e(asset_url('assets/app.js')).'" defer></script></body></html>'; }
