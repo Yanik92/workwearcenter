@@ -480,7 +480,7 @@ function company_portal_header(array $company,array $account,string $section): v
     if($manager){
         $nav['freigaben']=[t('nav.approvals'),$slug.'/freigaben','check'];
         $nav['mitarbeiter']=[t('nav.people'),$slug.'/mitarbeiter','users'];
-        $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'");$q->execute([(int)$company['id']]);$pending=(int)$q->fetchColumn();
+        $pending=yw_pending_decision_count((int)$company['id'],(int)$account['id']); // 10.15: wie die Seite „Freigaben“, ohne eigene Bestellungen
     }
     $nav['profil']=[t('nav.profile'),$slug.'/profil','user'];
     $hasLogo=yw_company_logo_path($company)!=='';
@@ -1004,9 +1004,11 @@ function company_portal_overview(array $company,array $account): void {
     }
 
     if($manager){
-        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending' ORDER BY o.id ASC");
-        $q->execute([(int)$company['id']]);$pending=$q->fetchAll();
-        echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>'.e(t('overview.approvals_title')).'</h2><p>'.e(count($pending)?tn('overview.approvals_waiting',count($pending)):t('overview.approvals_none')).'</p></div><span class="cp-count">'.count($pending).'</span></div>';
+        // 10.15: wie Menü-Zähler und „Freigaben“ – eigene Bestellungen nicht, solange eine andere Person freigeben kann; nur die ersten 4 laden
+        $others=yw_other_manager_count((int)$company['id'],(int)$account['id'])>0;
+        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending'".($others?' AND NOT (o.employee_account_id<=>?)':'')." ORDER BY o.id ASC LIMIT 4");
+        $q->execute($others?[(int)$company['id'],(int)$account['id']]:[(int)$company['id']]);$pending=$q->fetchAll();$pendingCount=yw_pending_decision_count((int)$company['id'],(int)$account['id']);
+        echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>'.e(t('overview.approvals_title')).'</h2><p>'.e($pendingCount?tn('overview.approvals_waiting',$pendingCount):t('overview.approvals_none')).'</p></div><span class="cp-count">'.$pendingCount.'</span></div>';
         if($pending){
             echo '<ul class="cp-mini-items">';
             foreach(array_slice($pending,0,4) as $o){$g=(int)($o['gross_total_cents']??0);if($g<=0)$g=(int)$o['total_cents'];echo '<li><span>#'.(int)$o['id'].'</span> '.e($o['employee_name']!==''?$o['employee_name']:t('common.unknown')).' · '.e(yw_date((string)$o['created_at'],'short')).'<b>'.money($g).'</b></li>';}
@@ -1210,7 +1212,7 @@ function company_portal_approvals(array $company,array $account): void {
 
     $others=yw_other_manager_count((int)$company['id'],(int)$account['id']); // 10.15: Vier-Augen-Prinzip wie in yw_order_decide()
     // 10.15: eigene Bestellungen warten nicht auf „deine Entscheidung“, solange eine andere Person freigeben kann
-    $pendingStmt=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'".($others>0?' AND NOT (employee_account_id<=>?)':''));$pendingStmt->execute($others>0?[(int)$company['id'],(int)$account['id']]:[(int)$company['id']]);$pending=(int)$pendingStmt->fetchColumn();
+    $pending=yw_pending_decision_count((int)$company['id'],(int)$account['id']);
 
     echo '<div class="cp-section-head"><div><h1>'.e(t('nav.approvals')).'</h1><p>'.e(t('approvals.intro')).'</p></div></div>';
     if($pending>0) echo '<div class="cp-manager-alert">'.tn('approvals.pending_alert',$pending,['count'=>'<strong>'.$pending.'</strong>']).'</div>';

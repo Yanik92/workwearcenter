@@ -69,6 +69,14 @@ function yw_other_manager_count(int $companyId,int $accountId): int {
     return (int)$q->fetchColumn();
 }
 
+/** 10.15: Bestellungen, die auf die Entscheidung dieser Person warten (eigene nicht, solange eine andere Person freigeben kann). */
+function yw_pending_decision_count(int $companyId,int $accountId): int {
+    $others=yw_other_manager_count($companyId,$accountId)>0;
+    $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'".($others?' AND NOT (employee_account_id<=>?)':''));
+    $q->execute($others?[$companyId,$accountId]:[$companyId]);
+    return (int)$q->fetchColumn();
+}
+
 /* ---------- Token ---------- */
 
 /** Serverschlüssel für signierte Mail-Links (optional config 'app_secret' + zufälliger Systemschlüssel). */
