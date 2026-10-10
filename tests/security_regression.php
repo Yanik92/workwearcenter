@@ -300,6 +300,13 @@ test_ok(str_contains($lxCode,"SET status='creating',last_error=NULL WHERE id=? A
 test_ok(str_contains($lxCode,"\$doc['status']==='creating' && strtotime((string)\$doc['updated_at'])>=time()-300)throw") && !str_contains($lxCode,'Bitte „Je Kostenstelle eine eigene Rechnung“ wählen'),'Entwurf im Versand kann nicht freigegeben werden; alter Hinweis „je Kostenstelle wählen“ entfernt');
 $lxMig=(string)file_get_contents(dirname(__DIR__).'/app/migrations.php');
 test_ok(preg_match("/\/\/ 10\.15 – Lexware[^\n]*\n(?:[^\n]*\n)*?\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_no'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_count'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','line_grouping'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.14\.0'/u",$lxMig)===1,'Datenbank-Update 10.15: Teil-Spalten idempotent vor der Versionsmarke 10.14.0');
+// 10.15: Nur wenn das Zeitbudget je Aufruf abläuft, sendet die Seite die übrigen Entwürfe automatisch weiter – nach Fehler oder Abbruch nie
+$_SESSION=[];yw_lexware_flash_result(3,'2026-08',['created'=>[['gross_cents'=>1190,'orders'=>2]],'failed'=>[],'pending'=>13,'stopped'=>false],14,[]);
+test_ok(($_SESSION['lexware_weiter'][0]??0)===3 && ($_SESSION['lexware_weiter'][1]??'')==='2026-08' && $_SESSION['flash'][0]==='success' && str_contains($_SESSION['flash'][1],'13 weitere Entwürfe werden jetzt automatisch'),'Zeitbudget abgelaufen: übrige Entwürfe werden automatisch weiter gesendet');
+$_SESSION=[];yw_lexware_flash_result(3,'2026-08',['created'=>[],'failed'=>['Teil 2'=>'Abgelehnt (406).'],'pending'=>5,'stopped'=>false],6,[]);$lxAuto=isset($_SESSION['lexware_weiter']) || $_SESSION['flash'][0]!=='error';
+$_SESSION=[];yw_lexware_flash_result(3,'2026-08',['created'=>[],'failed'=>[],'pending'=>5,'stopped'=>true],5,[]);$lxAuto=$lxAuto || isset($_SESSION['lexware_weiter']) || $_SESSION['flash'][0]!=='error';$_SESSION=[];
+$lxJs=(string)file_get_contents(dirname(__DIR__).'/assets/app.js');
+test_ok(!$lxAuto && str_contains($lxCode,"' data-lexware-weiter'") && str_contains($lxCode,'>=time()-120') && str_contains($lxJs,"form[data-lexware-weiter]"),'kein automatisches Weitersenden nach fehlgeschlagenem Teil oder Abbruch (Schlüssel, Zeitüberschreitung); Weitersenden nur kurz nach dem letzten Durchgang');
 
 // 10.11: Lohnabzug-Export
 $rows=yw_payroll_aggregate([

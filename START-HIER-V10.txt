@@ -104,8 +104,9 @@ kann nur einmal abgerechnet werden. Meldet Lexware eine Zeitüberschreitung, ble
 der Auftrag gesperrt, bis unter „Rechnungsentwürfe → Klären“ entschieden ist.
 Lexware nimmt höchstens 300 Positionen je Rechnung an: Größere Sammelrechnungen
 teilt das System ab 10.15 automatisch in mehrere Entwürfe auf (ganze Kostenstellen,
-sonst „Teil 1 von 3“), die Vorschau zeigt die Aufteilung vorher. Scheitert ein Teil,
-bleibt er in der Monatsübersicht stehen und wird mit „Erneut senden“ nachgeholt.
+sonst „Teil 1 von 3“), die Vorschau zeigt die Aufteilung vorher. Viele Entwürfe
+sendet die Seite automatisch in mehreren Durchgängen (Seite geöffnet lassen). Scheitert
+ein Teil, bleibt er in der Monatsübersicht stehen und wird mit „Erneut senden“ nachgeholt.
 Schlüssel widerrufen: in Lexware löschen und den Eintrag in der config.php leeren.
 
 -------------------------------------------------------------------------------

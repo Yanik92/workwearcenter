@@ -471,7 +471,7 @@ function yw_lexware_reserve(int $companyId,array $docs): array {
         if(count($rows)!==count($all))throw new DomainException('Mindestens ein Auftrag gehört nicht zu dieser Firma.');
         foreach($rows as $r)if($r['status']!=='approved')throw new DomainException('Nur freigegebene Aufträge können abgerechnet werden ('.yw_order_number((int)$r['id']).' ist nicht freigegeben).');
         $q=db()->prepare("SELECT order_id FROM yw_lexware_document_orders WHERE order_id IN ($in) FOR UPDATE");$q->execute($all);
-        if($taken=$q->fetchAll(PDO::FETCH_COLUMN))throw new DomainException('Bereits in einem Lexware-Beleg: '.implode(', ',array_map(fn($id)=>yw_order_number((int)$id),array_slice($taken,0,10))).(count($taken)>10?' …':'').'. Keine Doppelanlage.');
+        if($taken=$q->fetchAll(PDO::FETCH_COLUMN))throw new DomainException('Bereits in einem Lexware-Beleg: '.implode(', ',array_map(fn($id)=>yw_order_number((int)$id),array_slice($taken,0,10))).(count($taken)>10?' und '.(count($taken)-10).' weitere':'').'. Keine Doppelanlage.');
         [$orders,$items]=yw_lexware_load_orders($companyId,$all);
         $byId=[];foreach($orders as $o)$byId[(int)$o['id']]=$o;
         foreach($docs as $d){
@@ -576,12 +576,12 @@ function yw_lexware_create_invoice(int $companyId,array $orderIds,string $kind,?
  * 10.15: Sendet reservierte Entwürfe nacheinander. Ein fehlgeschlagener Teil hält die übrigen nicht auf (er bleibt
  * „fehlgeschlagen“ und wird später erneut gesendet); bei Fehlern, die alle Teile betreffen, und nach $budget Sekunden
  * wird abgebrochen – die übrigen bleiben „geplant“. Angelegte Teile werden nie erneut gesendet.
- * Rückgabe: ['created'=>[Belege],'failed'=>[Bezeichnung=>Meldung],'pending'=>Anzahl nicht gesendeter Entwürfe]
+ * Rückgabe: ['created'=>[Belege],'failed'=>[Bezeichnung=>Meldung],'pending'=>Anzahl nicht gesendeter Entwürfe,'stopped'=>abgebrochen statt Zeitbudget]
  */
 function yw_lexware_send_documents(array $docIds,float $budget=20.0): array {
     if(function_exists('set_time_limit'))@set_time_limit(180);
     if(function_exists('ignore_user_abort'))ignore_user_abort(true); // Abbruch im Browser darf keinen Teil halb gesendet zurücklassen
-    $start=microtime(true);$out=['created'=>[],'failed'=>[],'pending'=>0];$stop=false;
+    $start=microtime(true);$out=['created'=>[],'failed'=>[],'pending'=>0,'stopped'=>false];$stop=false;
     foreach($docIds as $docId){
         if($stop || microtime(true)-$start>$budget){$out['pending']++;continue;}
         $q=db()->prepare('SELECT * FROM yw_lexware_documents WHERE id=?');$q->execute([(int)$docId]);$title=($d=$q->fetch())?yw_lexware_doc_title($d):'Beleg '.(int)$docId;
@@ -591,6 +591,7 @@ function yw_lexware_send_documents(array $docIds,float $budget=20.0): array {
         }catch(YwLexwareSendFailed $e){$out['failed'][$title]=$e->getMessage();$stop=$e->stop;}
         catch(DomainException $e){$out['failed'][$title]=$e->getMessage();$stop=true;}
     }
+    $out['stopped']=$stop;
     return $out;
 }
 
@@ -905,7 +906,10 @@ function yw_lexware_admin_company(array $company,array $settings): void {
         foreach($docs as $d)echo '<tr><td>'.e(yw_lexware_doc_title($d)).'<br><span class="muted">'.e((string)($d['voucher_number']?:'ohne Nummer')).'</span>'.(!empty($d['last_error'])?'<br><span class="muted">'.e((string)$d['last_error']).'</span>':'').'</td><td>'.(int)$d['orders'].'</td><td>'.(int)$d['line_count'].'</td><td>'.money((int)$d['gross_cents']).'</td><td>'.yw_lexware_doc_badge($d).'<br>'.yw_lexware_doc_link($d).'</td><td>'.yw_lexware_doc_actions($d,'company:'.$id.':'.$month).'</td></tr>';
         echo '</tbody></table></div>';
         $pending=count(array_filter($docs,fn($d)=>in_array($d['status'],['planned','failed'],true)));
-        if($pending)echo '<form method="post" class="space-top">'.$hidden.'<input type="hidden" name="action" value="lexware_invoice_pending"><input type="hidden" name="month" value="'.e($month).'"><button class="btn primary">'.($pending===1?'Ausstehenden Entwurf':$pending.' ausstehende Entwürfe').' jetzt an Lexware senden</button></form><p class="muted">Gesendet werden nur fehlgeschlagene und noch nicht gesendete Teile mit ihren bisherigen Aufträgen – bereits angelegte Teile nie ein zweites Mal.</p>';
+        // Nach abgelaufenem Zeitbudget einmalig automatisch weiter senden (höchstens 2 Minuten nach dem letzten Durchgang).
+        $weiter=$_SESSION['lexware_weiter']??null;$auto=false;
+        if(is_array($weiter) && (int)($weiter[0]??0)===$id && (string)($weiter[1]??'')===$month){unset($_SESSION['lexware_weiter']);$auto=$pending>0 && (int)($weiter[2]??0)>=time()-120;}
+        if($pending)echo '<form method="post" class="space-top"'.($auto?' data-lexware-weiter':'').'>'.$hidden.'<input type="hidden" name="action" value="lexware_invoice_pending"><input type="hidden" name="month" value="'.e($month).'"><button class="btn primary">'.($pending===1?'Ausstehenden Entwurf':$pending.' ausstehende Entwürfe').' jetzt an Lexware senden</button></form><p class="muted">Gesendet werden nur fehlgeschlagene und noch nicht gesendete Teile mit ihren bisherigen Aufträgen – bereits angelegte Teile nie ein zweites Mal.</p>';
     }
     [$open,$billed]=yw_lexware_month_orders($id,$month);
     if($billed)echo '<p class="muted">'.count($billed).' Auftr'.(count($billed)===1?'ag ist':'äge sind').' in diesem Monat bereits in Lexware-Belegen und werden nicht erneut berechnet.</p>';
@@ -955,17 +959,22 @@ function yw_lexware_return_url(string $return): string {
 }
 
 /** 10.15: Ergebnis mehrerer gesendeter Entwürfe als eine verständliche Meldung. */
-function yw_lexware_flash_result(string $month,array $result,int $total,array $tooBig): void {
+function yw_lexware_flash_result(int $companyId,string $month,array $result,int $total,array $tooBig): void {
     $created=count($result['created']);$gross=array_sum(array_map(fn($d)=>(int)$d['gross_cents'],$result['created']));$orders=array_sum(array_map(fn($d)=>(int)($d['orders']??0),$result['created']));
     $text='Sammelrechnung '.yw_payroll_month_label($month).': '.($total===1?($created?'Entwurf':'Kein Entwurf'):$created.' von '.$total.' Rechnungsentwürfen').' in Lexware angelegt'.($created?' ('.$orders.' Auftr'.($orders===1?'ag':'äge').', '.money($gross).' brutto)':'').'.';
     $failed=$result['failed'];
     foreach(array_slice($failed,0,3,true) as $title=>$message)$text.=' '.$title.': '.rtrim($message).(preg_match('/[.!?…]$/u',rtrim($message))?'':'.');
     if(count($failed)>3)$text.=' Weitere '.(count($failed)-3).' Entwürfe sind fehlgeschlagen.';
-    if($result['pending'])$text.=' '.$result['pending'].' '.($result['pending']===1?'Entwurf wurde':'Entwürfe wurden').' noch nicht gesendet.';
-    if($failed || $result['pending'])$text.=' Mit „Ausstehende Entwürfe jetzt an Lexware senden“ erneut versuchen – bereits angelegte Teile werden nicht doppelt angelegt.';
-    elseif($created)$text.=' Bitte in Lexware prüfen und finalisieren.';
+    // Nur das Zeitbudget je Aufruf ist abgelaufen: Die Seite sendet die übrigen Entwürfe automatisch weiter (assets/app.js, data-lexware-weiter).
+    $auto=$result['pending'] && !$failed && empty($result['stopped']);
+    if($auto){$_SESSION['lexware_weiter']=[$companyId,$month,time()];$text.=' '.$result['pending'].' weitere'.($result['pending']===1?'r Entwurf wird':' Entwürfe werden').' jetzt automatisch nacheinander gesendet – bitte diese Seite geöffnet lassen.';}
+    else{
+        if($result['pending'])$text.=' '.$result['pending'].' '.($result['pending']===1?'Entwurf wurde':'Entwürfe wurden').' noch nicht gesendet.';
+        if($failed || $result['pending'])$text.=' Mit „Ausstehende Entwürfe jetzt an Lexware senden“ erneut versuchen – bereits angelegte Teile werden nicht doppelt angelegt.';
+        elseif($created)$text.=' Bitte in Lexware prüfen und finalisieren.';
+    }
     if($tooBig)$text.=' Nicht übernommen, weil ein Auftrag allein mehr als '.YW_LEXWARE_MAX_LINES.' Positionen hat: '.implode(', ',array_map(fn($id)=>yw_order_number((int)$id),$tooBig)).' – bitte in Lexware von Hand abrechnen.';
-    flash($failed || $result['pending'] || $tooBig?'error':'success',$text);
+    flash($failed || ($result['pending'] && !$auto) || $tooBig?'error':'success',$text);
 }
 
 function yw_lexware_admin_action(string $action): never {
@@ -1030,7 +1039,7 @@ function yw_lexware_admin_action(string $action): never {
                 if(!$plan['parts'] || !hash_equals(yw_lexware_plan_hash($plan,$month,$grouping),is_string($_POST['plan']??null)?$_POST['plan']:''))throw new DomainException('Die Aufträge haben sich seit der Vorschau geändert. Bitte Vorschau neu laden und prüfen.');
                 $docIds=yw_lexware_reserve($companyId,array_map(fn($p)=>['ids'=>$p['ids'],'kind'=>'monthly','period'=>$month,'label'=>$p['label'],'part'=>$p['part'],'of'=>$p['of'],'grouping'=>$plan['grouping']],$plan['parts']));
                 audit_log('lexware.invoice_planned','company',$companyId,['company_id'=>$companyId,'period'=>$month,'documents'=>count($docIds),'orders'=>array_sum(array_map(fn($p)=>count($p['ids']),$plan['parts'])),'skipped'=>array_keys($plan['too_big'])]);
-                yw_lexware_flash_result($month,yw_lexware_send_documents($docIds),count($docIds),array_keys($plan['too_big']));
+                yw_lexware_flash_result($companyId,$month,yw_lexware_send_documents($docIds),count($docIds),array_keys($plan['too_big']));
                 break;
             case 'lexware_invoice_pending':
                 // 10.15: Fehlgeschlagene oder nicht gesendete Teile eines Monats erneut senden (gleiche Aufträge, gleicher Teil).
@@ -1041,7 +1050,7 @@ function yw_lexware_admin_action(string $action): never {
                 $q=db()->prepare("SELECT id FROM yw_lexware_documents WHERE company_id=? AND period=? AND kind<>'order' AND status IN ('planned','failed') ORDER BY id");$q->execute([$companyId,$month]);
                 $docIds=array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN));
                 if(!$docIds)throw new DomainException('Für diesen Monat stehen keine Entwürfe mehr aus.');
-                yw_lexware_flash_result($month,yw_lexware_send_documents($docIds),count($docIds),[]);
+                yw_lexware_flash_result($companyId,$month,yw_lexware_send_documents($docIds),count($docIds),[]);
                 break;
             case 'lexware_document_resend':
             case 'lexware_document_send':

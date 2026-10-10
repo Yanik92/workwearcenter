@@ -60,6 +60,13 @@
   openHashTarget();
   window.addEventListener('hashchange', openHashTarget);
 
+  // 10.15: Lexware – nach abgelaufenem Zeitbudget die übrigen Rechnungsentwürfe automatisch weiter senden (app/modules/lexware.php).
+  document.querySelectorAll('form[data-lexware-weiter]').forEach(function (form) {
+    var button = form.querySelector('button');
+    if (button) { button.disabled = true; button.textContent = 'Wird automatisch weiter gesendet …'; }
+    window.setTimeout(function () { form.submit(); }, 1200);
+  });
+
   document.querySelectorAll('[data-select-all]').forEach(function (toggle) {
     toggle.addEventListener('change', function () {
       document.querySelectorAll('input[name="order_ids[]"]').forEach(function (box) { box.checked = toggle.checked; });
