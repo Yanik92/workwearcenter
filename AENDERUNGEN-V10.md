@@ -456,3 +456,25 @@ Vor dem ersten Großkunden wurde das System in drei Richtungen geprüft: Zugriff
 
 **Übersetzungen**
 - Englisch, Polnisch, Türkisch, Russisch und Rumänisch gegengelesen und vereinheitlicht (z. B. Anrede in Mails, Mengen- und Budgettexte, Passwort-Seiten).
+
+## 10.16.0 – Neues Design der Firmenshops
+Kein Datenbank-Update nötig: Dateien hochladen (immer überschreiben), fertig.
+
+**Kopfzeile statt Seitenleiste**
+- Die farbige Seitenleiste ist weg. Oben steht eine helle Kopfzeile mit Firmenlogo, Menü, verfügbarem Budget, Sprache und Konto-Menü (Profil, Abmelden) – wie in einem Onlineshop.
+- Die Firmenfarbe erscheint nur noch als schmale Linie oben, bei Knöpfen und beim aktiven Menüpunkt. So wirkt jede Firmenfarbe ruhig, auch sehr kräftige.
+- Am Handy liegt das Menü als Leiste unten (Übersicht, Produkte, Bestellungen, bei Verantwortlichen auch Freigaben und Mitarbeiter, mit Zähler).
+
+**Kollektion**
+- Große Produktbilder auf ruhigem Grau, ohne Rahmen und ohne weiße Bildkästen (weiße Fotohintergründe verschmelzen mit der Fläche).
+- Kategorien bleiben beim Scrollen oben stehen.
+- „Deine Auswahl“ mit Budget, Positionen und Summen läuft am Computer rechts immer mit; auf kleineren Bildschirmen steht sie wie bisher unter der Kollektion.
+- Am Handy zwei Artikel nebeneinander; der Artikel öffnet als Vollbild mit festem Knopf „In die Auswahl“ unten.
+
+**Startseite, Bestellungen, Anmeldung**
+- Startseite mit Begrüßung, Budget und den ersten Artikeln der Kollektion (Klick öffnet den Artikel).
+- Bestellungen und Freigaben als aufgeräumte Karten mit Status-Punkt, Fortschritt und Summen.
+- Anmeldung, Registrierung und Passwort-Seiten: links Logo und Formular, rechts Fläche in Firmenfarbe mit Bildern aus der eigenen Kollektion (am Handy nur das Formular).
+- Mustershop und Probeshop auf der Website zeigen dasselbe Erscheinungsbild.
+
+Alle Funktionen, Preise, Budgets, Regeln und Freigaben sind unverändert.

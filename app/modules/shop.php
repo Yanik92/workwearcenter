@@ -488,26 +488,33 @@ function company_portal_header(array $company,array $account,string $section): v
         $nav['mitarbeiter']=[t('nav.people'),$slug.'/mitarbeiter','users'];
         $pending=yw_pending_decision_count((int)$company['id'],(int)$account['id']); // 10.15: wie die Seite „Freigaben“, ohne eigene Bestellungen
     }
-    $nav['profil']=[t('nav.profile'),$slug.'/profil','user'];
     $hasLogo=yw_company_logo_path($company)!=='';
+    $links=function(string $class) use($nav,$section,$pending): string {
+        $html='';
+        foreach($nav as $key=>[$label,$href,$icon]){
+            $badge=$key==='freigaben'&&$pending>0?'<span class="cp-nav-badge" aria-label="'.e(tn('nav.open_count',$pending)).'">'.$pending.'</span>':'';
+            $html.='<a class="'.$class.($section===$key?' active':'').'" href="'.e($href).'"'.($section===$key?' aria-current="page"':'').'>'.yw_shop_icon($icon).'<span>'.e($label).'</span>'.$badge.'</a>';
+        }
+        return $html;
+    };
 
-    echo '<a class="cp-skip" href="#inhalt">'.e(t('nav.skip')).'</a><div class="cp-app">';
-    echo '<aside class="cp-side" data-cp-side><div class="cp-side-head"><a class="cp-brand'.($hasLogo?' has-logo':'').'" href="'.e($slug).'">'.yw_shop_brand_mark($company);
+    // 10.16: helle Kopfzeile wie in einem Onlineshop (Logo, Menü, Budget, Sprache, Konto); am Handy Menü als Leiste unten
+    echo '<a class="cp-skip" href="#inhalt">'.e(t('nav.skip')).'</a><div class="cp-app'.($manager?' is-manager':'').'">';
+    echo '<header class="cp-header"><div class="cp-header-inner">';
+    echo '<a class="cp-brand'.($hasLogo?' has-logo':'').'" href="'.e($slug).'">'.yw_shop_brand_mark($company);
     echo '<span class="cp-brand-text">'.($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'<small>'.e(t('shop.staff_shop')).'</small></span></a>';
-    echo yw_lang_switcher($company,'cp-side-lang'); // Handy: Sprachwahl neben dem Menü-Knopf
-    echo '<button class="cp-menu-toggle" type="button" aria-expanded="false" aria-controls="cp-menu" hidden>'.yw_shop_icon('menu').'<span>'.e(t('nav.menu')).'</span></button></div>';
-    echo '<div class="cp-menu" id="cp-menu"><nav class="cp-nav" aria-label="'.e(t('nav.aria')).'">';
-    foreach($nav as $key=>[$label,$href,$icon]){
-        $badge=$key==='freigaben'&&$pending>0?'<span class="cp-nav-badge" aria-label="'.e(tn('nav.open_count',$pending)).'">'.$pending.'</span>':'';
-        echo '<a href="'.e($href).'"'.($section===$key?' class="active" aria-current="page"':'').'>'.yw_shop_icon($icon).'<span>'.e($label).'</span>'.$badge.'</a>';
-    }
-    echo '</nav><div class="cp-person"><div><strong>'.e($account['name']).'</strong><small>'.e($manager?t('nav.role_manager'):t('nav.role_employee')).(!empty($account['department'])?' · '.e($account['department']):'').'</small></div>';
-    echo '<form method="post" action="'.e($slug).'/logout">'.csrf_field().'<button class="cp-logout" type="submit">'.yw_shop_icon('logout').'<span>'.e(t('nav.logout')).'</span></button></form></div></div></aside>';
-
-    echo '<div class="cp-mainwrap"><header class="cp-top"><div class="cp-top-title"><strong>'.e(company_portal_section_title($section)).'</strong><small>'.e($company['shop_name']).'</small></div>';
-    // 10.12: Sprachumschalter im Kopf (auch am Handy ohne Menü erreichbar)
-    echo '<div class="cp-top-tools">'.yw_lang_switcher($company,'cp-top-lang');
-    echo '<a class="cp-avatar" href="'.e($slug).'/profil" title="'.e(t('nav.profile')).'"><span aria-hidden="true">'.e(yw_shop_initials((string)$account['name'])).'</span><span class="cp-sr">'.e(t('nav.profile')).'</span></a></div></header>';
+    echo '<nav class="cp-nav" aria-label="'.e(t('nav.aria')).'">'.$links('cp-nav-link').'</nav>';
+    echo '<div class="cp-header-tools">';
+    $budget=yw_shop_budget_info($company,$account);
+    if($budget['remaining']!==null)echo '<a class="cp-budget-pill" href="'.e($slug).'" title="'.e(t('budget.available_annual')).'"><span>'.e(t('budget.annual')).'</span><strong>'.money((int)$budget['remaining']).'</strong></a>';
+    echo yw_lang_switcher($company,'cp-top-lang');
+    echo '<details class="cp-account"><summary aria-label="'.e(t('nav.profile')).'"><span class="cp-avatar" aria-hidden="true">'.e(yw_shop_initials((string)$account['name'])).'</span><span class="cp-account-name">'.e((string)(preg_split('/\s+/u',trim((string)$account['name']))[0]??'')).'</span></summary>';
+    echo '<div class="cp-account-menu"><div class="cp-account-who"><strong>'.e($account['name']).'</strong><small>'.e($manager?t('nav.role_manager'):t('nav.role_employee')).(!empty($account['department'])?' · '.e($account['department']):'').'</small></div>';
+    echo '<a href="'.e($slug).'/profil"'.($section==='profil'?' aria-current="page"':'').'>'.yw_shop_icon('user').'<span>'.e(t('nav.profile')).'</span></a>';
+    echo '<form method="post" action="'.e($slug).'/logout">'.csrf_field().'<button class="cp-logout" type="submit">'.yw_shop_icon('logout').'<span>'.e(t('nav.logout')).'</span></button></form></div></details>';
+    echo '</div></div></header>';
+    echo '<nav class="cp-tabbar" aria-label="'.e(t('nav.aria')).'">'.$links('cp-tab').'</nav>';
+    echo '<div class="cp-mainwrap">';
 }
 
 function company_portal_order_status(string $status): string {
@@ -845,14 +852,32 @@ function yw_shop_auth_page(array $company,string $title,array $intro,string $car
     render_head($title,$company);
     echo company_portal_style($company);
     $hasLogo=yw_company_logo_path($company)!=='';
-    echo '<main class="cp-login"><section class="cp-login-brand">';
-    // Mit Logo steht der Firmenname nur im Logo; ohne Logo Initialen in Firmenfarbe + Name.
+    // 10.16: links Logo und Formular auf Weiß, rechts Fläche in Firmenfarbe mit Begrüßung und Bildern der Kollektion
+    echo '<main class="cp-login"><section class="cp-login-form">';
     echo '<div class="cp-login-identity'.($hasLogo?' has-logo':'').'">'.yw_shop_brand_mark($company,'cp-login').($hasLogo?'':'<strong>'.e($company['legal_name']).'</strong>').'</div>';
-    echo '<div class="cp-login-copy"><span class="cp-login-kicker">'.e($intro[0]??t('shop.staff_shop')).'</span><h1>'.e($intro[1]??'').'</h1><p>'.e($intro[2]??'').'</p></div>';
-    echo '<p class="cp-login-powered">'.e(t('auth.powered')).'</p></section>';
     // 10.12: Sprachwahl über der Karte; im DOM nach dem Formular (Tastatur), per CSS-order oben
-    echo '<section class="cp-login-form"><div class="cp-login-card">'.$cardHtml.'</div>'.yw_lang_switcher($company,'cp-login-lang').'<p class="cp-login-legal"><a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></p></section></main>';
+    echo '<div class="cp-login-card">'.$cardHtml.'</div>'.yw_lang_switcher($company,'cp-login-lang').'<p class="cp-login-legal"><a href="/impressum" hreflang="de">'.e(t('foot.imprint')).'</a> · <a href="/datenschutz" hreflang="de">'.e(t('foot.privacy')).'</a></p></section>';
+    echo '<section class="cp-login-brand"><div class="cp-login-copy"><span class="cp-login-kicker">'.e($intro[0]??t('shop.staff_shop')).'</span><h1>'.e($intro[1]??'').'</h1><p>'.e($intro[2]??'').'</p></div>';
+    $images=yw_shop_login_images($company);
+    if($images){echo '<div class="cp-login-gallery" aria-hidden="true">';foreach($images as $img)echo '<span><img src="/'.e($img).'" alt="" decoding="async"></span>';echo '</div>';}
+    echo '<p class="cp-login-powered">'.e(t('auth.powered')).'</p></section></main>';
     render_foot();
+}
+
+/** 10.16: bis zu drei Produktfotos der Kollektion (ohne Preise) für die Anmeldeseite. */
+function yw_shop_login_images(array $company): array {
+    try{
+        $q=db()->prepare('SELECT p.name,p.image_path,cp.preview_front_path FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=? AND p.active=1 ORDER BY p.category,p.name LIMIT 40');
+        $q->execute([(int)$company['id']]);
+    }catch(Throwable $e){return [];}
+    $images=[];$seen=[];
+    foreach($q as $row){
+        $img=company_product_front_image($row);$key=mb_strtolower((string)$row['name']); // je Artikel nur eine Farbe
+        if($img===''||isset($seen[$key]))continue;
+        $seen[$key]=true;$images[]=$img;
+        if(count($images)===3)break;
+    }
+    return count($images)>=2?$images:[];
 }
 
 /** Rückmeldung nach Registrierung bzw. Passwort-Aktion im selben Rahmen. */
@@ -1036,6 +1061,7 @@ function company_portal_overview(array $company,array $account): void {
         echo '<section class="cp-card cp-shop-card"><h2>'.e(t('overview.collection_title')).'</h2><p>'.e(t('overview.collection_text')).'</p><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte">'.e(t('overview.to_collection')).' '.yw_shop_icon('arrow').'</a></div></section>';
     }
     echo '</div>';
+    echo company_portal_collection_preview($company,$account);
 
     if($equipmentProfile){
         echo '<section class="cp-card"><h2>'.e(t('overview.target_title',['profile'=>$equipmentProfile['name']])).'</h2><p>'.e($equipmentProfile['description']?:t('overview.target_text')).'</p>';
@@ -1047,11 +1073,27 @@ function company_portal_overview(array $company,array $account): void {
     }
 }
 
+/** 10.16: Startseite zeigt die ersten Artikel der Kollektion mit Bild (Klick öffnet den Artikel). */
+function company_portal_collection_preview(array $company,array $account,int $max=4): string {
+    $groups=yw_shop_group_products(shop_company_products((int)$company['id'],$account));
+    if(!$groups)return '';
+    $motifs=yw_company_motifs_by_id((int)$company['id']);
+    $slug='/'.$company['slug'];
+    $html='<section class="cp-collection"><div class="cp-collection-head"><h2>'.e(t('overview.collection_title')).'</h2><a href="'.e($slug).'/produkte">'.e(t('overview.to_collection')).' '.yw_shop_icon('arrow').'</a></div><div class="cp-collection-grid">';
+    foreach(array_slice($groups,0,$max) as $g){
+        $p=$g[0];$name=company_product_display_name($p);
+        $views=yw_mockup_views($p,$motifs);
+        $html.='<a class="cp-collection-item" href="'.e($slug.'/produkte?artikel='.(int)$p['id']).'"><span class="cp-collection-visual">'.($views?yw_mockup_html([$views[0]],$name,false,'sp-card-mockup'):'<span class="sp-card-placeholder">'.yw_shop_icon('shirt').'</span>').'</span>';
+        $html.='<strong>'.e($name).'</strong>'.yw_shop_price_html(array_map(fn($v)=>product_price_breakdown($v,$company),$g)).'</a>';
+    }
+    return $html.'</div></section>';
+}
+
 function company_portal_products(array $company,array $account): void {
     $products=shop_company_products((int)$company['id'],$account);
     $slug=(string)$company['slug'];
 
-    echo '<div class="cp-welcome cp-welcome-products"><div><h1>'.e(t('products.title')).'</h1><p>'.e(t('products.intro')).'</p></div>'.yw_shop_budget_box($company,$account).'</div>';
+    echo '<div class="cp-section-head cp-products-head"><div><h1>'.e(t('products.title')).'</h1><p>'.e(t('products.intro')).'</p></div></div>';
 
     echo yw_batch_shop_notice($company); // 10.11: Sammelbestellung
 
@@ -1095,27 +1137,23 @@ function company_portal_products(array $company,array $account): void {
     $motifs=yw_company_motifs_by_id((int)$company['id']);
     $openId=(int)($_GET['artikel']??0);
 
-    echo '<div class="sp-tools">';
-    company_shop_categories($groups);
-    echo '<a class="sp-cart-btn" href="#auswahl">'.yw_shop_icon('bag').'<span>'.e(t('cart.selection')).' · <span data-selection-count>0</span></span></a></div>';
-
+    // 10.16: Kollektion links, Auswahl mit Budget und Summen rechts mitlaufend (schmale Bildschirme: darunter)
     echo '<form method="post" data-order-form>'.csrf_field().'<input type="hidden" name="action" value="order">';
+    echo '<div class="sp-layout"><div class="sp-main"><div class="sp-tools">';
+    company_shop_categories($groups);
+    echo '<a class="sp-cart-btn" href="#auswahl">'.yw_shop_icon('bag').'<span>'.e(t('cart.selection')).'</span><span class="sp-cart-btn-count" data-selection-count>0</span></a></div>';
     echo '<div class="sp-grid">';
     foreach($groups as $g)echo company_product_card($g,$company,$motifs,$slug);
-    echo '</div>';
-    foreach($groups as $g){
-        $ids=array_map(fn($v)=>(int)$v['id'],$g);
-        $open=$openId>0 && in_array($openId,$ids,true);
-        echo company_product_detail($g,$company,$motifs,$open?$openId:0,$open);
-    }
+    echo '</div></div>';
 
     $approval=(int)($company['approval_required']??1)===1;
     echo '<section class="sp-cart shop-order-panel" id="auswahl" tabindex="-1" aria-labelledby="auswahl-title" data-shipping-enabled="'.(shipping_enabled($company)?'1':'0').'" data-shipping-net="'.(int)($company['shipping_net_cents']??0).'" data-shipping-vat="'.e((string)($company['shipping_vat_rate']??19)).'" data-free-shipping="'.(int)($company['free_shipping_gross_cents']??0).'" data-shipping-payer="'.e((string)($company['shipping_payer']??'company')).'">';
-    echo '<div class="sp-cart-main"><h2 id="auswahl-title">'.e(t('cart.title')).'</h2>';
+    echo '<div class="sp-cart-main"><div class="sp-cart-head"><h2 id="auswahl-title">'.e(t('cart.title')).'</h2><span class="shop-selection-count">'.t('cart.count_selected',['n'=>'<strong data-selection-count>0</strong>']).'</span></div>';
+    echo yw_shop_budget_box($company,$account);
     echo '<p class="sp-cart-empty" data-cart-empty>'.e(t('cart.empty')).'</p><ul class="sp-cart-lines" data-cart-lines></ul>';
     echo '<label class="sp-note">'.e(t('cart.note')).' <small>'.e(t('common.optional')).'</small><textarea name="note" maxlength="500" placeholder="'.e(t('cart.note_placeholder')).'"></textarea></label>';
     echo yw_checkout_fields($company).'</div>';
-    echo '<div class="shop-submit-box"><div class="shop-selection-count">'.t('cart.count_selected',['n'=>'<strong data-selection-count>0</strong>']).'</div>'
+    echo '<div class="shop-submit-box">'
         .'<div class="shop-checkout-lines">'
         .'<div><span>'.e(t('cart.net')).'</span><strong data-summary-net>'.money(0).'</strong></div>'
         .'<div><span>'.e(t('cart.gross')).'</span><strong data-summary-gross>'.money(0).'</strong></div>'
@@ -1128,7 +1166,12 @@ function company_portal_products(array $company,array $account): void {
         .'<p class="shop-budget-warning" data-budget-warning role="alert" hidden>'.e(t('cart.over_budget')).'</p>'
         .'<button class="shop-submit" type="submit" disabled>'.e($approval?t('cart.submit_approval'):t('cart.submit')).'</button>'
         .'<p class="sp-rules">'.e($approval?t('cart.approval_note'):t('cart.direct_note')).'</p></div>';
-    echo '</section>';
+    echo '</section></div>';
+    foreach($groups as $g){
+        $ids=array_map(fn($v)=>(int)$v['id'],$g);
+        $open=$openId>0 && in_array($openId,$ids,true);
+        echo company_product_detail($g,$company,$motifs,$open?$openId:0,$open);
+    }
     echo '<div class="shop-mobile-cart" data-mobile-cart aria-hidden="true"><div><strong>'.t('cart.mobile_count',['n'=>'<span data-selection-count>0</span>']).'</strong><small>'.(company_employee_share_percent($company)>0||(string)($company['shipping_payer']??'company')==='employee'?e(t('price.your_share')).': <span data-summary-employee>'.money(0).'</span>':e(t('cart.mobile_company')).' · <span data-summary-total>'.money(0).'</span>').'</small></div><button type="button" data-scroll-checkout tabindex="-1">'.e(t('cart.to_selection')).'</button></div>';
     echo '<div class="sp-toast" data-shop-toast role="status" aria-live="polite"></div>';
     echo '</form>';
