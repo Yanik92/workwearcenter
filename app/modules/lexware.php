@@ -4,7 +4,8 @@ declare(strict_types=1);
 /*
  * 10.11: Anbindung an Lexware Office über die offizielle Public API (https://developers.lexware.io/docs/).
  *
- * - Authentifizierung: „Authorization: Bearer <API-Schlüssel>“ (config.php: lexware_api_key, leer = aus)
+ * - Authentifizierung: „Authorization: Bearer <API-Schlüssel>“ (10.16: unter System → Schnittstellen
+ *   verschlüsselt hinterlegt; ein Eintrag lexware_api_key in der config.php hat Vorrang; leer = aus)
  * - Basis-URL: https://api.lexware.io (config.php: lexware_api_base, z. B. für einen Testserver)
  * - Rate-Limit laut Doku: 2 Anfragen je Sekunde für alle Endpunkte zusammen, sonst HTTP 429.
  *   Wir senden höchstens eine Anfrage je 0,6 s (Puffer für Netzwerk-Jitter) und wiederholen 429
@@ -38,7 +39,11 @@ final class YwLexwareSendFailed extends DomainException {
 
 /* ---------- Konfiguration und Einstellungen ---------- */
 
-function yw_lexware_api_key(): string { return trim((string)(cfg('lexware_api_key')??'')); }
+function yw_lexware_api_key(): string {
+    $configured=trim((string)(cfg('lexware_api_key')??''));
+    if($configured!=='' || !function_exists('yw_int_secret'))return $configured;
+    return trim((string)yw_int_secret('lexware_key'));
+}
 function yw_lexware_enabled(): bool { return yw_lexware_api_key()!==''; }
 function yw_lexware_base(): string {
     $base=trim((string)(cfg('lexware_api_base')??''));
@@ -439,7 +444,7 @@ function yw_lexware_parts_ready(): bool {
 /** Firma kann Rechnungsentwürfe bekommen: Lexware-Kontakt verknüpft und API-Schlüssel hinterlegt. Rückgabe: Kontakt-ID. */
 function yw_lexware_check_ready(array $company): string {
     $contactId=(string)($company['lexware_contact_id']??'');
-    if(!yw_lexware_uuid_ok($contactId))throw new DomainException('Diese Firma ist noch nicht mit einem Lexware-Kontakt verknüpft. Bitte zuerst unter System → Lexware Office den Kontakt anlegen oder verknüpfen.');
+    if(!yw_lexware_uuid_ok($contactId))throw new DomainException('Diese Firma ist noch nicht mit einem Lexware-Kontakt verknüpft. Bitte zuerst unter Tagesgeschäft → Abrechnung den Kontakt anlegen oder verknüpfen.');
     if(!yw_lexware_enabled())throw new DomainException('Lexware Office ist nicht eingerichtet (lexware_api_key in der config.php).');
     return $contactId;
 }
@@ -557,7 +562,7 @@ function yw_lexware_send_document(int $docId,array $meta=[],bool $release=false)
             db()->prepare("UPDATE yw_lexware_documents SET status='failed',last_error=? WHERE id=? AND status='creating'")->execute([mb_substr($message,0,500),$docId]);
         }
         foreach($orderIds as $id)audit_log($uncertain?'lexware.invoice_uncertain':'lexware.invoice_failed','order',(int)$id,['company_id'=>$companyId,'kind'=>$kind,'period'=>$period,'document_id'=>$docId,'error'=>mb_substr($message,0,300)]);
-        throw new YwLexwareSendFailed($message.($uncertain?($kind==='order'?' Der Auftrag bleibt':' Die Aufträge dieses Entwurfs bleiben').' gesperrt, bis du unter System → Lexware Office die Beleg-ID nachträgst oder die Sperre aufhebst.':''),$uncertain,$stop);
+        throw new YwLexwareSendFailed($message.($uncertain?($kind==='order'?' Der Auftrag bleibt':' Die Aufträge dieses Entwurfs bleiben').' gesperrt, bis du unter Tagesgeschäft → Abrechnung die Beleg-ID nachträgst oder die Sperre aufhebst.':''),$uncertain,$stop);
     }
     db()->prepare("UPDATE yw_lexware_documents SET status='created',lexware_id=?,voucher_status='draft',last_error=NULL WHERE id=?")->execute([$lexId,$docId]);
     $doc=yw_lexware_refresh_document($docId,false);
@@ -778,7 +783,7 @@ function yw_lexware_order_card(array $o): string {
         $html.='<p>'.yw_lexware_doc_link($doc).'</p>'.yw_lexware_doc_actions($doc,'order:'.$orderId);
         return $html.'</section>';
     }
-    if(!yw_lexware_enabled())return $html.'<p class="muted">Nicht eingerichtet. Anleitung unter <a href="/admin?tab=lexware">System → Lexware Office</a>.</p></section>';
+    if(!yw_lexware_enabled())return $html.'<p class="muted">Nicht verbunden. Einrichten unter <a href="/admin?tab=schnittstellen#lexware">System → Schnittstellen</a>.</p></section>';
     if($o['status']!=='approved')return $html.'<p class="muted">Rechnungsentwürfe gibt es für freigegebene Aufträge.</p></section>';
     $q=db()->prepare('SELECT lexware_contact_id,lexware_customer_number FROM companies WHERE id=?');$q->execute([(int)$o['company_id']]);$c=$q->fetch()?:[];
     if(empty($c['lexware_contact_id']))return $html.'<p class="muted">Die Firma ist noch nicht mit einem Lexware-Kontakt verknüpft.</p><a class="btn small" href="/admin?tab=lexware&amp;company='.(int)$o['company_id'].'">Kontakt einrichten</a></section>';
@@ -810,16 +815,12 @@ function yw_lexware_customer_card(array $company): void {
     echo '</section>';
 }
 
-/** Admin-Seite System → Lexware Office. */
+/** Admin-Seite Tagesgeschäft → Abrechnung (Lexware Office). Die Verbindung selbst steht unter System → Schnittstellen. */
 function yw_lexware_admin_page(): void {
-    $enabled=yw_lexware_enabled();$base=yw_lexware_base();$settings=yw_lexware_settings();
+    $enabled=yw_lexware_enabled();$settings=yw_lexware_settings();
     $profile=json_decode(current_site_setting('lexware_profile_json',''),true);
-    echo '<section class="card"><div class="title-row"><div><h2>Verbindung</h2><p class="muted">Offizielle Lexware Public API · höchstens 2 Anfragen je Sekunde · Rechnungen werden nur als Entwurf angelegt.</p></div><span class="badge '.($enabled?'approved':'pending').'">'.($enabled?'API-Schlüssel hinterlegt':'Nicht eingerichtet').'</span></div>';
-    if(!yw_lexware_base_ok($base))echo '<div class="flash error">lexware_api_base ist ungültig. Erlaubt ist nur HTTPS (HTTP nur für einen lokalen Testserver).</div>';
-    echo '<p><strong>API-Adresse:</strong> '.e($base).($base!==YW_LEXWARE_DEFAULT_BASE?' <span class="badge pending">abweichend vom Standard</span>':'').'</p>';
-    if(!$enabled)echo '<p class="muted">Schlüssel in Lexware Office unter <a href="'.e(YW_LEXWARE_APP_URL.'/addons/public-api').'" target="_blank" rel="noopener noreferrer">Erweiterungen → Public API</a> erzeugen und in der config.php als <code>lexware_api_key</code> eintragen. Details: START-HIER-V10.txt.</p>';
-    if(is_array($profile))echo '<p><strong>Verbunden mit:</strong> '.e((string)($profile['companyName']??'')).' · Steuerart '.e((string)($profile['taxType']??'')).((!empty($profile['smallBusiness']))?' · <span class="badge rejected">Kleinunternehmer – Rechnungen mit Steuer passen nicht</span>':'').'<br><span class="muted">Geprüft am '.e(date('d.m.Y H:i',(int)strtotime(current_site_setting('lexware_profile_checked_at','now')))).'</span></p>';
-    echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="lexware_test"><input type="hidden" name="return" value="lexware"><button class="btn primary" '.($enabled?'':'disabled').'>Verbindung testen</button></form></section>';
+    if(!$enabled)echo '<div class="flash info"><strong>Lexware Office ist noch nicht verbunden.</strong> Bis dahin Rechnungen von Hand in Lexware erstellen. Verbinden: <a href="/admin?tab=schnittstellen#lexware">System → Schnittstellen → Lexware Office</a> (API-Schlüssel einfügen, fertig).</div>';
+    else echo '<div class="flash success">Verbunden mit Lexware Office'.(is_array($profile)&&!empty($profile['companyName'])?': <strong>'.e((string)$profile['companyName']).'</strong>':'').(is_array($profile)&&!empty($profile['smallBusiness'])?' · <span class="badge rejected">Kleinunternehmer – Rechnungen mit Steuer passen nicht</span>':'').' · <a href="/admin?tab=schnittstellen#lexware">Verbindung</a></div>';
 
     echo '<section class="card"><h2>Einstellungen für Rechnungsentwürfe</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="lexware_settings"><input type="hidden" name="return" value="lexware">'
         .'<div class="grid2"><label>Belegtitel <small>höchstens 25 Zeichen</small><input name="title" maxlength="25" value="'.e($settings['title']).'"></label><label>Einheit der Positionen<input name="unit" maxlength="40" value="'.e($settings['unit']).'"></label></div>'
@@ -953,6 +954,7 @@ function yw_lexware_admin_company(array $company,array $settings): void {
 
 function yw_lexware_return_url(string $return): string {
     if(preg_match('/^order:(\d+)$/',$return,$m))return yw_order_url((int)$m[1]).'#lexware';
+    if($return==='schnittstellen')return '/admin?tab=schnittstellen#lexware';
     if(preg_match('/^company:(\d+)$/',$return,$m))return '/admin?tab=lexware&company='.(int)$m[1];
     if(preg_match('/^company:(\d+):(\d{4}-\d{2})$/D',$return,$m))return '/admin?tab=lexware&company='.(int)$m[1].'&monat='.yw_payroll_month($m[2]);
     return '/admin?tab=lexware';
@@ -977,6 +979,15 @@ function yw_lexware_flash_result(int $companyId,string $month,array $result,int 
     flash($failed || ($result['pending'] && !$auto) || $tooBig?'error':'success',$text);
 }
 
+/** Fragt das Lexware-Profil ab und merkt sich Firma und Steuerart. Wirft YwLexwareException bei Fehlern. */
+function yw_lexware_test_connection(): array {
+    $p=yw_lexware_request('GET','/v1/profile');
+    set_site_setting('lexware_profile_json',json_encode(['companyName'=>(string)($p['companyName']??''),'organizationId'=>(string)($p['organizationId']??''),'taxType'=>(string)($p['taxType']??''),'smallBusiness'=>!empty($p['smallBusiness']),'businessFeatures'=>array_values(array_filter((array)($p['businessFeatures']??[]),'is_string'))],JSON_UNESCAPED_UNICODE));
+    set_site_setting('lexware_profile_checked_at',date('Y-m-d H:i:s'));
+    audit_log('lexware.connection_tested','system',null,['company'=>(string)($p['companyName']??''),'tax_type'=>(string)($p['taxType']??'')]);
+    return $p;
+}
+
 function yw_lexware_admin_action(string $action): never {
     require_admin();
     $return=yw_lexware_return_url((string)($_POST['return']??''));
@@ -984,10 +995,7 @@ function yw_lexware_admin_action(string $action): never {
         $companyId=(int)($_POST['company_id']??0);
         switch($action){
             case 'lexware_test':
-                $p=yw_lexware_request('GET','/v1/profile');
-                set_site_setting('lexware_profile_json',json_encode(['companyName'=>(string)($p['companyName']??''),'organizationId'=>(string)($p['organizationId']??''),'taxType'=>(string)($p['taxType']??''),'smallBusiness'=>!empty($p['smallBusiness']),'businessFeatures'=>array_values(array_filter((array)($p['businessFeatures']??[]),'is_string'))],JSON_UNESCAPED_UNICODE));
-                set_site_setting('lexware_profile_checked_at',date('Y-m-d H:i:s'));
-                audit_log('lexware.connection_tested','system',null,['company'=>(string)($p['companyName']??''),'tax_type'=>(string)($p['taxType']??'')]);
+                $p=yw_lexware_test_connection();
                 flash('success','Verbindung zu Lexware Office steht: '.(string)($p['companyName']??'').(($p['taxType']??'net')!=='net'?' (Hinweis: Steuerart in Lexware ist „'.(string)$p['taxType'].'“, die Entwürfe werden trotzdem mit Nettopreisen angelegt).':'.'));
                 break;
             case 'lexware_settings':
@@ -1112,11 +1120,4 @@ function yw_lexware_admin_action(string $action): never {
         flash('error',$message);
     }
     redirect($return);
-}
-
-/** Zeile für die Betriebsprüfung im Systemstatus. */
-function yw_lexware_status_line(): array {
-    if(!yw_lexware_enabled())return ['! Lexware Office manuell','Noch kein API-Schlüssel: Rechnungen werden in Lexware von Hand erstellt (System → Lexware Office).',false];
-    $checked=current_site_setting('lexware_profile_checked_at','');
-    return [($checked!==''?'✓':'!').' Lexware Office verbunden','Rechnungsentwürfe aus freigegebenen Aufträgen'.($checked!==''?' · zuletzt geprüft '.date('d.m.Y',(int)strtotime($checked)):' · Verbindung noch nicht getestet'),$checked!==''];
 }

@@ -9,12 +9,12 @@ function yw_admin_action(): void {
     if($action==='yw_mail_process'){
         try{db()->exec("UPDATE yw_mail_queue SET status='pending',attempts=0,available_at=NOW() WHERE status='failed' ORDER BY id LIMIT 20");yw_process_mail_queue(20);audit_log('mail.queue_processed','system',null);flash('success','Bis zu 20 fällige E-Mails wurden verarbeitet.');}
         catch(Throwable $e){error_log('Mail queue action: '.$e->getMessage());flash('error','Mailwarteschlange konnte nicht verarbeitet werden.');}
-        redirect('/admin?tab=system');
+        redirect('/admin?tab=schnittstellen#mail');
     }
     if($action==='yw_mail_test'){
         try{$q=db()->prepare('SELECT email FROM admins WHERE id=? LIMIT 1');$q->execute([(int)$_SESSION['admin_id']]);$email=(string)$q->fetchColumn();$ok=$email!=='' && send_system_mail($email,'WorkwearCenter Testmail',"Hallo,\n\nder professionelle Mailversand von WorkwearCenter funktioniert.\n\nSystem: Version ".app_version()."\nStatus: Versand erfolgreich\n\nAnmeldung: ".workwearcenter_url('admin'),true);audit_log('mail.test_sent','system',null,['success'=>$ok]);flash($ok?'success':'error',$ok?'Testmail wurde an dein Administratorkonto gesendet.':'Testmail konnte nicht versendet werden. Bitte SMTP-Konfiguration und Mailwarteschlange prüfen.');}
         catch(Throwable $e){error_log('Test mail action: '.$e->getMessage());flash('error','Testmail konnte nicht versendet werden. Bitte SMTP-Konfiguration und Mailwarteschlange prüfen.');}
-        redirect('/admin?tab=system');
+        redirect('/admin?tab=schnittstellen#mail');
     }
     $productionStatusChanged=false;$anchor='';$message='Gespeichert.'; // 10.15: Sprungziel und Rückmeldung je Aktion
     try {
@@ -332,23 +332,17 @@ function yw_private_exposure_check(bool $force=false): array {
 }
 
 function yw_system(): void {
+    // 10.16: Nur noch Betriebsprüfung, Datensicherung und Aufbewahrung. E-Mail und alle Verbindungen zu anderen
+    // Systemen stehen unter System → Schnittstellen; jede offene Prüfung verlinkt dorthin, wo sie sich beheben lässt.
     $age=yw_backup_age_days();
-    echo '<section class="card"><div class="title-row"><div><h2>Datensicherung</h2><p class="muted">Lädt Datenbank und hochgeladene Dateien als ZIP herunter. Bitte wöchentlich und vor jedem Update, und die Datei außerhalb des Webspace aufbewahren.</p></div><a class="btn primary" href="/admin/sicherung">Sicherung herunterladen</a></div><p>'.($age===null?'Noch keine Sicherung heruntergeladen.':'Letzte Sicherung: vor '.$age.' Tag'.($age===1?'':'en').' ('.e(current_site_setting('last_backup_at','')).').').'</p></section>';
-    echo yw_retention_card(); // 10.15: Aufbewahrungsfristen und letzte automatische Bereinigung
-    $mail=['pending'=>0,'failed'=>0];$failedMails=[];
-    try{
-        foreach(db()->query("SELECT status,COUNT(*) amount FROM yw_mail_queue WHERE status IN ('pending','failed') GROUP BY status") as $r)$mail[$r['status']]=(int)$r['amount'];
-        $failedMails=db()->query("SELECT id,to_email,subject,attempts,last_error,created_at FROM yw_mail_queue WHERE status='failed' ORDER BY id DESC LIMIT 10")->fetchAll();
-    }catch(Throwable $e){}
+    $mailFailed=0;try{$mailFailed=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
     $missingSupplierData=null;
     $duplicateSkus=null;
     try{
         $missingSupplierData=(int)db()->query("SELECT COUNT(*) FROM products WHERE active=1 AND (TRIM(COALESCE(sku,''))='' OR TRIM(COALESCE(supplier_name,''))='')")->fetchColumn();
         $duplicateSkus=(int)db()->query("SELECT COUNT(*) FROM (SELECT LOWER(TRIM(sku)) normalized_sku FROM products WHERE TRIM(COALESCE(sku,''))<>'' GROUP BY LOWER(TRIM(sku)) HAVING COUNT(*)>1) duplicates")->fetchColumn();
     }catch(Throwable $e){}
-    $transport=(string)(cfg('mail_transport')?:'mail');
     $mailIssues=yw_mail_config_issues();
-    $mailConfigured=$mailIssues===[];
     [$exposureOk,$exposureHint]=yw_private_exposure_check(isset($_GET['pruefen']));
     $cronLast=current_site_setting('cron_last_run','');
     $cronOk=$cronLast!==''&&strtotime($cronLast)>time()-3600;
@@ -359,33 +353,34 @@ function yw_system(): void {
     $integrity=yw_file_integrity();
     $outdated=$integrity?array_merge($integrity['stale'],$integrity['missing']):[];
     $integrityHint=$integrity===null?'Dateiliste app/data/dateien.json fehlt – Paket vollständig hochladen':'Nicht aktuell oder fehlend: '.implode(', ',array_slice($outdated,0,10)).(count($outdated)>10?' … (+'.(count($outdated)-10).')':'').' – per FTP erneut hochladen, vorhandene Dateien immer überschreiben';
+    $handover=yw_handover_config();$handoverIssues=yw_handover_config_issues();
+    $handoverFailed=0;try{$handoverFailed=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
+    // [Bezeichnung, erfüllt, Hinweis, Link zum Beheben, Linktext]
     $checks=[
-        ['Interne Dateien gesperrt',$exposureOk===true,$exposureHint.' (Erneut prüfen: Systemstatus mit ?pruefen=1 aufrufen)'],
-        ['Cronjob läuft',$cronOk,$cronLast===''?'cron.php ist noch nie gelaufen – beim Hoster alle 5 Minuten einrichten':'Letzter Lauf '.date('d.m.Y H:i',(int)strtotime($cronLast)).' – Cronjob beim Hoster prüfen'],
-        ['Datensicherung aktuell',$age!==null&&$age<=7,'Sicherung herunterladen (älter als 7 Tage oder noch nie)'],
-        ['Zwei-Faktor für alle Admins',$adminsWithout2fa===0,$adminsWithout2fa===null?'Datenbankschema aktualisieren':$adminsWithout2fa.' aktive Administrator(en) ohne Zwei-Faktor-Anmeldung'],
-        ['Impressum vollständig',$imprintMissing===[],'Unter Website → Inhalte ergänzen: '.implode(', ',$imprintMissing)],
-        ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint],
-        ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen'],
-        ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren'],
-        ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren'],
-        ['Mailtransport',$mailConfigured && $mail['failed']===0,$mailIssues?implode(' · ',$mailIssues):'Fehlgeschlagene E-Mails prüfen'],
-        ['Datenschutztext',mb_strlen(strip_tags(current_site_setting('privacy_body','')))>250,'Geprüften Datenschutztext unter Inhalte hinterlegen'],
-        ['Wartungsmodus aus',!maintenance_enabled(),'Wartungsmodus unter Design deaktivieren'],
-        ['Beschaffungsdaten',$missingSupplierData===0,$missingSupplierData===null?'Datenbankschema aktualisieren':$missingSupplierData.' aktive Produkte ohne Lieferant oder Artikelnummer ergänzen'],
-        ['Übergabe an Auftragsverwaltung',yw_handover_config()['mode']!=='off' && !yw_handover_config_issues(),yw_handover_config()['mode']==='off'?'Noch nicht verbunden – Aufträge werden gesammelt (siehe „Übergabe“)':implode(' · ',yw_handover_config_issues())],
-        ['Eindeutige Artikelnummern',$duplicateSkus===0,$duplicateSkus===null?'Datenbankschema aktualisieren':$duplicateSkus.' mehrfach vergebene Artikelnummern im Produktstamm bereinigen'],
+        ['Interne Dateien gesperrt',$exposureOk===true,(string)$exposureHint,'/admin?tab=system&pruefen=1','Jetzt prüfen'],
+        ['Cronjob läuft',$cronOk,$cronLast===''?'cron.php ist noch nie gelaufen – beim Hoster alle 5 Minuten einrichten (Anleitung: START-HIER-V10.txt)':'Letzter Lauf '.date('d.m.Y H:i',(int)strtotime($cronLast)).' – Cronjob beim Hoster prüfen','',''],
+        ['Datensicherung aktuell',$age!==null&&$age<=7,'Älter als 7 Tage oder noch nie heruntergeladen','/admin/sicherung','Jetzt sichern'],
+        ['Zwei-Faktor für alle Admins',$adminsWithout2fa===0,$adminsWithout2fa===null?'Datenbankschema aktualisieren':$adminsWithout2fa.' aktive Administrator(en) ohne Zwei-Faktor-Anmeldung','/admin?tab=account','Einrichten'],
+        ['Übergabe an die Auftragszentrale',$handover['mode']!=='off' && !$handoverIssues && $handoverFailed===0,$handover['mode']==='off'?'Noch nicht eingeschaltet – Aufträge werden gesammelt':($handoverIssues?implode(' · ',$handoverIssues):$handoverFailed.' Übergabe(n) fehlgeschlagen'),'/admin?tab=schnittstellen#auftragszentrale','Öffnen'],
+        ['E-Mail-Versand',$mailIssues===[] && $mailFailed===0,$mailIssues?implode(' · ',$mailIssues):$mailFailed.' E-Mail(s) fehlgeschlagen','/admin?tab=schnittstellen#mail','Öffnen'],
+        ['Impressum vollständig',$imprintMissing===[],'Fehlt: '.implode(', ',$imprintMissing),'/admin?tab=content','Ergänzen'],
+        ['Datenschutztext',mb_strlen(strip_tags(current_site_setting('privacy_body','')))>250,'Geprüften Datenschutztext hinterlegen','/admin?tab=content','Ergänzen'],
+        ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint,'',''],
+        ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen','/update.php','Update-Assistent'],
+        ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren','',''],
+        ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren','',''],
+        ['Wartungsmodus aus',!maintenance_enabled(),'Die Website zeigt Besuchern gerade die Wartungsseite','/admin?tab=design','Ausschalten'],
+        ['Beschaffungsdaten',$missingSupplierData===0,$missingSupplierData===null?'Datenbankschema aktualisieren':$missingSupplierData.' aktive Produkte ohne Lieferant oder Artikelnummer','/admin?tab=products','Produkte'],
+        ['Eindeutige Artikelnummern',$duplicateSkus===0,$duplicateSkus===null?'Datenbankschema aktualisieren':$duplicateSkus.' mehrfach vergebene Artikelnummern im Produktstamm','/admin?tab=products','Produkte'],
     ];
     $ready=count(array_filter($checks,fn($c)=>$c[1]));
-    echo '<section class="card"><div class="title-row"><div><h2>Betriebsprüfung · Version '.e(app_version()).'</h2><p class="muted">'.$ready.' von '.count($checks).' Betriebsprüfungen bestanden.</p></div><span class="badge '.($ready===count($checks)?'approved':'pending').'">'.($ready===count($checks)?'Betriebsbereit':'Prüfung nötig').'</span></div><div class="release-checks">';
-    foreach($checks as [$label,$ok,$hint]) echo '<div class="release-check '.($ok?'ok':'warn').'"><strong>'.($ok?'✓':'!').' '.e($label).'</strong><span>'.e($ok?'Erfüllt':$hint).'</span></div>';
-    echo '</div><hr><p><strong>Domain:</strong> workwearcenter.de · <strong>PHP:</strong> '.e(PHP_VERSION).' · <strong>Abrechnung:</strong> Lexware Office '.(yw_lexware_enabled()?'per API (Rechnungsentwürfe)':'derzeit manuell').'</p><p><strong>Mailtransport:</strong> '.e(strtoupper($transport)).' · <strong>Warteschlange:</strong> '.$mail['pending'].' wartend · '.$mail['failed'].' fehlgeschlagen</p><p class="muted">Für einen zuverlässigen Versand kann der Hoster <code>cron.php</code> alle fünf Minuten per PHP-CLI ausführen. Der normale Seitenaufruf verarbeitet weiterhin kleine Mengen als Rückfallebene.</p><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="yw_mail_test"><button class="btn primary">Testmail senden</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="yw_mail_process"><button class="btn">Fehlgeschlagene E-Mails erneut senden</button></form><a class="btn" href="/update.php">Update-Assistent</a></div>';
-    if($failedMails){
-        echo '<hr><h3>Letzte fehlgeschlagene E-Mails</h3><div class="table-wrap"><table class="table"><thead><tr><th>Empfänger</th><th>Betreff</th><th>Versuche</th><th>Fehler</th></tr></thead><tbody>';
-        foreach($failedMails as $failed) echo '<tr><td>'.e($failed['to_email']).'</td><td>'.e($failed['subject']).'</td><td>'.(int)$failed['attempts'].'</td><td>'.e($failed['last_error']?:'Keine Angabe').'</td></tr>';
-        echo '</tbody></table></div>';
-    }
-    echo '<hr><h3>Schnittstellenstatus</h3><div class="release-checks"><div class="release-check ok"><strong>✓ Beschaffungsexport</strong><span>L-Shop-relevante Artikelnummern und Mengen stehen als CSV bereit.</span></div><div class="release-check warn"><strong>! L-Shop-Automatik nicht aktiv</strong><span>Erst nach geprüfter API-Dokumentation und Zugangsdaten freischalten; es wird nichts automatisch bestellt.</span></div>'.(static function(): string {[$l,$h,$ok]=yw_lexware_status_line();return '<div class="release-check '.($ok?'ok':'warn').'"><strong>'.e($l).'</strong><span>'.e($h).'</span></div>';})().'<div class="release-check ok"><strong>✓ Keine Textillagerpflicht</strong><span>Beschaffung bleibt auftragsbezogen; nur Veredelungsmotive können als Bestand geprüft werden.</span></div></div></section>';
+    // Offene Punkte zuerst, damit nichts zwischen den erfüllten untergeht.
+    usort($checks,fn($a,$b)=>(int)$a[1]<=>(int)$b[1]);
+    echo '<section class="card"><div class="title-row"><div><h2>Betriebsprüfung · Version '.e(app_version()).'</h2><p class="muted">'.$ready.' von '.count($checks).' Prüfungen bestanden · PHP '.e(PHP_VERSION).'</p></div><span class="badge '.($ready===count($checks)?'approved':'pending').'">'.($ready===count($checks)?'Betriebsbereit':'Prüfung nötig').'</span></div><div class="release-checks">';
+    foreach($checks as [$label,$ok,$hint,$href,$linkText]) echo '<div class="release-check '.($ok?'ok':'warn').'"><strong>'.($ok?'✓':'!').' '.e($label).'</strong><span>'.e($ok?'Erfüllt':$hint).'</span>'.(!$ok&&$href!==''?'<a class="btn small" href="'.e($href).'">'.e($linkText).'</a>':'').'</div>';
+    echo '</div></section>';
+    echo '<section class="card"><div class="title-row"><div><h2>Datensicherung</h2><p class="muted">Lädt Datenbank und hochgeladene Dateien als ZIP herunter. Bitte wöchentlich und vor jedem Update, und die Datei außerhalb des Webspace aufbewahren. Zugangsdaten der Schnittstellen liegen darin nur verschlüsselt, der Schlüssel bleibt auf dem Server – nach einem Serverumzug bitte unter Schnittstellen neu eintragen.</p></div><a class="btn primary" href="/admin/sicherung">Sicherung herunterladen</a></div><p>'.($age===null?'Noch keine Sicherung heruntergeladen.':'Letzte Sicherung: vor '.$age.' Tag'.($age===1?'':'en').' ('.e(current_site_setting('last_backup_at','')).').').'</p><div class="actions"><a class="btn" href="/update.php">Update-Assistent</a></div></section>';
+    echo yw_retention_card(); // 10.15: Aufbewahrungsfristen und letzte automatische Bereinigung
 }
 
 function export_orders_csv(): void {

@@ -24,18 +24,35 @@ function yw_order_number(int $orderId): string {
 }
 
 function yw_handover_config(): array {
+    // Je Anfrage einmal lesen (Verwaltungswerte kommen aus der Datenbank); geänderte config-Werte lesen neu.
+    $sig=md5(serialize([cfg('handover_mode'),cfg('handover_format'),cfg('handover_url'),cfg('handover_secret'),cfg('handover_api_token')]));
+    if(($GLOBALS['yw_handover_config']['sig']??null)===$sig)return $GLOBALS['yw_handover_config'];
     $mode=strtolower(trim((string)(cfg('handover_mode')?:'off')));
-    if(!in_array($mode,['off','push','pull','both'],true))$mode='off';
-    return [
-        'mode'=>$mode,
-        'url'=>trim((string)(cfg('handover_url')?:'')),
-        'secret'=>(string)(cfg('handover_secret')?:''),
-        'api_token'=>(string)(cfg('handover_api_token')?:''),
-        // 'workwearcenter' = eigenes Schema v1 (X-WWC-*), 'auftragszentrale' = Protokoll der
-        // Yanik Auftragszentrale (channel.php, X-Yanik-*, Ereignis order.upsert)
-        'format'=>strtolower(trim((string)(cfg('handover_format')?:'workwearcenter')))==='auftragszentrale'?'auftragszentrale':'workwearcenter',
+    // 'workwearcenter' = eigenes Schema v1 (X-WWC-*), 'auftragszentrale' = Protokoll der
+    // Yanik Auftragszentrale (channel.php, X-Yanik-*, Ereignis order.upsert)
+    $configuredFormat=strtolower(trim((string)(cfg('handover_format')?:'')));
+    if(in_array($mode,['push','pull','both'],true)){
+        $format=$configuredFormat==='auftragszentrale'?'auftragszentrale':'workwearcenter'; // wie bisher: ohne Angabe Schema v1
+        // Fest in der config.php eingetragen: gilt unverändert (Admin zeigt die Werte nur an).
+        return $GLOBALS['yw_handover_config']=[
+            'sig'=>$sig,'mode'=>$mode,'url'=>trim((string)(cfg('handover_url')?:'')),'secret'=>(string)(cfg('handover_secret')?:''),
+            'api_token'=>(string)(cfg('handover_api_token')?:''),'format'=>$format,'source'=>'config','secret_broken'=>false,
+        ];
+    }
+    // 10.16: Einrichtung in der Verwaltung (System → Schnittstellen). Nur Senden an die Auftragszentrale;
+    // Abholen läuft über einen API-Zugang (System → Schnittstellen → Zugänge für andere Systeme).
+    $secret=function_exists('yw_int_secret')?yw_int_secret('az_secret'):'';
+    $url=trim(current_site_setting('az_url',''));
+    return $GLOBALS['yw_handover_config']=[
+        'sig'=>$sig,'mode'=>current_site_setting('az_enabled','0')==='1'?'push':'off',
+        'url'=>$url!==''?$url:trim((string)(cfg('handover_url')?:'')),
+        'secret'=>($secret!==null&&$secret!=='')?$secret:(string)(cfg('handover_secret')?:''),
+        'api_token'=>'','format'=>$configuredFormat==='workwearcenter'?'workwearcenter':'auftragszentrale','source'=>'admin','secret_broken'=>$secret===null,
     ];
 }
+
+/** Nach dem Speichern in der Verwaltung neu lesen. */
+function yw_handover_config_reset(): void { unset($GLOBALS['yw_handover_config']); }
 
 function yw_handover_push_enabled(): bool { return in_array(yw_handover_config()['mode'],['push','both'],true); }
 function yw_handover_pull_enabled(): bool { return in_array(yw_handover_config()['mode'],['pull','both'],true); }
@@ -48,9 +65,10 @@ function yw_handover_config_issues(): array {
         $parts=parse_url($c['url'])?:[];
         $scheme=strtolower((string)($parts['scheme']??''));$host=strtolower((string)($parts['host']??''));
         $local=in_array($host,['localhost','127.0.0.1','::1'],true);
-        if($c['url']===''||!filter_var($c['url'],FILTER_VALIDATE_URL))$issues[]='handover_url fehlt oder ist keine gültige Adresse';
-        elseif($scheme!=='https' && !($scheme==='http' && $local))$issues[]='handover_url muss mit https:// beginnen (http nur für localhost)';
-        if(strlen($c['secret'])<32)$issues[]='handover_secret muss mindestens 32 Zeichen lang sein';
+        $admin=($c['source']??'config')==='admin';
+        if($c['url']===''||!filter_var($c['url'],FILTER_VALIDATE_URL))$issues[]=$admin?'Adresse der Auftragszentrale fehlt':'handover_url fehlt oder ist keine gültige Adresse';
+        elseif($scheme!=='https' && !($scheme==='http' && $local))$issues[]=$admin?'Adresse muss mit https:// beginnen':'handover_url muss mit https:// beginnen (http nur für localhost)';
+        if(strlen($c['secret'])<32)$issues[]=$admin?(!empty($c['secret_broken'])?'Gespeicherter Schlüssel nicht mehr lesbar – bitte neu eintragen':'Schlüssel aus der Auftragszentrale fehlt'):'handover_secret muss mindestens 32 Zeichen lang sein';
     }
     if(in_array($c['mode'],['pull','both'],true) && strlen($c['api_token'])<32)$issues[]='handover_api_token muss mindestens 32 Zeichen lang sein';
     return $issues;
@@ -360,7 +378,7 @@ function yw_handover_deliver(int $id): bool {
 function yw_handover_alert_admins(int $orderId,string $message): void {
     try{
         foreach(db()->query('SELECT email FROM admins WHERE active=1') as $admin){
-            send_system_mail((string)$admin['email'],'Übergabe fehlgeschlagen: '.yw_order_number($orderId),"Die Bestellung ".yw_order_number($orderId)." konnte nach ".YW_HANDOVER_MAX_ATTEMPTS." Versuchen nicht an die Auftragsverwaltung übergeben werden.\n\nLetzter Fehler: ".$message."\n\nIm Admin unter „Übergabe“ kannst du den Auftrag nach der Fehlerbehebung erneut senden.\n\nÜbergabe öffnen: ".workwearcenter_url('admin?tab=handover'));
+            send_system_mail((string)$admin['email'],'Übergabe fehlgeschlagen: '.yw_order_number($orderId),"Die Bestellung ".yw_order_number($orderId)." konnte nach ".YW_HANDOVER_MAX_ATTEMPTS." Versuchen nicht an die Auftragsverwaltung übergeben werden.\n\nLetzter Fehler: ".$message."\n\nIm Admin unter System → Schnittstellen kannst du den Auftrag nach der Fehlerbehebung erneut senden.\n\nSchnittstellen öffnen: ".workwearcenter_url('admin?tab=schnittstellen'));
         }
     }catch(Throwable $e){error_log('Handover alert: '.$e->getMessage());}
 }
@@ -396,7 +414,7 @@ function yw_api_json(int $status,array $data): never {
 }
 
 function yw_api_authenticate(): void {
-    // Ab 10.8: API-Schlüssel (Admin → System → API-Zugänge) gelten zusätzlich zum alten handover_api_token.
+    // Ab 10.8: API-Schlüssel (Admin → System → Schnittstellen → Zugänge für andere Systeme) gelten zusätzlich zum alten handover_api_token.
     if(yw_api_key_current()!==null){yw_api_require_scope('orders:write');return;}
     $c=yw_handover_config();
     if(!yw_handover_pull_enabled() || strlen($c['api_token'])<32)yw_api_json(404,['error'=>'not_enabled','message'=>'Die Abruf-Schnittstelle ist nicht aktiviert.']);
@@ -522,46 +540,57 @@ function yw_admin_handover_action(string $action): never {
             audit_log('handover.backfill','handover',null,['count'=>$count]);
             flash('success',$count.' ältere freigegebene Aufträge wurden für die Übergabe vorbereitet.');
         }elseif($action==='handover_test'){
-            if(!yw_handover_push_enabled())throw new RuntimeException('Der Testversand ist nur im Modus „push“ oder „both“ möglich.');
-            $payload=['schema'=>YW_HANDOVER_SCHEMA,'event'=>'test','delivery_id'=>'test-'.bin2hex(random_bytes(8)),'generated_at'=>(new DateTimeImmutable())->format(DATE_ATOM),'source'=>['system'=>'WorkwearCenter','version'=>app_version()],'message'=>'Testübertragung – bitte nicht als Auftrag anlegen.'];
-            $json=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-            [$status,$response,$error]=yw_handover_send('test',$payload['delivery_id'],$json);
-            audit_log('handover.test','handover',null,['http_status'=>$status]);
-            if($status>=200&&$status<300)flash('success','Testübertragung erfolgreich (HTTP '.$status.'). Die Auftragsverwaltung ist erreichbar und hat geantwortet.');
-            else flash('error','Testübertragung fehlgeschlagen: '.($error!==''?$error:'HTTP '.$status.' '.mb_substr(strip_tags($response),0,200)));
+            if(!yw_handover_push_enabled())throw new RuntimeException('Die Übergabe ist ausgeschaltet. Zuerst einschalten und speichern.');
+            [$ok,$message]=yw_handover_ping();
+            flash($ok?'success':'error',$ok?'Verbindung steht: '.$message:'Verbindung fehlgeschlagen: '.$message);
         }else throw new RuntimeException('Aktion unbekannt.');
     }catch(Throwable $e){
         if(!$e instanceof RuntimeException)error_log('Handover admin: '.$e->getMessage());
         flash('error',$e instanceof RuntimeException?$e->getMessage():'Aktion fehlgeschlagen.');
     }
-    redirect('/admin?tab=handover');
+    redirect('/admin?tab=schnittstellen#auftragszentrale');
 }
 
 function yw_admin_handover(): void {
-    $c=yw_handover_config();$issues=yw_handover_config_issues();
-    $counts=['pending'=>0,'sending'=>0,'delivered'=>0,'acknowledged'=>0,'failed'=>0];
+    $c=yw_handover_config();$issues=yw_handover_config_issues();$fromConfig=$c['source']==='config';
+    $counts=['pending'=>0,'sending'=>0,'delivered'=>0,'acknowledged'=>0,'failed'=>0,'manual'=>0];
     try{foreach(db()->query('SELECT status,COUNT(*) n FROM yw_handover GROUP BY status') as $r)$counts[(string)$r['status']]=(int)$r['n'];}catch(Throwable $e){}
     $missing=yw_handover_missing_count();
-    $modeLabels=['off'=>'Ausgeschaltet – Aufträge werden gesammelt','push'=>'Senden (Push)','pull'=>'Abholen (Pull-API)','both'=>'Senden und Abholen'];
     // Wie MAX(COALESCE(acknowledged_at,delivered_at)), aber über den Index (acknowledged_at,delivered_at) statt aller Übergaben.
     $lastOk=null;try{$lastOk=db()->query("SELECT GREATEST(COALESCE(a,d),COALESCE(d,a)) FROM (SELECT (SELECT MAX(acknowledged_at) FROM yw_handover) a,(SELECT MAX(delivered_at) FROM yw_handover WHERE acknowledged_at IS NULL) d) x")->fetchColumn();}catch(Throwable $e){}
+    $lastStatus=null;try{$lastStatus=db()->query("SELECT MAX(created_at) FROM audit_log WHERE action IN ('order.status_from_auftragszentrale','order.status_from_api')")->fetchColumn();}catch(Throwable $e){}
+    $badge=$c['mode']==='off'?['pending','Aus – Aufträge werden gesammelt']:($issues?['rejected','Einstellung prüfen']:($counts['failed']?['rejected',$counts['failed'].' fehlgeschlagen']:['approved','Aktiv']));
 
-    echo '<section class="card"><div class="title-row"><div><h2>Verbindung zur Auftragsverwaltung</h2><p class="muted">Jeder freigegebene Auftrag wird automatisch als vollständiger Datensatz an deine Auftragsverwaltung übergeben.</p></div><span class="badge '.($c['mode']==='off'?'pending':($issues?'rejected':'approved')).'">'.($c['mode']==='off'?'Nicht verbunden':($issues?'Konfiguration prüfen':'Aktiv')).'</span></div>';
+    echo '<section class="card" id="auftragszentrale"><div class="title-row"><div><h2>Auftragszentrale</h2><p class="muted">Jeder freigegebene Auftrag geht automatisch an die Yanik Auftragszentrale. Produktionsstand und Sendungsnummer kommen von dort zurück, die Mitarbeitenden werden benachrichtigt.</p></div><span class="badge '.$badge[0].'">'.e($badge[1]).'</span></div>';
     echo '<div class="release-checks">';
-    echo '<div class="release-check '.($c['mode']==='off'?'warn':'ok').'"><strong>Modus</strong><span>'.e($modeLabels[$c['mode']]).'</span></div>';
-    if(yw_handover_push_enabled()){$host=(string)(parse_url($c['url'],PHP_URL_HOST)?:'–');echo '<div class="release-check '.($issues?'warn':'ok').'"><strong>Ziel</strong><span>'.e($host).' · Signatur '.(strlen($c['secret'])>=32?'eingerichtet':'fehlt').'</span></div>';}
-    if(yw_handover_pull_enabled())echo '<div class="release-check '.(strlen($c['api_token'])>=32?'ok':'warn').'"><strong>Abruf-Adresse</strong><span>'.e(workwearcenter_url('api/v1/auftraege')).' · Schlüssel '.(strlen($c['api_token'])>=32?'eingerichtet':'fehlt').'</span></div>';
+    if(yw_handover_push_enabled()){$host=(string)(parse_url($c['url'],PHP_URL_HOST)?:'–');echo '<div class="release-check '.($issues?'warn':'ok').'"><strong>Senden an</strong><span>'.e($host).' · Schlüssel '.(strlen($c['secret'])>=32?'hinterlegt':'fehlt').($c['format']==='workwearcenter'?' · allgemeines Format (Schema v1)':'').'</span></div>';}
     echo '<div class="release-check '.($lastOk?'ok':'warn').'"><strong>Letzte erfolgreiche Übergabe</strong><span>'.($lastOk?e(date('d.m.Y H:i',strtotime((string)$lastOk))).' Uhr':'Noch keine').'</span></div>';
+    echo '<div class="release-check '.(strlen($c['secret'])>=32?'ok':'warn').'"><strong>Rückmeldung (Produktionsstand)</strong><span>'.(strlen($c['secret'])>=32?'Bereit unter '.e(workwearcenter_url('api/v1/status')).($lastStatus?' · zuletzt '.e(date('d.m.Y H:i',strtotime((string)$lastStatus))).' Uhr':' · noch keine Meldung'):'Erst nach dem Eintragen des Schlüssels').'</span></div>';
+    if(yw_handover_pull_enabled())echo '<div class="release-check '.(strlen($c['api_token'])>=32?'ok':'warn').'"><strong>Abholen (älterer Weg)</strong><span>'.e(workwearcenter_url('api/v1/auftraege')).' · Schlüssel aus der config.php '.(strlen($c['api_token'])>=32?'eingerichtet':'fehlt').'. Neuer Weg: Zugang unter „Zugänge für andere Systeme“.</span></div>';
     echo '</div>';
-    foreach($issues as $issue)echo '<div class="flash error space-top">'.e($issue).'. Einstellung in der config.php anpassen.</div>';
-    if($c['mode']==='off')echo '<div class="flash info space-top"><strong>So wird die Verbindung eingeschaltet:</strong> In der <code>config.php</code> <code>handover_mode</code> sowie Adresse bzw. Schlüssel eintragen. Die Anleitung steht in <code>SCHNITTSTELLE-AUFTRAGSVERWALTUNG.md</code>. Bis dahin werden alle freigegebenen Aufträge gesammelt und nach dem Einschalten übergeben.</div>';
+    foreach($issues as $issue)echo '<div class="flash error space-top">'.e($issue).($fromConfig?'. Einstellung in der config.php anpassen.':'.').'</div>';
     echo '<div class="company-kpi-grid">';
-    foreach([['pending','Warten'],['delivered','Übergeben'],['acknowledged','Übernommen'],['failed','Fehlgeschlagen']] as [$key,$label])echo '<div class="company-kpi"><strong>'.(int)$counts[$key].'</strong><span>'.$label.'</span></div>';
+    foreach([['pending','Gesammelt / wartend'],['delivered','Übergeben'],['acknowledged','Übernommen'],['failed','Fehlgeschlagen']] as [$key,$label])echo '<div class="company-kpi"><strong>'.(int)$counts[$key].'</strong><span>'.$label.'</span></div>';
     echo '</div><div class="actions">';
-    if(yw_handover_push_enabled())echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="handover_test"><input type="hidden" name="return_tab" value="handover"><button class="btn">Verbindung testen</button></form>';
-    if($counts['failed'])echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="handover_retry_failed"><input type="hidden" name="return_tab" value="handover"><button class="btn primary">Alle fehlgeschlagenen erneut senden</button></form>';
+    if(yw_handover_push_enabled())echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="handover_test"><button class="btn">Verbindung testen</button></form>';
+    if($counts['failed'])echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="handover_retry_failed"><button class="btn primary">Alle fehlgeschlagenen erneut senden</button></form>';
     echo '</div>';
-    if($missing>0)echo '<div class="flash info space-top"><strong>'.$missing.' ältere freigegebene Aufträge</strong> (aus der Zeit vor Version 10) haben noch keinen Übergabedatensatz.<form method="post" class="space-top actions" data-confirm="Ältere Aufträge für die Übergabe vorbereiten?">'.csrf_field().'<input type="hidden" name="action" value="handover_backfill"><input type="hidden" name="return_tab" value="handover"><label class="check"><input type="checkbox" name="only_open" value="1" checked><span>Nur noch nicht ausgelieferte Aufträge</span></label><button class="btn small">Für Übergabe vorbereiten</button></form></div>';
+    if($missing>0)echo '<div class="flash info space-top"><strong>'.$missing.' ältere freigegebene Aufträge</strong> (aus der Zeit vor Version 10) haben noch keinen Übergabedatensatz.<form method="post" class="space-top actions" data-confirm="Ältere Aufträge für die Übergabe vorbereiten?">'.csrf_field().'<input type="hidden" name="action" value="handover_backfill"><label class="check"><input type="checkbox" name="only_open" value="1" checked><span>Nur noch nicht ausgelieferte Aufträge</span></label><button class="btn small">Für Übergabe vorbereiten</button></form></div>';
+
+    if($fromConfig){
+        echo '<p class="muted space-top">Die Verbindung ist fest in der <code>config.php</code> eingetragen (<code>handover_mode</code> = '.e($c['mode']).') und kann nur dort geändert werden. Werden die Einträge dort entfernt oder auf <code>off</code> gesetzt, lässt sie sich hier einrichten.</p>';
+    }else{
+        $savedUrl=current_site_setting('az_url','');$hasOwnSecret=(string)yw_int_secret('az_secret')!=='';
+        echo '<details class="details space-top"'.($c['mode']==='off'||$issues?' open':'').'><summary>'.($c['mode']==='off'?'Verbindung einrichten':'Verbindung ändern oder ausschalten').'</summary><div class="details-inner">';
+        echo '<ol class="muted"><li>In der Auftragszentrale unter <strong>Verkaufskanäle → WorkwearCenter</strong> auf „Schlüssel erzeugen“ klicken und den Schlüssel kopieren.</li><li>Hier einfügen, „Übergabe einschalten“ anhaken und speichern. Die Verbindung wird sofort geprüft, gesammelte Aufträge gehen danach automatisch raus.</li></ol>';
+        echo '<form method="post" class="form-stack" autocomplete="off">'.csrf_field().'<input type="hidden" name="action" value="int_az_save">'
+            .'<label class="check"><input type="checkbox" name="enabled" value="1" '.($c['mode']!=='off'?'checked':'').'><span><strong>Übergabe einschalten</strong> – freigegebene Aufträge automatisch senden</span></label>'
+            .'<label>Adresse der Auftragszentrale<input type="url" name="url" maxlength="500" value="'.e($savedUrl!==''?$savedUrl:($c['url']!==''?$c['url']:YW_AZ_DEFAULT_URL)).'" spellcheck="false"></label>'
+            .'<label>Schlüssel aus der Auftragszentrale <small>'.($hasOwnSecret||strlen($c['secret'])>=32?'hinterlegt – leer lassen, um ihn zu behalten':'mindestens 32 Zeichen').'</small><input type="password" name="secret" maxlength="500" autocomplete="new-password" spellcheck="false"></label>'
+            .'<label>Dein Admin-Passwort <small>zur Bestätigung</small><input type="password" name="confirm_password" required autocomplete="current-password"></label>'
+            .'<button class="btn primary">Speichern</button></form>';
+        echo '<p class="muted">Der Schlüssel wird verschlüsselt gespeichert und nie wieder angezeigt. Jede Änderung wird protokolliert und allen Administratoren per E-Mail gemeldet.</p></div></details>';
+    }
     echo '</section>';
 
     // Die letzten 100, Probleme zuerst: je Status die neuesten 100 über den Index (status,id) statt alle Übergaben zu sortieren,
@@ -573,8 +602,10 @@ function yw_admin_handover(): void {
         $ids=array_map('intval',db()->query('SELECT id FROM ('.implode(' UNION ALL ',$parts).") x ORDER BY FIELD(status,$statusOrder),id DESC LIMIT 100")->fetchAll(PDO::FETCH_COLUMN));
         if($ids)$rows=db()->query("SELECT h.*,c.legal_name FROM yw_handover h $join WHERE h.id IN (".implode(',',$ids).") ORDER BY FIELD(h.status,$statusOrder),h.id DESC")->fetchAll();
     }catch(Throwable $e){}
-    echo '<section class="card"><div class="title-row"><div><h2>Übergabeprotokoll</h2><p class="muted">Die letzten 100 Übergaben, Probleme zuerst.</p></div></div>';
+    echo '<section class="card" id="protokoll"><div class="title-row"><div><h2>Übergabeprotokoll</h2><p class="muted">Die letzten 100 Übergaben an die Auftragszentrale, Probleme zuerst.</p></div></div>';
     if(!$rows){echo '<div class="empty">Noch keine freigegebenen Aufträge.</div></section>';return;}
+    $problems=count(array_filter($rows,fn($r)=>in_array((string)$r['status'],['failed','manual'],true)));
+    echo '<details class="details"'.($problems?' open':'').'><summary>'.count($rows).' Übergabe'.(count($rows)===1?'':'n').($problems?' · '.$problems.' mit Handlungsbedarf':' · alles in Ordnung').'</summary><div class="details-inner">';
     echo '<div class="table-wrap"><table class="table"><thead><tr><th>Auftrag</th><th>Firma</th><th>Status</th><th>Versuche</th><th>Referenz / Hinweis</th><th></th></tr></thead><tbody>';
     foreach($rows as $r){
         [$label,$class]=yw_handover_status_label((string)$r['status']);
@@ -588,10 +619,10 @@ function yw_admin_handover(): void {
         elseif($r['status']==='pending')echo '<span class="muted">'.(yw_handover_push_enabled()?'Nächster Versuch '.e(date('H:i',strtotime((string)$r['available_at']))).' Uhr':'Bereit zum Abruf').'</span>';
         else echo '–';
         echo '<details class="details"><summary>Daten ansehen</summary><pre class="json-view">'.e(json_encode(json_decode((string)$r['payload_json'],true),JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'</pre></details></td><td>';
-        if(in_array((string)$r['status'],['failed','pending','delivered'],true))echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="handover_retry"><input type="hidden" name="return_tab" value="handover"><input type="hidden" name="handover_id" value="'.(int)$r['id'].'"><button class="btn small">'.((string)$r['status']==='delivered'?'Nochmals senden':'Jetzt senden').'</button></form>';
+        if(in_array((string)$r['status'],['failed','pending','delivered'],true))echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="handover_retry"><input type="hidden" name="handover_id" value="'.(int)$r['id'].'"><button class="btn small">'.((string)$r['status']==='delivered'?'Nochmals senden':'Jetzt senden').'</button></form>';
         echo '</td></tr>';
     }
-    echo '</tbody></table></div></section>';
+    echo '</tbody></table></div></div></details></section>';
 }
 
 /* --------------------------------------------------------------------------

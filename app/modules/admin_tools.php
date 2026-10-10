@@ -73,7 +73,7 @@ function yw_admin_order_page(int $orderId): void {
 
     // Übergabe
     echo '<section class="card"><h2>Übergabe</h2>';
-    if($handover){[$l,$cls]=yw_handover_status_label((string)$handover['status']);echo '<p><span class="badge '.e($cls).'">'.e($l).'</span>'.(!empty($handover['delivered_at'])?' <span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$handover['delivered_at']))).'</span>':'').'</p>';if(!empty($handover['last_error']))echo '<p class="muted">'.e((string)$handover['last_error']).'</p>';echo '<a class="btn small" href="/admin?tab=handover">Zur Übergabe</a>';}
+    if($handover){[$l,$cls]=yw_handover_status_label((string)$handover['status']);echo '<p><span class="badge '.e($cls).'">'.e($l).'</span>'.(!empty($handover['delivered_at'])?' <span class="muted">'.e(date('d.m.Y H:i',strtotime((string)$handover['delivered_at']))).'</span>':'').'</p>';if(!empty($handover['last_error']))echo '<p class="muted">'.e((string)$handover['last_error']).'</p>';echo '<a class="btn small" href="/admin?tab=schnittstellen#protokoll">Zur Übergabe</a>';}
     else echo '<p class="muted">'.($o['status']==='approved'?'Noch nicht an die Auftragszentrale übergeben.':'Übergabe erfolgt nach Freigabe.').'</p>';
     echo '</section>';
 
@@ -422,7 +422,7 @@ function yw_retention_card(): string {
     $when=static fn($v): string => ($ts=strtotime((string)$v))?date('d.m.Y H:i',$ts):'–';
     $info=!empty($status['at'])?'Letzte Bereinigung: '.e($when($status['at'])).' Uhr':'Noch keine Bereinigung – sie läuft automatisch mit dem Cronjob';
     if($last)$info.=' · zuletzt gelöscht am '.e($when($last['at']??'')).' Uhr: Protokolleinträge '.$n($last['audit']??0).', versendete E-Mails '.$n($last['mail_sent']??0).', fehlgeschlagene E-Mails '.$n($last['mail_failed']??0); // Zahl hinten: stimmt auch bei „1“
-    return '<section class="card"><h2>Aufbewahrung</h2><form method="post" class="filter-bar">'.csrf_field().'<input type="hidden" name="action" value="yw_retention"><label>Aktivitätsprotokoll aufbewahren (Monate)<input type="number" name="audit_retention_months" min="'.YW_AUDIT_RETENTION_MIN.'" max="'.YW_AUDIT_RETENTION_MAX.'" step="1" value="'.yw_audit_retention_months().'" required></label><button class="btn primary">Speichern</button></form>'
+    return '<section class="card" id="aufbewahrung"><h2>Aufbewahrung</h2><form method="post" class="filter-bar">'.csrf_field().'<input type="hidden" name="action" value="yw_retention"><label>Aktivitätsprotokoll aufbewahren (Monate)<input type="number" name="audit_retention_months" min="'.YW_AUDIT_RETENTION_MIN.'" max="'.YW_AUDIT_RETENTION_MAX.'" step="1" value="'.yw_audit_retention_months().'" required></label><button class="btn primary">Speichern</button></form>'
         .'<p class="muted">Der Cronjob löscht automatisch Protokolleinträge nach dieser Frist (mindestens '.YW_AUDIT_RETENTION_MIN.' Monate), versendete E-Mails nach 90 und fehlgeschlagene nach 180 Tagen. Aufträge, Rechnungen/Lexware und Lohnabzug-Einträge bleiben immer erhalten.</p><p>'.$info.'.</p></section>';
 }
 

@@ -79,10 +79,13 @@ function admin_page(): void {
     require_admin();
     if (is_post()) { verify_csrf(); handle_admin_action(); }
 
-    $allowedTabs=['dashboard','account','corporate','production','handover','system','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges','lexware'];
+    $allowedTabs=['dashboard','account','corporate','production','handover','system','schnittstellen','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges','lexware'];
     $tab=(string)($_GET['tab'] ?? 'dashboard');
     if(!in_array($tab,$allowedTabs,true))$tab='dashboard';
     if($tab==='corporate') yw_admin_corporate(); // alte Links: Weiterleitung vor jeder Ausgabe
+    // 10.16: Übergabe und API-Zugänge sind Teil von System → Schnittstellen (alte Links und Lesezeichen leiten weiter).
+    if($tab==='handover') redirect('/admin?tab=schnittstellen#auftragszentrale');
+    if($tab==='api') redirect('/admin?tab=schnittstellen#api');
 
     $companies=[];$products=[];$orders=[];$inquiries=[];$auditLogs=[];
     // Kundenakte: nur diese Firma, Kennzahlen nur für den Reiter Übersicht; Produkte nur für Kollektion.
@@ -140,7 +143,7 @@ function admin_page(): void {
 
     if($tab==='corporate') yw_admin_corporate();
     elseif($tab==='production') yw_production();
-    elseif($tab==='handover') yw_admin_handover();
+    elseif($tab==='schnittstellen') yw_admin_integrations_page(); // 10.16: app/modules/integrations.php
     elseif($tab==='account') yw_admin_account_page();
     elseif($tab==='system') yw_system();
     elseif($tab==='companies') render_admin_companies($companies,$products);
@@ -152,7 +155,6 @@ function admin_page(): void {
     elseif($tab==='guide') render_guide();
     elseif($tab==='orders'){ if(!empty($_GET['auftrag'])) yw_admin_order_page((int)$_GET['auftrag']); else render_admin_orders($orders); }
     elseif($tab==='suche') yw_admin_search_page((string)($_GET['q']??''));
-    elseif($tab==='api') yw_admin_api_page();
     elseif($tab==='katalog') yw_admin_katalog_page();
     elseif($tab==='exchanges') yw_admin_exchanges(); // 10.11: app/modules/exchange.php
     elseif($tab==='lexware') yw_lexware_admin_page();
@@ -169,6 +171,7 @@ function handle_admin_action(): never {
     $action=(string)($_POST['action'] ?? '');
     yw_orders_admin_action($action); // 10.11: Umtausch, Firmeneinstellungen (app/modules/order_schedule.php)
     if(str_starts_with($action,'handover_'))yw_admin_handover_action($action);
+    if(str_starts_with($action,'int_'))yw_admin_integration_action($action);
     if(str_starts_with($action,'probeshop_'))yw_probeshop_admin_action($action);
     if(str_starts_with($action,'lexware_'))yw_lexware_admin_action($action);
     if(str_starts_with($action,'account_') || in_array($action,['admin_invite','admin_toggle'],true))yw_admin_account_action($action);
@@ -1080,8 +1083,8 @@ function admin_context_header(string $tab): string {
         'corporate'=>['Regeln & Budget','Jetzt Teil der Kundenakte.'],
         'production'=>['Produktion','Auftragsdetails, Materialübersicht und Packlisten.'],
         'account'=>['Mein Konto & Administratoren','Passwort, Zwei-Faktor-Anmeldung und weitere Admin-Zugänge.'],
-        'handover'=>['Übergabe an die Auftragsverwaltung','Freigegebene Aufträge werden automatisch an deine Auftragsverwaltung übertragen.'],
-        'system'=>['System','Version und Betriebshinweise.'],
+        'system'=>['Systemstatus','Ist alles betriebsbereit? Jede offene Prüfung führt direkt dorthin, wo sie sich beheben lässt.'],
+        'schnittstellen'=>['Schnittstellen','Auftragszentrale, E-Mail, Lexware Office und Zugänge für andere Systeme – einrichten, prüfen, Fehler beheben.'],
         'inquiries'=>['Anfragen','Neue Interessenten und Shop-Anfragen bearbeiten.'],
         'orders'=>['Aufträge','Bestellungen, Freigaben und Bearbeitungsstatus verwalten.'],
         'companies'=>['Kunden','Firmenshops: Kollektion, Mitarbeiter, Regeln, Aufträge und Zugänge.'],
@@ -1092,19 +1095,18 @@ function admin_context_header(string $tab): string {
         'audit'=>['Aktivitätsprotokoll','Sicherheits- und auftragsrelevante Änderungen nachvollziehen.'],
         'guide'=>['Anleitung','Hinweise zur Bedienung des WorkwearCenters.'],
         'suche'=>['Suche','Kunden, Mitarbeitende, Aufträge und Produkte finden.'],
-        'api'=>['API-Zugänge','Schlüssel für Auftragszentrale, Fan-Bande und Partner.'],
         'katalog'=>['Lieferantenkatalog','Produkte aus der Daiber-Liste anlegen und Bilder automatisch zuordnen.'],
         'exchanges'=>['Umtausch & Retouren','Größentausch und Rückgaben aus den Firmenshops bearbeiten.'],
-        'lexware'=>['Lexware Office','Kunden verknüpfen und Rechnungsentwürfe aus freigegebenen Aufträgen erzeugen.'],
+        'lexware'=>['Abrechnung','Firmen mit Lexware Office verknüpfen und Rechnungsentwürfe aus freigegebenen Aufträgen erzeugen.'],
     ];
     if($tab==='companies'&&!empty($_GET['company']))$data['companies']=['Kundenakte','Alles zu diesem Kunden an einem Ort.'];
     if($tab==='orders'&&!empty($_GET['auftrag']))$data['orders']=['Auftrag','Positionen, Produktion, Übergabe und Verlauf.'];
     [$title,$subtitle]=$data[$tab]??$data['dashboard'];
     $sub='';
-    $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','handover'=>'Übergabe','lexware'=>'Lexware Office','api'=>'API-Zugänge','account'=>'Mein Konto & Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
+    $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','schnittstellen'=>'Schnittstellen','account'=>'Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
     foreach($groups as $g=>$items)if(isset($items[$tab])){$sub='<nav class="admin-subtabs">';foreach($items as $k=>$l)$sub.='<a class="'.($k===$tab?'active':'').'" href="/admin?tab='.$k.'">'.e($l).'</a>';$sub.='</nav>';}
     // Kicker nennt den Bereich (Logo und „Verwaltung“ stehen schon im Kopf).
-    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche','exchanges'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
+    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche','exchanges','lexware'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
     return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">'.e(mb_strtoupper($area)).'</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
 }
 
@@ -1127,6 +1129,7 @@ function admin_sidebar(string $active): string {
             'orders'=>['Aufträge','box'],
             'production'=>['Produktion','check'],
             'exchanges'=>['Umtausch & Retouren','layers'],
+            'lexware'=>['Abrechnung','budget'],
         ],
         'Kunden & Katalog'=>[
             'companies'=>['Kunden','building'],
@@ -1137,7 +1140,7 @@ function admin_sidebar(string $active): string {
             'systemgroup'=>['System','settings'],
         ],
     ];
-    $activeKey=match(true){in_array($active,['content','design'],true)=>'website',in_array($active,['system','handover','lexware','api','account','audit','guide'],true)=>'systemgroup',in_array($active,['new','corporate'],true)=>'companies',$active==='katalog'=>'products',default=>$active};
+    $activeKey=match(true){in_array($active,['content','design'],true)=>'website',in_array($active,['system','schnittstellen','account','audit','guide'],true)=>'systemgroup',in_array($active,['new','corporate'],true)=>'companies',$active==='katalog'=>'products',default=>$active};
     $target=['website'=>'content','systemgroup'=>'system'];
     $html='<aside class="admin-sidebar"><nav class="admin-menu" aria-label="Verwaltung">';
     foreach($groups as $group=>$items){
@@ -1172,14 +1175,14 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
         .'<a class="admin-dashboard-card" href="/admin?tab=orders"><span>Neue Aufträge</span><strong>'.$newOrders.'</strong><small>freigegeben und unbearbeitet</small></a>'
         .'<a class="admin-dashboard-card" href="/admin?tab=companies"><span>Freigaben offen</span><strong>'.$pendingEmployeeCount.'</strong><small>Mitarbeiterkonten prüfen</small></a>'
         .'<a class="admin-dashboard-card" href="/admin?tab=production"><span>In Arbeit</span><strong>'.$production.'</strong><small>Material bis Qualitätskontrolle</small></a>'
-        .'<a class="admin-dashboard-card '.($overdue||$failedMails||$failedHandovers?'attention':'').'" href="/admin?tab='.($failedHandovers?'handover':'system').'"><span>Handlungsbedarf</span><strong>'.($overdue+$failedMails+$failedHandovers).'</strong><small>'.$overdue.' überfällig · '.$failedMails.' Mailfehler · '.$failedHandovers.' Übergabefehler</small></a>'
+        .'<a class="admin-dashboard-card '.($overdue||$failedMails||$failedHandovers?'attention':'').'" href="/admin?tab=schnittstellen"><span>Handlungsbedarf</span><strong>'.($overdue+$failedMails+$failedHandovers).'</strong><small>'.$overdue.' überfällig · '.$failedMails.' Mailfehler · '.$failedHandovers.' Übergabefehler</small></a>'
         .'</div>';
 
     echo '<div class="control-grid"><section class="card"><div class="title-row"><div><h2>Heute zu erledigen</h2><p class="muted">Nach Dringlichkeit sortiert.</p></div></div>';
     $me=yw_admin_current();
     if($me && !(int)($me['totp_enabled']??0)) echo '<div class="work-task danger"><span class="task-icon">'.wc_public_icon('lock').'</span><div><strong>Zwei-Faktor-Anmeldung einrichten</strong><small>Schützt die Verwaltung, falls dein Passwort bekannt wird. Dauert zwei Minuten.</small></div><a class="btn small primary" href="/admin?tab=account">Einrichten</a></div>';
-    if($failedHandovers) echo '<div class="work-task danger"><span class="task-icon">!</span><div><strong>'.$failedHandovers.' Auftr'.($failedHandovers===1?'ag':'äge').' nicht an die Auftragsverwaltung übergeben</strong><small>Verbindung prüfen und erneut senden.</small></div><a class="btn small" href="/admin?tab=handover">Übergabe</a></div>';
-    if($failedMails) echo '<div class="work-task danger"><span class="task-icon">!</span><div><strong>'.$failedMails.' E-Mail'.($failedMails===1?'':'s').' fehlgeschlagen</strong><small>Einladungen oder Statusmeldungen erneut verarbeiten.</small></div><a class="btn small" href="/admin?tab=system">Prüfen</a></div>';
+    if($failedHandovers) echo '<div class="work-task danger"><span class="task-icon">!</span><div><strong>'.$failedHandovers.' Auftr'.($failedHandovers===1?'ag':'äge').' nicht an die Auftragsverwaltung übergeben</strong><small>Verbindung prüfen und erneut senden.</small></div><a class="btn small" href="/admin?tab=schnittstellen#auftragszentrale">Übergabe prüfen</a></div>';
+    if($failedMails) echo '<div class="work-task danger"><span class="task-icon">!</span><div><strong>'.$failedMails.' E-Mail'.($failedMails===1?'':'s').' fehlgeschlagen</strong><small>Einladungen oder Statusmeldungen erneut verarbeiten.</small></div><a class="btn small" href="/admin?tab=schnittstellen#mail">Prüfen</a></div>';
     if($overdue) echo '<div class="work-task danger"><span class="task-icon">!</span><div><strong>'.$overdue.' Aufträge seit mehr als 7 Tagen offen</strong><small>Produktionsstand und Materialverfügbarkeit prüfen.</small></div><a class="btn small" href="/admin?tab=production">Produktion</a></div>';
     foreach($pendingEmployees as $person){
         echo '<div class="work-task"><span class="task-icon">'.wc_public_icon('user').'</span><div><strong>'.e($person['name']).' freigeben?</strong><small>'.e($person['legal_name']).' · '.e($person['email']).'</small></div><div class="task-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="rejected"><button class="btn small" type="submit">Ablehnen</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="approved"><button class="btn small primary" type="submit">Freigeben</button></form></div></div>';
@@ -1241,7 +1244,7 @@ function render_admin_orders(array $orders): void {
     if(!$orders){echo '<div class="empty">Keine Bestellungen passen zu diesem Filter.</div></section>';return;}
     echo '<form method="post">'.csrf_field().'<input type="hidden" name="action" value="bulk_fulfillment"><div class="bulk-bar"><strong>Auswahl:</strong><select name="status" aria-label="Neuer Produktionsstatus für die Auswahl" required><option value="">Neuen Produktionsstatus wählen</option>';foreach(yw_production_statuses() as $value=>$text)echo '<option value="'.e($value).'">'.e($text).'</option>';echo '</select><button class="btn primary small" type="submit">Ausgewählte aktualisieren</button><span class="muted">Maximal 100 Aufträge gleichzeitig</span></div>';
     echo '<div class="table-wrap"><table class="table"><thead><tr><th><input class="order-select" type="checkbox" data-select-all aria-label="Alle auswählen"></th><th>Auftrag</th><th>Firma / Mitarbeiter</th><th>Freigabe</th><th>Produktion</th><th>Übergabe</th><th>Summe</th><th></th></tr></thead><tbody>';
-    foreach($orders as $order){$label=['pending'=>'Freigabe offen','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Zurückgezogen'][$order['status']]??$order['status'];$items=$itemsByOrder[(int)$order['id']]??[];$total=(int)($order['gross_total_cents']??0)>0?(int)$order['gross_total_cents']:(int)$order['total_cents'];echo '<tr><td>'.($order['status']==='approved'?'<input class="order-select" type="checkbox" name="order_ids[]" value="'.(int)$order['id'].'" aria-label="Auftrag auswählen">':'').'</td><td><a href="'.e(yw_order_url((int)$order['id'])).'"><strong>'.e(yw_order_number((int)$order['id'])).'</strong></a><br><span class="muted">'.e(date('d.m.Y',strtotime($order['created_at']))).'</span><details class="details"><summary>'.count($items).' Positionen</summary><div class="details-inner">';foreach($items as $item)echo '<div class="muted">'.(int)$item['quantity'].'× '.e($item['product_name']).' · '.e($item['size']).'</div>';echo '</div></details></td><td><strong>'.e($order['legal_name']).'</strong><br>'.e($order['employee_name']).'</td><td><span class="badge '.e($order['status']).'">'.e($label).'</span></td><td>'.e(yw_production_statuses()[$order['fulfillment_status']]??$order['fulfillment_status']).(!empty($order['tracking_number'])?'<br><span class="muted">'.e(trim(($order['tracking_carrier']??'').' '.$order['tracking_number'])).'</span>':'').'</td><td>'.(isset($handoverMap[(int)$order['id']])?(function($h){[$l,$c]=yw_handover_status_label((string)$h['status']);return '<a class="badge '.e($c).'" href="/admin?tab=handover">'.e($l).'</a>'.($h['external_reference']?'<br><span class="muted">Ref. '.e($h['external_reference']).'</span>':'');})($handoverMap[(int)$order['id']]):'<span class="muted">–</span>').'</td><td><strong>'.money($total).'</strong><br><span class="muted">brutto</span></td><td><a class="btn small" href="'.e(yw_order_url((int)$order['id'])).'">Öffnen</a></td></tr>';}
+    foreach($orders as $order){$label=['pending'=>'Freigabe offen','approved'=>'Freigegeben','rejected'=>'Abgelehnt','cancelled'=>'Zurückgezogen'][$order['status']]??$order['status'];$items=$itemsByOrder[(int)$order['id']]??[];$total=(int)($order['gross_total_cents']??0)>0?(int)$order['gross_total_cents']:(int)$order['total_cents'];echo '<tr><td>'.($order['status']==='approved'?'<input class="order-select" type="checkbox" name="order_ids[]" value="'.(int)$order['id'].'" aria-label="Auftrag auswählen">':'').'</td><td><a href="'.e(yw_order_url((int)$order['id'])).'"><strong>'.e(yw_order_number((int)$order['id'])).'</strong></a><br><span class="muted">'.e(date('d.m.Y',strtotime($order['created_at']))).'</span><details class="details"><summary>'.count($items).' Positionen</summary><div class="details-inner">';foreach($items as $item)echo '<div class="muted">'.(int)$item['quantity'].'× '.e($item['product_name']).' · '.e($item['size']).'</div>';echo '</div></details></td><td><strong>'.e($order['legal_name']).'</strong><br>'.e($order['employee_name']).'</td><td><span class="badge '.e($order['status']).'">'.e($label).'</span></td><td>'.e(yw_production_statuses()[$order['fulfillment_status']]??$order['fulfillment_status']).(!empty($order['tracking_number'])?'<br><span class="muted">'.e(trim(($order['tracking_carrier']??'').' '.$order['tracking_number'])).'</span>':'').'</td><td>'.(isset($handoverMap[(int)$order['id']])?(function($h){[$l,$c]=yw_handover_status_label((string)$h['status']);return '<a class="badge '.e($c).'" href="/admin?tab=schnittstellen#protokoll">'.e($l).'</a>'.($h['external_reference']?'<br><span class="muted">Ref. '.e($h['external_reference']).'</span>':'');})($handoverMap[(int)$order['id']]):'<span class="muted">–</span>').'</td><td><strong>'.money($total).'</strong><br><span class="muted">brutto</span></td><td><a class="btn small" href="'.e(yw_order_url((int)$order['id'])).'">Öffnen</a></td></tr>';}
     echo '</tbody></table></div></form></section>';
 }
 
@@ -1542,7 +1545,7 @@ function yw_audit_labels(): array {
 
 function render_admin_audit(array $logs): void {
     $labels=yw_audit_labels();
-    echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge. Einträge werden nach '.yw_audit_retention_months().' Monaten automatisch gelöscht, Lexware- und Lohnabzug-Einträge bleiben (<a href="/admin?tab=system">einstellbar unter Systemstatus</a>).</p></div></div>';
+    echo '<section class="card"><div class="title-row"><div><h2>Aktivitätsprotokoll</h2><p class="muted">Die letzten 200 sicherheits- und auftragsrelevanten Vorgänge. Einträge werden nach '.yw_audit_retention_months().' Monaten automatisch gelöscht, Lexware- und Lohnabzug-Einträge bleiben (<a href="/admin?tab=system#aufbewahrung">einstellbar unter Systemstatus</a>).</p></div></div>';
     if(!$logs){echo '<div class="empty">Noch keine protokollierten Vorgänge.</div></section>';return;}
     $people=yw_actor_people($logs);
     echo '<div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Vorgang</th><th>Firma</th><th>Wer</th><th>Objekt</th></tr></thead><tbody>';

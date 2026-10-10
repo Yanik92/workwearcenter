@@ -4,8 +4,8 @@ declare(strict_types=1);
 /*
  * 10.8: WorkwearCenter API v1 – eine Schnittstelle für Auftragszentrale, Fan-Bande und Partner.
  *
- * Anmeldung: Authorization: Bearer wwc_<48 Hexzeichen>. Schlüssel werden unter Admin → System → API-Zugänge
- * angelegt, nur als Hash gespeichert und tragen Rechte (Scopes):
+ * Anmeldung: Authorization: Bearer wwc_<48 Hexzeichen>. Schlüssel werden unter Admin → System → Schnittstellen
+ * („Zugänge für andere Systeme“) angelegt, nur als Hash gespeichert und tragen Rechte (Scopes):
  *   orders:read, orders:write, customers:read, products:read
  * Schutz: HTTPS-Pflicht, Drosselung je Schlüssel (600 Anfragen / 10 Minuten), Sperre nach Fehlversuchen,
  * optionale IP-Bindung je Schlüssel, Protokoll der letzten Nutzung.
@@ -217,25 +217,25 @@ function yw_admin_api_keys_action(string $action): void {
         $scopes=array_map('strval',(array)($_POST['scopes']??[]));
         [$plain,$id]=yw_api_key_create((string)($_POST['name']??''),(string)($_POST['system']??''),$scopes,(string)($_POST['ip_allowlist']??''),(int)($_POST['company_id']??0));
         $_SESSION['api_key_once']=$plain;
-        flash('success','API-Schlüssel wurde angelegt. Bitte jetzt kopieren – er wird nur einmal angezeigt.');redirect('/admin?tab=api');
+        flash('success','API-Schlüssel wurde angelegt. Bitte jetzt kopieren – er wird nur einmal angezeigt.');redirect('/admin?tab=schnittstellen#api-neu');
     }
     if($action==='api_key_toggle'){
         $id=(int)($_POST['key_id']??0);$stmt=db()->prepare('UPDATE yw_api_keys SET active=IF(active=1,0,1) WHERE id=?');$stmt->execute([$id]);
         if(!$stmt->rowCount())throw new RuntimeException('Schlüssel nicht gefunden.');
-        audit_log('api.key_toggled','api_key',$id);flash('success','Schlüssel wurde geändert.');redirect('/admin?tab=api');
+        audit_log('api.key_toggled','api_key',$id);flash('success','Schlüssel wurde geändert.');redirect('/admin?tab=schnittstellen#api');
     }
     if($action==='api_key_delete'){
         $id=(int)($_POST['key_id']??0);db()->prepare('DELETE FROM yw_api_keys WHERE id=?')->execute([$id]);
-        audit_log('api.key_deleted','api_key',$id);flash('success','Schlüssel wurde gelöscht.');redirect('/admin?tab=api');
+        audit_log('api.key_deleted','api_key',$id);flash('success','Schlüssel wurde gelöscht.');redirect('/admin?tab=schnittstellen#api');
     }
 }
 
 function yw_admin_api_page(): void {
     $once=(string)($_SESSION['api_key_once']??'');unset($_SESSION['api_key_once']);
-    if($once!=='')echo '<section class="card api-key-once"><h2>Neuer API-Schlüssel</h2><p>Diesen Schlüssel jetzt in das andere System eintragen. Er wird <strong>nicht noch einmal angezeigt</strong>.</p><div class="copy">'.e($once).'</div><button type="button" class="btn small" data-copy="'.e($once).'">Schlüssel kopieren</button></section>';
+    if($once!=='')echo '<section class="card api-key-once" id="api-neu"><h2>Neuer API-Schlüssel</h2><p>Diesen Schlüssel jetzt in das andere System eintragen. Er wird <strong>nicht noch einmal angezeigt</strong>.</p><div class="copy">'.e($once).'</div><button type="button" class="btn small" data-copy="'.e($once).'">Schlüssel kopieren</button></section>';
     $keys=db()->query('SELECT k.*,a.name admin_name,c.shop_name company_name FROM yw_api_keys k LEFT JOIN admins a ON a.id=k.created_by LEFT JOIN companies c ON c.id=k.company_id ORDER BY k.id DESC')->fetchAll();
-    echo '<section class="card"><div class="title-row"><div><h2>API-Zugänge</h2><p class="muted">Jedes angebundene System bekommt einen eigenen Schlüssel mit genau den Rechten, die es braucht. Adresse: <code>'.e(workwearcenter_url('/api/v1/')).'</code> · Beschreibung: API-DOKUMENTATION.md im Paket.</p></div></div>';
-    if(!$keys)echo '<div class="empty compact">Noch kein API-Schlüssel angelegt.</div>';
+    echo '<section class="card" id="api"><div class="title-row"><div><h2>Zugänge für andere Systeme (API)</h2><p class="muted">Für Systeme, die selbst Daten abfragen oder zurückmelden: Fan-Bande, Partner oder die Auftragszentrale im Abholbetrieb. Jedes System bekommt einen eigenen Schlüssel mit genau den Rechten, die es braucht. Adresse: <code>'.e(workwearcenter_url('/api/v1/')).'</code> · Beschreibung: API-DOKUMENTATION.md im Paket. Für die normale Übergabe an die Auftragszentrale ist hier nichts nötig.</p></div></div>';
+    if(!$keys)echo '<div class="empty compact">Noch kein Zugang angelegt.</div>';
     else{
         echo '<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>System</th><th>Schlüssel</th><th>Rechte</th><th>Zuletzt genutzt</th><th>Status</th><th></th></tr></thead><tbody>';
         foreach($keys as $k){
@@ -244,8 +244,7 @@ function yw_admin_api_page(): void {
         }
         echo '</tbody></table></div>';
     }
-    echo '</section>';
-    echo '<section class="card"><h2>Neuen Schlüssel anlegen</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="api_key_create">';
+    echo '<details class="details space-top"><summary>Neuen Zugang anlegen</summary><div class="details-inner"><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="api_key_create">';
     echo '<div class="grid2"><label>Name<input name="name" maxlength="120" required placeholder="z. B. Auftragszentrale Produktion"></label><label>System<select name="system"><option value="auftragszentrale">Auftragszentrale</option><option value="fan-bande">Fan-Bande</option><option value="partner">Partner / Sonstiges</option><option value="test">Test</option></select></label></div>';
     echo '<fieldset><legend>Rechte</legend><div class="checkboxes">';
     foreach(YW_API_SCOPES as $scope=>$label)echo '<label class="check"><input type="checkbox" name="scopes[]" value="'.e($scope).'" '.(in_array($scope,['orders:read','orders:write'],true)?'checked':'').'><span><strong>'.e($scope).'</strong> – '.e($label).'</span></label>';
@@ -255,6 +254,5 @@ function yw_admin_api_page(): void {
     foreach($companies as $c)echo '<option value="'.(int)$c['id'].'">nur '.e((string)$c['shop_name']).'</option>';
     echo '</select></label>';
     echo '<label>Erlaubte IP-Adressen <small>optional, durch Komma getrennt – leer = alle</small><input name="ip_allowlist" placeholder="z. B. 203.0.113.10"></label>';
-    echo '<button class="btn primary">Schlüssel erzeugen</button></form></section>';
-    echo '<section class="card"><h2>Ausgehende Übergabe (Webhook)</h2><p class="muted">Freigegebene Bestellungen werden weiterhin aktiv an die Auftragszentrale gesendet (Admin → System → Übergabe). Die API hier ist der Weg für Abfragen und Rückmeldungen.</p></section>';
+    echo '<button class="btn primary">Schlüssel erzeugen</button></form></div></details></section>';
 }
