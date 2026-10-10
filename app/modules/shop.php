@@ -36,7 +36,8 @@ function render_company_product_customization_form(array $company,array $product
     echo '</div></summary>';
     }
 
-    echo '<div class="collection-product-body"><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field();
+    // 10.15: in der Artikelliste warnt der Browser vor dem Verlassen mit ungespeicherten Änderungen (assets/app.js)
+    echo '<div class="collection-product-body"><form method="post" enctype="multipart/form-data" class="form-stack"'.($closeUrl!==null?' data-unsaved-warning':'').'>'.csrf_field();
     echo '<input type="hidden" name="action" value="update_company_product_customization">';
     echo '<input type="hidden" name="return_tab" value="companies">';
     echo '<input type="hidden" name="company_id" value="'.(int)$company['id'].'">';

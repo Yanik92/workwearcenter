@@ -64,9 +64,17 @@
     var flash = afterSave === true ? document.querySelector('[data-flash]') : null;
     if (flash && !el.contains(flash) && el.parentNode) {
       // Rückmeldung direkt über das Ziel; der Abstand beim Springen schließt sie ein (auch beim Sprung des Browsers selbst).
-      el.parentNode.insertBefore(flash, el);
-      var gap = flash.offsetHeight + (parseFloat(window.getComputedStyle(flash).marginBottom) || 0);
-      el.style.scrollMarginTop = ((parseFloat(window.getComputedStyle(el).scrollMarginTop) || 0) + gap) + 'px';
+      // Liegt das Ziel in einem mehrspaltigen Raster, einer Zeile oder Tabelle (z. B. Probeshop-Kacheln), steht sie über dem Ganzen statt als schmale Kachel daneben.
+      var ref = el;
+      for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        var ps = window.getComputedStyle(p);
+        if ((ps.display.indexOf('grid') !== -1 && ps.gridTemplateColumns.trim().split(/\s+/).length > 1) || (ps.display.indexOf('flex') !== -1 && ps.flexDirection.indexOf('row') === 0) || ps.display.indexOf('table') === 0) ref = p; else break;
+      }
+      ref.parentNode.insertBefore(flash, ref);
+      var gap = Math.max(0, el.getBoundingClientRect().top - flash.getBoundingClientRect().top);
+      // Abstand zur festen Kopfzeile: der größere Wert von Ziel und Meldung (z. B. #grenze-12 hat selbst keinen).
+      var margin = Math.max(parseFloat(window.getComputedStyle(el).scrollMarginTop) || 0, parseFloat(window.getComputedStyle(flash).scrollMarginTop) || 0);
+      el.style.scrollMarginTop = (margin + gap) + 'px';
       el.scrollIntoView({ block: 'start' });
     } else if (opened || el instanceof HTMLDetailsElement) el.scrollIntoView({ block: 'start' });
   };

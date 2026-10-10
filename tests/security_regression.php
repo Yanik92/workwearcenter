@@ -568,10 +568,18 @@ test_ok(yw_people_return_url('grossbau','x" onmouseover')==='/grossbau/mitarbeit
 $_GET=[];$_SERVER['REQUEST_METHOD']='GET';$_SERVER['REQUEST_URI']='/';
 $adminSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin.php');$corpAdminSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/corporate_admin.php');$adminCustomerSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_customer.php');
 test_ok(str_contains($adminSrc,"\$_POST['scope_products']")&&str_contains($corpAdminSrc,"\$_POST['scope_products']")&&str_contains($adminCustomerSrc,'name="scope_products[]"'),'Kollektion und Profilsortiment speichern nur die Artikel der angezeigten Seite (scope_products)');
-test_ok(substr_count($adminCustomerSrc,'render_company_product_customization_form(')===2&&str_contains($adminCustomerSrc,'if($in && $openId===$pid)render_company_product_customization_form(')&&str_contains($adminCustomerSrc,' LIMIT $perPage OFFSET '),'Kundenakte Kollektion: seitenweise Liste, Bearbeitungsformular nur für den gewählten Artikel');
+test_ok(substr_count($adminCustomerSrc,'render_company_product_customization_form(')===2&&str_contains($adminCustomerSrc,'if($in && $openId===$pid){render_company_product_customization_form(')&&str_contains($adminCustomerSrc,' LIMIT $perPage OFFSET '),'Kundenakte Kollektion: seitenweise Liste, Bearbeitungsformular nur für den gewählten Artikel');
 test_ok(str_contains($adminSrc,'Höchstens 500 Artikel auf einmal')&&str_contains($corpAdminSrc,"'yw_profile_bulk'"),'Sammelaktionen für Kollektion und Profile sind begrenzt');
 test_ok(str_contains($customerSrc,'redirect(yw_people_return_url(')&&str_contains($regSrc,'yw_people_return_url((string)$company[\'slug\'],\'personen\')'),'Firmenshop Mitarbeiter: Speichern, Freigeben und Passwort-Link behalten Suche und Seite');
 $appJs=(string)file_get_contents(dirname(__DIR__).'/assets/app.js');
 test_ok(str_contains($appJs,'[data-check-all]')&&str_contains($appJs,'[data-flash]')&&str_contains($appJs,'data-unsaved-warning'),'app.js: „Alle auf dieser Seite“, Rückmeldung am Sprungziel und Hinweis auf ungespeicherte Häkchen');
+
+// 10.15 Review: Rückmeldung am Sprungziel nicht als schmale Rasterkachel (Probeshop) und nie unter der festen Kopfzeile (#grenze-12, #budget-12)
+test_ok(str_contains($appJs,'gridTemplateColumns')&&str_contains($appJs,"ps.flexDirection.indexOf('row') === 0")&&str_contains($appJs,'getComputedStyle(flash).scrollMarginTop'),'app.js: Rückmeldung über mehrspaltigen Rastern und mit Abstand zur festen Kopfzeile');
+// Geöffneter Artikel: „Auswahl speichern“ klebt nicht über dem Formular, ungespeicherte Änderungen am Artikel lösen einen Hinweis aus
+test_ok(str_contains($adminCustomerSrc,"collection-savebar'.(\$editorOpen?' is-static':'')")&&str_contains($adminSrc,'.collection-savebar.is-static{position:static')&&str_contains($shopSrc,"(\$closeUrl!==null?' data-unsaved-warning':'')"),'Kollektion: Speicherleiste bei geöffnetem Artikel nicht klebend, Artikelformular warnt vor ungespeicherten Änderungen');
+test_ok(str_contains($corpAdminSrc,"' von '.\$companyProductCount.' Firmenprodukten freigegeben.")&&!str_contains($corpAdminSrc,"\$limits['counts']['alle'].' Firmenprodukten"),'Regeln: Profilzusammenfassung zählt alle Firmenprodukte, nicht nur die Treffer der Stückzahl-Suche');
+test_ok(str_contains($adminSrc,"'yw_profile_bulk'=>'Profilsortiment per Sammelaktion geändert'"),'Aktivitätsprotokoll: Sammelaktion im Profil hat eine lesbare Bezeichnung');
+test_ok(str_contains($toolsSrc,"yw_customer_state_url((int)\$o['company_id'],'kollektion',['produkt'=>(string)\$itemProduct])"),'Auftrag: Artikelname öffnet den Artikel in der Kollektion (Korrekturabzug)');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

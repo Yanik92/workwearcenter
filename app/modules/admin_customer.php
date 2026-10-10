@@ -300,7 +300,8 @@ function yw_customer_section_collection(array $c): void {
         $onPage=in_array($openId,array_map('intval',array_column($rows,'id')),true);
         // Gewählter Artikel nicht auf dieser Seite (z. B. direkter Link): Formular über der Liste
         // (Sprungmarke produkt-ID, damit „#produkt-ID“ nach dem Speichern auch hier landet – z. B. nach Umbenennen auf anderer Seite)
-        if($openId && !$onPage && ($open=yw_company_product_row($id,$openId))){echo '<div class="list-anchor" id="produkt-'.$openId.'"></div>';render_company_product_customization_form($c,$open,$listUrl());}
+        $editorOpen=false;
+        if($openId && !$onPage && ($open=yw_company_product_row($id,$openId))){echo '<div class="list-anchor" id="produkt-'.$openId.'"></div>';render_company_product_customization_form($c,$open,$listUrl());$editorOpen=true;}
         echo '<form method="post" id="kollektion-auswahl" data-unsaved-warning>'.csrf_field().'<input type="hidden" name="action" value="update_collection"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.$id.'"></form>';
         if(!$rows){
             echo '<div class="empty compact">'.($list['search']!==''||$list['category']!==''?'Keine Artikel gefunden.':($list['view']==='katalog'?'Alle aktiven Stammprodukte sind bereits in der Kollektion.':'Noch keine Artikel – oben „Weitere Katalogartikel“ wählen und Häkchen setzen.')).'</div>';
@@ -321,10 +322,11 @@ function yw_customer_section_collection(array $c): void {
                     .'<span class="'.($in?($configured?'collection-configured':'collection-standard'):'collection-out').'">'.($in?($configured?'Individualisiert':'Standard'):'Nicht im Shop').'</span></div>'
                     .($in?($openId===$pid?'<a class="btn small" href="'.e($listUrl()).'#produkt-'.$pid.'">Schließen</a>':'<a class="btn small" href="'.e($listUrl(['produkt'=>(string)$pid])).'#produkt-'.$pid.'">Bearbeiten</a>'):'<span class="collection-row-hint">erst aufnehmen</span>')
                     .'</div>';
-                if($in && $openId===$pid)render_company_product_customization_form($c,$p,$listUrl());
+                if($in && $openId===$pid){render_company_product_customization_form($c,$p,$listUrl());$editorOpen=true;}
             }
             echo '</div>';
-            echo '<div class="collection-savebar"><span class="muted"><span class="savebar-long">Die Häkchen gelten für die '.count($rows).' Artikel dieser Seite – Artikel auf anderen Seiten bleiben unverändert.</span><span class="savebar-short">Gilt nur für diese Seite ('.count($rows).' Artikel).</span></span><button class="btn primary" type="submit" form="kollektion-auswahl">Auswahl speichern</button></div>';
+            // Bei geöffnetem Artikel klebt die Leiste nicht über dem Formular – sonst wird „Auswahl speichern“ leicht für „Shop-Produkt speichern“ gehalten.
+            echo '<div class="collection-savebar'.($editorOpen?' is-static':'').'"><span class="muted"><span class="savebar-long">Die Häkchen gelten für die '.count($rows).' Artikel dieser Seite – Artikel auf anderen Seiten bleiben unverändert.</span><span class="savebar-short">Gilt nur für diese Seite ('.count($rows).' Artikel).</span></span><button class="btn primary" type="submit" form="kollektion-auswahl">Auswahl speichern</button></div>';
         }
         if($list['pages']>1)echo yw_customer_product_nav($list,$keep,[],false);
         echo '</div></section>';

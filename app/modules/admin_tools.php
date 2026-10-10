@@ -42,7 +42,8 @@ function yw_admin_order_page(int $orderId): void {
             $decs[]='<div>'.e(decoration_position_label((string)($d['position']??''))).' · '.e(decoration_method_label((string)($d['method']??''))).($m?' · <strong>'.e($m['name']).'</strong>':'').(trim((string)($d['text']??''))!==''?'<br><span class="muted">'.e((string)$d['text']).'</span>':'').'</div>';
         }
         $qty=(int)$it['quantity'];$lineGross=yw_order_item_amounts($it)['gross'];
-        echo '<tr><td><strong>'.e($it['product_name']).'</strong></td><td>'.e($it['size']).'</td><td>'.$qty.'</td><td>'.($decs?implode('',$decs):'<span class="muted">keine</span>').'</td><td>'.money($lineGross).'</td></tr>';
+        $itemProduct=(int)($it['product_id']??0); // 10.15: Artikelname öffnet den Artikel in der Kollektion (Korrekturabzug), auch bei großen Kollektionen
+        echo '<tr><td><strong>'.($itemProduct>0?'<a href="'.e(yw_customer_state_url((int)$o['company_id'],'kollektion',['produkt'=>(string)$itemProduct])).'#produkt-'.$itemProduct.'">'.e($it['product_name']).'</a>':e($it['product_name'])).'</strong></td><td>'.e($it['size']).'</td><td>'.$qty.'</td><td>'.($decs?implode('',$decs):'<span class="muted">keine</span>').'</td><td>'.money($lineGross).'</td></tr>';
     }
     if((int)($o['shipping_gross_cents']??0)>0)echo '<tr><td colspan="4">Versand</td><td>'.money((int)$o['shipping_gross_cents']).'</td></tr>';
     echo '<tr><td colspan="4"><strong>Gesamt brutto</strong></td><td><strong>'.money($total).'</strong></td></tr>';
@@ -50,7 +51,7 @@ function yw_admin_order_page(int $orderId): void {
     echo '<div class="order-shares"><span>Firmenanteil <strong>'.money((int)($o['company_total_cents']??0)).'</strong></span><span>Mitarbeiteranteil <strong>'.money((int)($o['employee_total_cents']??0)).'</strong></span></div>';
     if(trim((string)($o['note']??''))!=='')echo '<p><strong>Hinweis des Bestellers:</strong> '.e((string)$o['note']).'</p>';
     if(trim((string)($o['decision_note']??''))!=='')echo '<p><strong>Anmerkung zur Freigabe:</strong> '.e((string)$o['decision_note']).'</p>';
-    echo '<p class="muted">Korrekturabzüge findest du beim jeweiligen Artikel in der <a href="'.e(yw_customer_url((int)$o['company_id'],'kollektion')).'">Kollektion des Kunden</a>.</p>';
+    echo '<p class="muted">Korrekturabzüge findest du beim jeweiligen Artikel in der <a href="'.e(yw_customer_url((int)$o['company_id'],'kollektion')).'">Kollektion des Kunden</a> – ein Klick auf den Artikelnamen öffnet ihn dort.</p>';
     echo '</section>';
 
     // Seitenleiste

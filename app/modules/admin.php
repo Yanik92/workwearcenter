@@ -1017,6 +1017,7 @@ function admin_backend_style(): string {
     .collection-inline-editor{margin:0 13px 14px;border-color:#f6c9a6}
     .collection-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 15px;background:#fff8f2}
     .collection-savebar{position:sticky;bottom:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 14px;margin-top:8px;border:1px solid #e1e6ed;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 -6px 18px rgba(16,24,40,.06)}
+    .collection-savebar.is-static{position:static;box-shadow:none}
     .savebar-short{display:none}
     .profile-products-closed{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
     .flash[data-flash],.collection-row,.employee-role-form,.admin-toolbox,.list-anchor,#kollektion,#motive{scroll-margin-top:110px}
@@ -1533,6 +1534,7 @@ function yw_audit_labels(): array {
         'yw_profile_create'=>'Ausstattungsprofil angelegt',
         'yw_profile_save'=>'Ausstattungsprofil geändert',
         'yw_profile_products'=>'Profilsortiment geändert',
+        'yw_profile_bulk'=>'Profilsortiment per Sammelaktion geändert',
         'yw_production'=>'Produktionsauftrag geändert',
         'system.updated'=>'System aktualisiert',
     ];
