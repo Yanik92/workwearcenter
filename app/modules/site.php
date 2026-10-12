@@ -117,8 +117,8 @@ function s_faq(array $extra=[]): void {
 
 function s_browser(string $class=''): string {
     return '<figure class="s-service-proof '.e($class).'" aria-label="Echte Textilveredelung aus unserer Werkstatt">'
-        .'<img src="/'.e(s_img('services_image','assets/media/work/jacke-gesamt.jpg')).'" loading="lazy" alt="Arbeitsjacke mit sauber gesticktem Firmenlogo">'
-        .'<figcaption><span>Aus unserer Werkstatt in Salzkotten</span><strong>Textilien, die zu Ihrem Betrieb passen.</strong><a href="/mustershop">Firmenshop ansehen '.s_arrow().'</a></figcaption>'
+        .'<img src="'.e(s_img('services_image','assets/media/work/jacke-gesamt.jpg')).'" loading="lazy" alt="Arbeitsjacke mit sauber gesticktem Firmenlogo">'
+        .'<figcaption><span>Aus unserer Werkstatt in Salzkotten</span><strong>Textilien, die zu deinem Betrieb passen.</strong><a href="/mustershop">Firmenshop ansehen '.s_arrow().'</a></figcaption>'
         .'</figure>';
 }
 
@@ -126,9 +126,7 @@ function s_browser(string $class=''): string {
 function s_trust_section(): void {
     $c=yw_trust_content();
     if($c['empty']){
-        echo '<section class="s-section s-trust s-trust-empty wcm-trust-empty" aria-labelledby="s-trust-title"><div class="s-wrap"><div class="s-trust-head"><div><span class="s-eyebrow">REFERENZEN</span><h2 id="s-trust-title">'.e($c['title']).'</h2></div></div>';
-        echo '<div class="s-trust-empty-row"><p>[FREIGEGEBENE KUNDENLOGOS EINFÜGEN]</p><a class="s-more" href="/kontakt">Kontakt aufnehmen '.s_arrow().'</a></div></div></section>';
-        return;
+        return; // Ohne gepflegte Referenzen (Design → Referenzen) bleibt der Bereich weg.
     }
     echo '<section class="s-section s-trust" aria-labelledby="s-trust-title"><div class="s-wrap">';
     echo '<div class="s-trust-head"><h2 id="s-trust-title">'.e($c['title']).'</h2>';
@@ -210,12 +208,12 @@ function landing_page(): void {
         ['Was bekomme ich konkret?','Einen geschützten Shop mit eurem Namen, Logo und Firmenfarben sowie der vereinbarten Arbeitskleidung. Wir stimmen die Gestaltung mit dir ab. Die Artikel kommen erst nach deiner Freigabe in den Shop.'],
         ['Was brauchst du von mir für den Start?','Dein Firmenlogo, die gewünschten Artikel oder Einsatzbereiche und eine Kontaktperson. Hilfreich sind außerdem die ungefähre Teamgröße und die Person, die Bestellungen freigibt.'],
         ['Kann eine Person für die ganze Belegschaft bestellen?','Ja. Eine berechtigte Person kann Artikel, Größen und Mengen für Beschäftigte erfassen. Ein Sammelvorgang umfasst bis zu 20 Personen; größere Belegschaften werden in mehreren Durchgängen erfasst. Jede Auswahl bleibt der jeweiligen Person zugeordnet.'],
-        ['Wer gibt die Bestellungen frei?','Die für deinen Shop hinterlegte Rolle: [FREIGEBENDE ROLLE EINTRAGEN]. Wir legen den Bestellweg bei der Einrichtung gemeinsam fest.'],
-        ['Was kostet der Firmenshop und die Kleidung?','[PREISMODELL UND PREISFAKTOREN EINTRAGEN]'],
+        ['Wer gibt die Bestellungen frei?','Die Personen, die ihr dafür festlegt, zum Beispiel Teamleitung, Einkauf oder Geschäftsführung. Den Bestellweg legen wir bei der Einrichtung gemeinsam fest.'],
+        ['Was kostet der Firmenshop und die Kleidung?','Die Preise hängen von Artikel, Veredelung und Menge ab. Nach deiner Anfrage bekommst du ein konkretes Angebot mit allen Preisen.'],
         ['Wie lange dauert die Einrichtung?','[SHOP-EINRICHTUNGSDAUER EINTRAGEN]'],
-        ['Wie lange dauert die Lieferung?','[LIEFERZEIT AB FREIGABE EINTRAGEN]'],
-        ['Gibt es eine Mindestbestellmenge?','[MINDESTBESTELLMENGE EINTRAGEN]'],
-        ['Wann bekomme ich nach meiner Anfrage eine Antwort?','[ANTWORTZEIT BESTÄTIGEN]. Nach deiner Anfrage prüfen wir die Angaben und melden uns per E-Mail bei dir.'],
+        ['Wie lange dauert die Lieferung?','Das hängt von Artikel, Verfügbarkeit und Veredelung ab. Den voraussichtlichen Liefertermin nennen wir dir im Angebot und bei jedem Auftrag.'],
+        ['Gibt es eine Mindestbestellmenge?','Das stimmen wir je Artikel und Veredelung im Angebot mit dir ab.'],
+        ['Wann bekomme ich nach meiner Anfrage eine Antwort?','So schnell wie möglich. Nach deiner Anfrage prüfen wir die Angaben und melden uns per E-Mail bei dir.'],
         ['Wie laufen Abrechnung und Lieferscheine?','Nach der Freigabe gehen die Bestellungen in die Auftragsverwaltung. Dort laufen Abrechnung, Lieferscheine und weitere Auftragsunterlagen. Wir produzieren und liefern die bestellte Kleidung.'],
         ['Brauchen Beschäftigte eine App?','Nein. Der Firmenshop läuft im Browser auf Computer, Tablet und Smartphone. Für die Bestellung ist keine zusätzliche App erforderlich.'],
         ['Was sehe ich im Mustershop?','Der Mustershop zeigt beispielhaft, wie ein Firmenshop aufgebaut ist. Wenn du bei der Anfrage dein Logo hochlädst, kann zusätzlich eine unverbindliche Vorschau mit deinem Firmenlogo entstehen. Das ist noch nicht der freigegebene Shop mit deiner abgestimmten Kollektion.'],
@@ -353,7 +351,7 @@ function site_inquiry_render(bool $success,string $error,?string $probeshopToken
     hp_page_hero('Anfrage','Firmenshop anfragen','<p>Nenn uns deine gewünschten Artikel, die ungefähre Teamgröße und eine Kontaktperson. Preise, Einrichtung und Lieferzeit bestätigen wir nach der Abstimmung.</p>',[],true);
     echo '<section class="s-section"><div class="s-wrap s-inquiry"><div class="s-form-card">';
     if($success){
-        echo '<div class="s-success"><span class="s-success-mark">'.hp_check_icon().'</span><h2>Danke für deine Anfrage.</h2><p>Wir haben deine Angaben erhalten und melden uns innerhalb von [ANTWORTZEIT BESTÄTIGEN] per E-Mail.</p>';
+        echo '<div class="s-success"><span class="s-success-mark">'.hp_check_icon().'</span><h2>Danke für deine Anfrage.</h2><p>Wir haben deine Angaben erhalten und melden uns so schnell wie möglich per E-Mail.</p>';
         if($probeshopToken!==null)echo '<div class="s-probe-ready"><strong>Deine unverbindliche Vorschau ist bereit.</strong><p>Sie zeigt dein Logo auf Musterartikeln und ist 30 Tage über diesen Link erreichbar. Sie enthält noch nicht die freigegebene Firmenkollektion.</p><a class="s-btn s-btn-orange" href="/probeshop/'.e($probeshopToken).'" rel="noreferrer">Vorschau ansehen</a></div>';
         else echo '<a class="s-btn s-btn-navy" href="/mustershop">Mustershop ansehen</a>';
         echo '</div>';
@@ -368,7 +366,7 @@ function site_inquiry_render(bool $success,string $error,?string $probeshopToken
         echo '<label class="s-check"><input type="checkbox" name="privacy" value="1" required><span>Ich bin einverstanden, dass meine Angaben und ein gegebenenfalls hochgeladenes Logo zur Bearbeitung der Anfrage verwendet werden. <a href="/datenschutz" target="_blank" rel="noopener">Datenschutzhinweise</a></span></label>';
         echo '<button class="s-btn s-btn-orange" type="submit">Anfrage senden</button></form>';
     }
-    echo '</div><aside class="s-inquiry-side"><h2>Was nach deiner Anfrage passiert</h2><ol class="s-mini-steps"><li><strong>Wir prüfen deine Angaben</strong><span>Antwort innerhalb von [ANTWORTZEIT BESTÄTIGEN].</span></li><li><strong>Wir stimmen den Entwurf ab</strong><span>Artikel, Logo und Veredelung legen wir gemeinsam fest.</span></li><li><strong>Du gibst die Gestaltung frei</strong><span>Erst danach kommen die abgestimmten Artikel in den Firmenshop.</span></li></ol><p class="s-inquiry-mail">Lieber per E-Mail?<br><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p></aside></div></section>';
+    echo '</div><aside class="s-inquiry-side"><h2>Was nach deiner Anfrage passiert</h2><ol class="s-mini-steps"><li><strong>Wir prüfen deine Angaben</strong><span>Wir melden uns so schnell wie möglich per E-Mail.</span></li><li><strong>Wir stimmen den Entwurf ab</strong><span>Artikel, Logo und Veredelung legen wir gemeinsam fest.</span></li><li><strong>Du gibst die Gestaltung frei</strong><span>Erst danach kommen die abgestimmten Artikel in den Firmenshop.</span></li></ol><p class="s-inquiry-mail">Lieber per E-Mail?<br><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p></aside></div></section>';
     hp_page_end();
 }
 

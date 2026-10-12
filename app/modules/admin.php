@@ -1149,7 +1149,7 @@ function admin_sidebar(string $active): string {
         $counts['exchanges']=yw_admin_exchange_open_count();
     } catch(Throwable $e) {}
 
-    $runtimeErrors=function_exists('yw_runtime_recent_errors')?yw_runtime_recent_errors(24,1000):null;
+    $runtimeErrors=function_exists('yw_runtime_recent_errors')?yw_runtime_recent_errors(24,100):null;
     $counts['system']+=(is_array($runtimeErrors)?count($runtimeErrors):0);
     $groups=[
         'Aufträge & Produktion'=>[

@@ -26,7 +26,7 @@ $productionHosts = [strtolower((string)$config['base_domain']), 'www.'.strtolowe
 
 // Never create an authenticated production session over an unencrypted request.
 // The web-server redirect remains the first line of defence; this is the fallback.
-if (!$secure && in_array($requestHost, $productionHosts, true)) {
+if (!$secure && in_array($requestHost, $productionHosts, true) && !yw_untrusted_proxy_https()) {
     $requestUri = (string)($_SERVER['REQUEST_URI'] ?? '/');
     if ($requestUri === '' || $requestUri[0] !== '/') $requestUri = '/';
     header('Location: https://'.$requestHost.$requestUri, true, 308);

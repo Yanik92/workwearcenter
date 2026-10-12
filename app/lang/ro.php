@@ -66,7 +66,7 @@ return [
     'team.preview_title' => 'Ce urmează',
     'team.costs' => 'Costuri și aprobare',
     'team.step_orders' => 'Facturare și livrare',
-    'team.rules_text' => 'Bugetul, limitele de articole și produsele permise sunt verificate separat pentru fiecare persoană. Fiecare comandă individuală primește o referință comună a echipei. Aprobările existente rămân active. Comenzile aprobate ajung în gestionarea comenzilor, unde sunt pregătite facturarea și documentele de livrare.',
+    'team.rules_text' => 'Bugetul, limitele de articole și produsele permise sunt verificate separat pentru fiecare persoană. Fiecare comandă individuală primește o referință comună a echipei. Aprobările existente rămân active. Comenzile aprobate ajung în gestionarea comenzilor, unde sunt pregătite facturarea și documentele de livrare. Comenzile de echipă sunt plătite integral de firmă, fără contribuție proprie a angajaților. Cine plasează comanda nu o poate aproba singur.',
     'team.no_people' => 'Nu există încă angajați activi cu un cont aprobat.',
     'team.go_people' => 'Gestionează angajații',
     'team.limit_notice' => 'O comandă de echipă poate include cel mult 20 de persoane. Împarte echipele mai mari în mai multe comenzi.',

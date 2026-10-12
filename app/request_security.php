@@ -19,6 +19,8 @@ function yw_ip_in_network(string $ip,string $network): bool {
 /** Proxy-Header nur akzeptieren, wenn die direkte Verbindung von einem vertrauten Proxy kommt. */
 function yw_request_is_https(?array $runtimeConfig=null): bool {
     if(in_array(strtolower(trim((string)($_SERVER['HTTPS']??''))),['on','1','https'],true))return true;
+    // Vom Webserver selbst gesetzt (nicht vom Browser): manche Hoster melden HTTPS nur so.
+    if(strtolower((string)($_SERVER['REQUEST_SCHEME']??''))==='https'||(string)($_SERVER['SERVER_PORT']??'')==='443')return true;
     $runtimeConfig??=is_array($GLOBALS['config']??null)?$GLOBALS['config']:[];
     $remote=(string)($_SERVER['REMOTE_ADDR']??'');
     $trusted=$runtimeConfig['trusted_proxies']??[];
@@ -28,4 +30,13 @@ function yw_request_is_https(?array $runtimeConfig=null): bool {
         if(is_string($network)&&yw_ip_in_network($remote,$network)){$isTrusted=true;break;}
     }
     return $isTrusted&&strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO']??'')))==='https';
+}
+
+/**
+ * Ein Proxy meldet HTTPS, steht aber nicht in trusted_proxies. Dann nicht auf https umleiten:
+ * Die Anfrage kam bereits verschlüsselt beim Proxy an, eine Umleitung würde endlos kreisen
+ * und die Website wäre nach dem Update nicht mehr erreichbar. Der Systemstatus weist darauf hin.
+ */
+function yw_untrusted_proxy_https(): bool {
+    return strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO']??'')))==='https';
 }

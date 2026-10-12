@@ -84,7 +84,7 @@
   /* ---------- Gebündelte Team-Bestellung im Verantwortlichen-Portal ---------- */
   document.querySelectorAll('form[data-team-order]').forEach(function (teamForm) {
     var peopleBox = teamForm.querySelector('[data-team-people]');
-    var personTemplate = teamForm.querySelector('template[data-team-person-template]');
+    var personTemplate = teamForm.querySelector('template[data-team-person-template]') || document.querySelector('template[data-team-person-template]');
     var feedback = teamForm.querySelector('[data-team-feedback]');
     var catalogData = {};
     try {

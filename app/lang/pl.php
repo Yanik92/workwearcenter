@@ -66,7 +66,7 @@ return [
     'team.preview_title' => 'Co dalej',
     'team.costs' => 'Koszty i akceptacja',
     'team.step_orders' => 'Rozliczenie i dostawa',
-    'team.rules_text' => 'Budżety, limity ilościowe i dozwolone produkty są sprawdzane osobno dla każdej osoby. Każde zamówienie otrzyma wspólny numer zespołowy. Obowiązujące akceptacje pozostają bez zmian. Zatwierdzone zamówienia trafiają do zarządzania zleceniami, gdzie przygotowywane są rozliczenia i dokumenty dostawy.',
+    'team.rules_text' => 'Budżety, limity ilościowe i dozwolone produkty są sprawdzane osobno dla każdej osoby. Każde zamówienie otrzyma wspólny numer zespołowy. Obowiązujące akceptacje pozostają bez zmian. Zatwierdzone zamówienia trafiają do zarządzania zleceniami, gdzie przygotowywane są rozliczenia i dokumenty dostawy. Zamówienia zespołowe w całości opłaca firma, bez udziału własnego pracowników. Osoba składająca zamówienie nie może go sama zatwierdzić.',
     'team.no_people' => 'Brak aktywnych pracowników z zatwierdzonym kontem.',
     'team.go_people' => 'Zarządzaj pracownikami',
     'team.limit_notice' => 'Jedno zgłoszenie może obejmować maksymalnie 20 osób. Większe zespoły podziel na kilka zamówień.',

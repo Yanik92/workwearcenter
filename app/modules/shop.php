@@ -994,7 +994,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
 /** Sammelbestellung: Verantwortliche erfassen Mitarbeiteraufträge in einem Arbeitsgang. */
 function company_portal_team_order(array $company,array $account): void {
     $companyId=(int)$company['id'];
-    $q=db()->prepare("SELECT id,company_id,name,department,employee_number,equipment_profile_id FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) ORDER BY name,id");
+    $q=db()->prepare("SELECT id,company_id,name,department,employee_number,equipment_profile_id FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved' AND role IN ('manager','employee') AND anonymized_at IS NULL AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) ORDER BY name,id");
     $q->execute([$companyId]);$people=$q->fetchAll();
     $baseProducts=shop_company_products($companyId);$profileCatalogs=[];$accountCatalog=[];
     foreach($people as $person){
@@ -1016,7 +1016,7 @@ function company_portal_team_order(array $company,array $account): void {
     }
     $catalog=['accounts'=>$accountCatalog,'profiles'=>$profileCatalogs];
     $catalogJson=json_encode($catalog,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT);
-    echo '<section class="cp-team-page"><div class="cp-section-head"><div><span class="cp-team-eyebrow">'.e(t('nav.team_order')).'</span><h1>'.e(t('team.title')).'</h1><p>'.e(t('team.intro')).'</p><p class="cp-team-count">'.e(t('team.people_count',['n'=>count($people)])).'</p></div></div>';
+    echo '<section class="cp-team-page"><div class="cp-section-head"><div><span class="cp-team-eyebrow">'.e(t('nav.team_order')).'</span><h1>'.e(t('team.title')).'</h1><p>'.e(t('team.intro')).'</p></div></div>';
     if(!$people){
         echo '<div class="cp-card cp-team-empty"><p>'.e(t('team.no_people')).'</p><a class="cp-btn" href="/'.e($company['slug']).'/mitarbeiter">'.e(t('team.go_people')).'</a></div></section>';
         return;
@@ -1035,7 +1035,7 @@ function company_portal_team_order(array $company,array $account): void {
     echo '<div class="cp-team-people" data-team-people></div><p class="cp-team-feedback" data-team-feedback role="status" aria-live="polite"></p>';
     echo '<label class="cp-team-note">'.e(t('team.note')).'<small>'.e(t('team.note_hint')).'</small><textarea name="team_note" maxlength="350"></textarea></label>';
     echo '<div class="cp-team-submit"><div><strong>'.e(t('team.rules_title')).'</strong><p>'.e(t('team.rules_text')).'</p></div><button class="cp-btn" type="submit">'.e(t('team.submit')).'</button></div></form>';
-    echo '<aside class="cp-team-aside"><div class="cp-team-aside-icon" aria-hidden="true">'.yw_shop_icon('users').'</div><h2>'.e(t('team.preview_title')).'</h2><ol><li><span>1</span>'.e(t('team.person')).'</li><li><span>2</span>'.e(t('team.item')).'</li><li><span>3</span>'.e(t('team.step_orders')).'</li></ol><div class="cp-team-policy"><strong>'.e(t('team.costs')).'</strong><ul><li>'.e(financing_label($company)).'</li><li>'.e(shipping_rule_label($company)).'</li><li>'.e(((int)($company['approval_required']??1)===1)?t('rules.internal_approval'):t('rules.no_approval')).'</li></ul></div><p>'.e(t('team.rules_text')).'</p></aside></div>';
+    echo '<aside class="cp-team-aside"><div class="cp-team-aside-icon" aria-hidden="true">'.yw_shop_icon('users').'</div><h2>'.e(t('team.preview_title')).'</h2><ol><li><span>1</span>'.e(t('team.person')).'</li><li><span>2</span>'.e(t('team.item')).'</li><li><span>3</span>'.e(t('team.step_orders')).'</li></ol><div class="cp-team-policy"><strong>'.e(t('team.costs')).'</strong><ul><li>'.e(financing_label(['financing_mode'=>'company']+$company)).'</li><li>'.e(shipping_rule_label(['shipping_payer'=>'company']+$company)).'</li><li>'.e(((int)($company['approval_required']??1)===1)?t('rules.internal_approval'):t('rules.no_approval')).'</li></ul></div><p>'.e(t('team.rules_text')).'</p></aside></div>';
     echo '<template data-team-person-template><section class="cp-card cp-team-person" data-team-person><div class="cp-team-person-head"><span class="cp-team-person-index" data-team-number>1</span><button type="button" class="cp-team-remove" data-team-remove>'.e(t('team.remove_person')).'</button></div><label class="cp-team-select">'.e(t('team.person')).'<select data-team-account>'.$employeeOptions.'</select></label><div class="cp-team-items" data-team-items></div><button type="button" class="cp-team-add-item" data-team-add-item>+ '.e(t('team.add_item')).'</button><template data-team-item-template><div class="cp-team-item" data-team-item><label>'.e(t('team.product')).'<select data-team-product><option value="">'.e(t('team.choose_product')).'</option></select></label><label>'.e(t('team.size')).'<select data-team-size disabled><option value="">'.e(t('team.choose_size')).'</option></select></label><label>'.e(t('team.quantity')).'<input type="number" min="1" max="10" value="1" inputmode="numeric" data-team-quantity></label><button type="button" class="cp-team-item-remove" data-team-remove-item aria-label="'.e(t('common.close')).'">×</button></div></template></section></template>';
     echo '</section>';
 }
@@ -1093,8 +1093,8 @@ function company_portal_overview(array $company,array $account): void {
     if($manager){
         // 10.15: wie Menü-Zähler und „Freigaben“ – eigene Bestellungen nicht, solange eine andere Person freigeben kann; nur die ersten 4 laden
         $others=yw_other_manager_count((int)$company['id'],(int)$account['id'])>0;
-        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending'".($others?' AND NOT (o.employee_account_id<=>?)':'')." ORDER BY o.id ASC LIMIT 4");
-        $q->execute($others?[(int)$company['id'],(int)$account['id']]:[(int)$company['id']]);$pending=$q->fetchAll();$pendingCount=yw_pending_decision_count((int)$company['id'],(int)$account['id']);
+        $q=db()->prepare("SELECT o.id,o.created_at,o.gross_total_cents,o.total_cents,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.company_id=? AND o.status='pending'".($others?' AND NOT (o.employee_account_id<=>? OR o.placed_by_account_id<=>?)':'')." ORDER BY o.id ASC LIMIT 4");
+        $q->execute($others?[(int)$company['id'],(int)$account['id'],(int)$account['id']]:[(int)$company['id']]);$pending=$q->fetchAll();$pendingCount=yw_pending_decision_count((int)$company['id'],(int)$account['id']);
         echo '<section class="cp-card cp-approvals-card"><div class="cp-card-head"><div><h2>'.e(t('overview.approvals_title')).'</h2><p>'.e($pendingCount?tn('overview.approvals_waiting',$pendingCount):t('overview.approvals_none')).'</p></div><span class="cp-count">'.$pendingCount.'</span></div>';
         if($pending){
             echo '<ul class="cp-mini-items">';
@@ -1346,7 +1346,7 @@ function company_portal_approvals(array $company,array $account): void {
         echo company_portal_progress($o);
         echo '<div class="cp-order-summary"><div class="cp-order-sum"><span>'.e(t('cart.total')).'</span><strong>'.money($gross).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.employee')).'</span><strong>'.money($employee).'</strong></div><div class="cp-order-sum"><span>'.e(t('approvals.company')).'</span><strong>'.money($companyShare).'</strong></div></div>';
         if($status==='pending'){
-            $own=(int)($o['employee_account_id']??0)===(int)$account['id'];
+            $own=(int)($o['employee_account_id']??0)===(int)$account['id']||(int)($o['placed_by_account_id']??0)===(int)$account['id']; // 10.18: auch selbst angelegte Team-Bestellung
             if($own)echo '<div class="cp-manager-alert">'.e($others>0?t('decide.own_order'):t('approvals.own_order_single')).'</div>';
             echo '<div class="cp-action-row"><form method="post" class="cp-decision-form">'.csrf_field().'<input type="hidden" name="action" value="decision"><input type="hidden" name="order_id" value="'.(int)$o['id'].'"><label>'.e(t('approvals.note')).' <small>'.e(t('approvals.note_required')).'</small><textarea name="decision_note" maxlength="1000" placeholder="'.e(t('approvals.note_placeholder')).'"></textarea></label><button class="cp-btn reject" type="submit" name="decision" value="rejected">'.e(t('approvals.reject')).'</button>'.($own&&$others>0?'':'<button class="cp-btn approve" type="submit" name="decision" value="approved">'.e(t('approvals.approve')).'</button>').'</form></div>';
         }

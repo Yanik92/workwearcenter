@@ -560,6 +560,10 @@ function run_schema_updates(PDO $pdo): array {
     schema_add_column($pdo,'yw_lexware_documents','part_count','SMALLINT UNSIGNED NULL',$changes);
     schema_add_column($pdo,'yw_lexware_documents','line_grouping','VARCHAR(16) NULL',$changes);
     schema_mark_version($pdo,'10.15.0',$changes);
+    // 10.18 – Team-Bestellung: wer den Auftrag für die Person angelegt hat (NULL = selbst bestellt).
+    // Vier-Augen-Prinzip: Wer für andere bestellt, gibt diese Aufträge nicht selbst frei.
+    schema_add_column($pdo,'orders','placed_by_account_id','INT UNSIGNED NULL',$changes);
+    schema_mark_version($pdo,'10.18.0',$changes);
 
     return $changes;
 }

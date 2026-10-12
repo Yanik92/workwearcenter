@@ -105,6 +105,8 @@ function yw_schema_probes(): array {
             'SELECT reminder_digest_at FROM employee_accounts LIMIT 0',
             'SELECT managers_can_appoint FROM companies LIMIT 0',
             'SELECT part_no,part_count,line_grouping FROM yw_lexware_documents LIMIT 0',
+            // 10.18: Team-Bestellung
+            'SELECT placed_by_account_id FROM orders LIMIT 0',
         ];
 }
 
@@ -406,7 +408,8 @@ function place_team_order(array $company,array $manager): never {
                 $product=$products[$productId];$rule=$profileRules[$productId]??null;
                 yw_check_limits(null,0,0,yw_effective_product_limit($product,$rule),yw_quantity_used($company,$employee,$productId),$qty);
             }
-            $calc=yw_calc_items($calcLines,company_employee_share_percent($company));
+            // Team-Bestellungen zahlt die Firma ganz: Ein Eigenanteil (Lohnabzug) entsteht nur, wenn die Person selbst bestellt.
+            $calc=yw_calc_items($calcLines,0);
             $orders[$employeeId]=['account'=>$employee,'items'=>$groupItems,'calc'=>$calc];
             $batchGross+=$calc['gross'];
             foreach($calc['net_by_rate'] as $rate=>$amount)$batchNetByRate[$rate]=($batchNetByRate[$rate]??0)+(int)$amount;
@@ -430,7 +433,7 @@ function place_team_order(array $company,array $manager): never {
         }
 
         $status=(int)$company['approval_required']===1?'pending':'approved';$orderIds=[];
-        $insertOrder=db()->prepare('INSERT INTO orders(company_id,invite_id,employee_account_id,total_cents,net_total_cents,gross_total_cents,employee_total_cents,company_total_cents,shipping_net_cents,shipping_gross_cents,shipping_employee_cents,shipping_company_cents,status,note,submission_token,delivery_snapshot_json,shipping_vat_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+        $insertOrder=db()->prepare('INSERT INTO orders(placed_by_account_id,company_id,invite_id,employee_account_id,total_cents,net_total_cents,gross_total_cents,employee_total_cents,company_total_cents,shipping_net_cents,shipping_gross_cents,shipping_employee_cents,shipping_company_cents,status,note,submission_token,delivery_snapshot_json,shipping_vat_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
         $insertItem=db()->prepare('INSERT INTO order_items(order_id,product_id,product_name,size,quantity,unit_price_cents,unit_net_cents,vat_rate,unit_gross_cents,employee_share_cents,company_share_cents,decoration_snapshot_json,line_net_cents,line_gross_cents,line_employee_cents,line_company_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
         $batchRef='Team '.strtoupper(substr($token,0,8));
         foreach($orders as $employeeId=>&$order){
@@ -438,7 +441,7 @@ function place_team_order(array $company,array $manager): never {
             $shippingVat=$shippingNet>0?(float)$batchShipping['vat']:null;
             $shippingTax=$shippingNet>0?yw_shipping_tax_cents($calc['net_by_rate'],$shippingNet,(float)$batchShipping['vat']):0;
             $shippingGross=$shippingNet+$shippingTax;
-            $shippingEmployee=(string)($company['shipping_payer']??'company')==='employee'?$shippingGross:0;
+            $shippingEmployee=0;
             $shippingCompany=$shippingGross-$shippingEmployee;
             $net=$calc['net']+$shippingNet;$gross=$calc['gross']+$shippingGross;
             $employeeTotal=$calc['employee']+$shippingEmployee;$companyTotal=$calc['company']+$shippingCompany;
@@ -447,7 +450,7 @@ function place_team_order(array $company,array $manager): never {
             if($delivery['mode']==='company'&&$delivery['address']==='')throw new DomainException(t('err.no_delivery_address'));
             $inviteId=ensure_account_invite($company,$employee);
             $orderNote=$batchRef.($note!==''?' · '.$note:'');
-            $insertOrder->execute([(int)$company['id'],$inviteId,$employeeId,$net,$net,$gross,$employeeTotal,$companyTotal,$shippingNet,$shippingGross,$shippingEmployee,$shippingCompany,$status,mb_substr($orderNote,0,500),$childTokens[$employeeId],json_encode($delivery,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE),$shippingVat]);
+            $insertOrder->execute([(int)$manager['id'],(int)$company['id'],$inviteId,$employeeId,$net,$net,$gross,$employeeTotal,$companyTotal,$shippingNet,$shippingGross,$shippingEmployee,$shippingCompany,$status,mb_substr($orderNote,0,500),$childTokens[$employeeId],json_encode($delivery,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE),$shippingVat]);
             $orderId=(int)db()->lastInsertId();$order['id']=$orderId;$orderIds[]=$orderId;
             foreach($order['items'] as $index=>[$product,$size,$qty,$price,$snapshot]){
                 $line=$calc['lines'][$index];

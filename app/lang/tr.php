@@ -66,7 +66,7 @@ return [
     'team.preview_title' => 'Sonraki adımlar',
     'team.costs' => 'Maliyet ve onay',
     'team.step_orders' => 'Faturalama ve teslimat',
-    'team.rules_text' => 'Bütçeler, ürün adet sınırları ve izin verilen ürünler her kişi için ayrı kontrol edilir. Her siparişe ortak bir ekip referansı eklenir. Mevcut onay adımları korunur. Onaylanan siparişler, faturalama ve irsaliyelerin düzenlendiği sipariş yönetimine aktarılır.',
+    'team.rules_text' => 'Bütçeler, ürün adet sınırları ve izin verilen ürünler her kişi için ayrı kontrol edilir. Her siparişe ortak bir ekip referansı eklenir. Mevcut onay adımları korunur. Onaylanan siparişler, faturalama ve irsaliyelerin düzenlendiği sipariş yönetimine aktarılır. Ekip siparişlerinin tamamını firma öder; çalışanlardan katkı payı alınmaz. Siparişi veren kişi bu siparişleri kendisi onaylayamaz.',
     'team.no_people' => 'Onaylı hesabı bulunan aktif çalışan yok.',
     'team.go_people' => 'Çalışanları yönet',
     'team.limit_notice' => 'Bir toplu siparişte en fazla 20 kişi yer alabilir. Daha büyük ekipleri birkaç siparişe bölün.',

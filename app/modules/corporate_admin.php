@@ -370,7 +370,7 @@ function yw_system(): void {
         ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint,'',''],
         ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen','/update.php','Update-Assistent'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren','',''],
-        ['HTTPS-Verbindung',yw_request_is_https(),'SSL/HTTPS beim Hoster aktivieren; hinter einem Proxy trusted_proxies in config.php eintragen','',''],
+        ['HTTPS-Verbindung',yw_request_is_https(),yw_untrusted_proxy_https()?'Der Hoster leitet über einen Proxy weiter (Adresse '.(string)($_SERVER['REMOTE_ADDR']??'?').'). Diese Adresse in config.php unter trusted_proxies eintragen, dann sind Anmelde-Cookies wieder als „Secure“ markiert.':'SSL/HTTPS beim Hoster aktivieren','',''],
         ['PHP-Erweiterungen',$runtime['missing_extensions']===[],'Fehlend: '.implode(', ',$runtime['missing_extensions']).' – beim Hoster aktivieren','',''],
         ['PHP-Laufzeitwerte',$runtime['php_settings_ok'],$runtime['php_settings_hint'].' · empfohlen: 256M, 20M, 25M, 300 Sekunden','',''],
         ['Upload-Ordner beschreibbar',$runtime['uploads_writable'],'Ordner uploads/ und Unterordner beim Hoster beschreibbar machen','',''],
