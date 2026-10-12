@@ -128,6 +128,18 @@
     });
   });
 
+  /* Homepage: Kundenlogos durchlaufen lassen und per Tastatur pausierbar machen. */
+  document.querySelectorAll('[data-trust-toggle]').forEach(function (button) {
+    var section = button.closest('.s-trust');
+    if (!section) return;
+    button.addEventListener('click', function () {
+      var paused = button.getAttribute('aria-pressed') !== 'true';
+      button.setAttribute('aria-pressed', paused ? 'true' : 'false');
+      button.textContent = paused ? 'Durchlauf fortsetzen' : 'Durchlauf pausieren';
+      section.classList.toggle('is-paused', paused);
+    });
+  });
+
   /* Firmenshop (Filter, Mengen, Auswahl, Detailansicht): assets/shop.js */
 
   /* ---------- Admin: einfacher Rich-Text-Editor ---------- */
@@ -207,46 +219,161 @@
   /* ---------- Öffentlicher Mustershop (reine Demo, speichert nichts) ---------- */
   var demoToast = document.getElementById('demo-toast');
   if (demoToast) {
-    var count = 0, budget = 21870;
+    var budget = 21870, selected = [], toastTimer = 0;
     var countEl = document.getElementById('demo-count');
     var budgetEl = document.getElementById('demo-budget-value');
     var progress = document.getElementById('demo-progress');
     var toast = function (text, ms) {
+      window.clearTimeout(toastTimer);
       demoToast.textContent = text;
       demoToast.classList.add('show');
-      window.setTimeout(function () { demoToast.classList.remove('show'); }, ms || 2400);
+      toastTimer = window.setTimeout(function () { demoToast.classList.remove('show'); }, ms || 2400);
     };
-    document.querySelectorAll('.demo-filter').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        document.querySelectorAll('.demo-filter').forEach(function (x) { x.classList.remove('active'); });
-        btn.classList.add('active');
-        document.querySelectorAll('.demo-product').forEach(function (card) {
-          card.hidden = btn.dataset.filter !== 'Alle' && card.dataset.category !== btn.dataset.filter;
+    var demoShop = document.querySelector('.demo:not(.demo-probe)');
+    if (demoShop) {
+      var demoSelection = document.getElementById('demo-selection');
+      var selectionList = document.getElementById('demo-selection-items');
+      var selectionEmpty = document.getElementById('demo-selection-empty');
+      var selectionBudget = document.getElementById('demo-selection-budget');
+      var demoCart = demoShop.querySelector('.demo-cart');
+      var renderSelection = function () {
+        var units = selected.reduce(function (sum, item) { return sum + item.quantity; }, 0);
+        if (countEl) countEl.textContent = String(units);
+        if (budgetEl) budgetEl.textContent = euro(budget);
+        if (selectionBudget) selectionBudget.textContent = euro(budget);
+        if (progress) {
+          progress.style.width = Math.max(0, Math.min(100, Math.round(budget / 30000 * 100))) + '%';
+          if (progress.parentElement) progress.parentElement.setAttribute('aria-valuenow', String(budget));
+        }
+        if (!selectionList) return;
+        while (selectionList.firstChild) selectionList.removeChild(selectionList.firstChild);
+        selected.forEach(function (item) {
+          var row = document.createElement('li');
+          var label = document.createElement('span');
+          var remove = document.createElement('button');
+          label.textContent = item.name + ' · Größe ' + item.size + ' · ' + item.quantity + ' × ' + euro(item.price) + ' = ' + euro(item.total);
+          remove.type = 'button';
+          remove.className = 'demo-remove';
+          remove.dataset.key = item.key;
+          remove.textContent = 'Entfernen';
+          row.appendChild(label);
+          row.appendChild(remove);
+          selectionList.appendChild(row);
+        });
+        if (selectionEmpty) selectionEmpty.hidden = selected.length > 0;
+        selectionList.hidden = selected.length === 0;
+      };
+      var resetUnselectedButtons = function () {
+        demoShop.querySelectorAll('.demo-product').forEach(function (card) {
+          var size = card.querySelector('.demo-size');
+          var button = card.querySelector('.demo-add');
+          if (!button || !size || size.value) return;
+          button.disabled = true;
+          var label = button.querySelector('span:first-child');
+          var icon = button.querySelector('span:last-child');
+          if (label) label.textContent = 'Größe wählen';
+          if (icon) icon.textContent = '+';
+        });
+      };
+      demoShop.querySelectorAll('.demo-filter').forEach(function (button) {
+        button.addEventListener('click', function () {
+          demoShop.querySelectorAll('.demo-filter').forEach(function (item) {
+            item.classList.toggle('active', item === button);
+            item.setAttribute('aria-pressed', item === button ? 'true' : 'false');
+          });
+          demoShop.querySelectorAll('.demo-product').forEach(function (card) {
+            card.hidden = button.dataset.filter !== 'Alle' && card.dataset.category !== button.dataset.filter;
+          });
         });
       });
-    });
-    document.querySelectorAll('.demo-add').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var price = parseInt(btn.dataset.price, 10);
-        if (price > budget) { toast('Das Beispielbudget reicht für diesen Artikel nicht aus.'); return; }
-        count++;
-        budget -= price;
-        if (countEl) countEl.textContent = String(count);
-        if (budgetEl) budgetEl.textContent = euro(budget);
-        if (progress) progress.style.width = Math.max(4, Math.round(budget / 30000 * 100)) + '%';
-        toast(btn.dataset.name + ' wurde zur Demo-Auswahl hinzugefügt.');
+      demoShop.querySelectorAll('.demo-product').forEach(function (card) {
+        var size = card.querySelector('.demo-size');
+        var quantity = card.querySelector('.demo-quantity');
+        var button = card.querySelector('.demo-add');
+        if (size && button) size.addEventListener('change', function () {
+          button.disabled = !size.value;
+          var label = button.querySelector('span:first-child');
+          if (label) label.textContent = size.value ? 'Zur Auswahl' : 'Größe wählen';
+        });
+        if (quantity) quantity.addEventListener('change', function () {
+          var value = parseInt(quantity.value, 10);
+          quantity.value = String(Math.max(1, Math.min(20, Number.isFinite(value) ? value : 1)));
+        });
+        if (!button) return;
+        button.addEventListener('click', function () {
+          var price = parseInt(button.dataset.price, 10);
+          var amount = Math.max(1, Math.min(20, parseInt(quantity && quantity.value, 10) || 1));
+          var selectedSize = size && size.value;
+          var total = price * amount;
+          if (!selectedSize) { toast('Bitte wählen Sie zuerst eine Größe.'); return; }
+          if (total > budget) { toast('Das Beispielbudget reicht für diese Auswahl nicht aus.'); return; }
+          var sku = button.dataset.sku;
+          var key = sku + '|' + selectedSize;
+          var existing = selected.find(function (item) { return item.key === key; });
+          if (existing && existing.quantity + amount > 20) { toast('Pro Größe können höchstens 20 Stück ausgewählt werden.'); return; }
+          if (existing) { existing.quantity += amount; existing.total += total; }
+          else selected.push({ key: key, sku: sku, name: button.dataset.name, size: selectedSize, quantity: amount, price: price, total: total });
+          budget -= total;
+          if (size) size.value = '';
+          if (quantity) quantity.value = '1';
+          button.disabled = true;
+          var label = button.querySelector('span:first-child');
+          var icon = button.querySelector('span:last-child');
+          if (label) label.textContent = 'Hinzugefügt';
+          if (icon) icon.textContent = '✓';
+          renderSelection();
+          toast(button.dataset.name + ' · Größe ' + selectedSize + ' wurde zur Musterauswahl hinzugefügt.');
+        });
       });
-    });
-    var demoCart = document.querySelector('.demo-cart');
-    if (demoCart) demoCart.addEventListener('click', function () {
-      toast(count ? 'Demo-Auswahl: ' + count + ' Artikel. Es wird keine Bestellung gespeichert.' : 'Wählen Sie zunächst einen Artikel aus.', 2600);
-    });
-    document.querySelectorAll('[data-demo-nav]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        if (btn.classList.contains('active')) return;
-        toast(btn.dataset.demoNav + ': Diese Ansicht ist im echten Firmen-Shop vollständig verfügbar.', 2600);
+      if (demoCart && demoSelection) demoCart.addEventListener('click', function () {
+        demoSelection.hidden = !demoSelection.hidden;
+        demoCart.setAttribute('aria-expanded', demoSelection.hidden ? 'false' : 'true');
+        if (!demoSelection.hidden) demoSelection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
-    });
+      if (demoSelection) demoSelection.addEventListener('click', function (event) {
+        var remove = event.target.closest('.demo-remove');
+        if (!remove) return;
+        var index = selected.findIndex(function (item) { return item.key === remove.dataset.key; });
+        if (index < 0) return;
+        var item = selected.splice(index, 1)[0];
+        budget += item.total;
+        renderSelection();
+        resetUnselectedButtons();
+        toast(item.name + ' wurde aus der Musterauswahl entfernt.');
+      });
+      var clearSelection = document.getElementById('demo-clear');
+      if (clearSelection) clearSelection.addEventListener('click', function () {
+        selected = [];
+        budget = 21870;
+        renderSelection();
+        resetUnselectedButtons();
+        toast('Die Musterauswahl wurde geleert.');
+      });
+      renderSelection();
+    } else {
+      var count = 0, legacyBudget = 21870;
+      document.querySelectorAll('.demo-filter').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('.demo-filter').forEach(function (x) { x.classList.remove('active'); });
+          btn.classList.add('active');
+          document.querySelectorAll('.demo-product').forEach(function (card) { card.hidden = btn.dataset.filter !== 'Alle' && card.dataset.category !== btn.dataset.filter; });
+        });
+      });
+      document.querySelectorAll('.demo-add').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var price = parseInt(btn.dataset.price, 10);
+          if (price > legacyBudget) { toast('Das Beispielbudget reicht für diesen Artikel nicht aus.'); return; }
+          count++;
+          legacyBudget -= price;
+          if (countEl) countEl.textContent = String(count);
+          if (budgetEl) budgetEl.textContent = euro(legacyBudget);
+          if (progress) progress.style.width = Math.max(4, Math.round(legacyBudget / 30000 * 100)) + '%';
+          toast(btn.dataset.name + ' wurde zur Demo-Auswahl hinzugefügt.');
+        });
+      });
+      var legacyCart = document.querySelector('.demo-cart');
+      if (legacyCart) legacyCart.addEventListener('click', function () { toast(count ? 'Demo-Auswahl: ' + count + ' Artikel. Es wird keine Bestellung gespeichert.' : 'Wählen Sie zunächst einen Artikel aus.', 2600); });
+    }
     /* 10.11 Probeshop: Textilfarbe hell/dunkel umschalten (nur Darstellung) */
     var demoRoot = document.querySelector('.demo-probe');
     document.querySelectorAll('[data-probe-tone]').forEach(function (btn) {

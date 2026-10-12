@@ -205,7 +205,7 @@ function yw_account_lang_by_id(int $accountId): string {
 }
 
 function yw_lang_cookie_set(string $code): void {
-    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $secure = function_exists('yw_request_is_https')?yw_request_is_https():(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off');
     setcookie(YW_LANG_COOKIE, $code, ['expires' => time() + 365 * 86400, 'path' => '/', 'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax']);
     $_COOKIE[YW_LANG_COOKIE] = $code;
 }

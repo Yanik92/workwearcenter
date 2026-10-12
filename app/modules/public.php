@@ -156,22 +156,24 @@ function upload_site_logo(array $file,string $old=''): string {
 }
 
 function site_brand_style(): string {
-    $primary=current_site_setting('site_primary','#17324d');
-    $accent=current_site_setting('site_accent','#f47b20');
-    if(!color_ok($primary))$primary='#17324d';
-    if(!color_ok($accent))$accent='#f47b20';
+    $primary=strtolower(trim(current_site_setting('site_primary','#fc6904')));
+    $accent=strtolower(trim(current_site_setting('site_accent','#fc6904')));
+    if(in_array($primary,['#287f9d','#b64f1d'],true))$primary='#fc6904';
+    if(in_array($accent,['#c54b55','#c45c27'],true))$accent='#fc6904';
+    if(!color_ok($primary))$primary='#fc6904';
+    if(!color_ok($accent))$accent='#fc6904';
     return '<style>
     :root{
       --primary:'.e($primary).';
       --accent:'.e($accent).';
       --bg:#ffffff;
-      --surface:#f4f6f8;
-      --text:#172033;
-      --muted:#667085;
-      --border:#e5e9ef;
-      --radius:18px;
+      --surface:#f3f0ea;
+      --text:#292d2f;
+      --muted:#777973;
+      --border:#e5dfd6;
+      --radius:10px;
       --max:1240px;
-      --shadow:0 18px 45px rgba(16,24,40,.10);
+      --shadow:0 18px 45px rgba(48,40,34,.10);
     }
 
     body{background:var(--bg);color:var(--text)}
@@ -182,7 +184,7 @@ function site_brand_style(): string {
       position:sticky;
       top:0;
       z-index:50;
-      background:var(--primary);
+      background:#292d2f;
       border-bottom:1px solid rgba(255,255,255,.10);
       box-shadow:0 6px 24px rgba(0,0,0,.10);
     }
@@ -453,9 +455,9 @@ function site_brand_style(): string {
     .wc-app-heading{font-size:.7rem;font-weight:800;margin-bottom:9px}.wc-mini-products{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.wc-mini-product{border:1px solid #e5e9ed;border-radius:9px;background:#fff;overflow:hidden}.wc-mini-shirt{height:64px;background:linear-gradient(145deg,#e9edf0,#f9fafb);display:grid;place-items:center;color:var(--primary)}.wc-mini-shirt svg{width:37px;height:37px}.wc-mini-copy{padding:8px}.wc-mini-copy b{font-size:.52rem;display:block}.wc-mini-copy span{font-size:.48rem;color:#7b8794}.wc-budget{margin-top:15px;padding:12px;border-radius:9px;background:#fff;border:1px solid #e5e9ed}.wc-budget-row{display:flex;justify-content:space-between;font-size:.58rem}.wc-progress{height:6px;background:#edf0f3;border-radius:9px;margin-top:8px;overflow:hidden}.wc-progress span{display:block;width:72%;height:100%;background:var(--accent);border-radius:9px}
     .wc-trust{background:#fff;border-bottom:1px solid var(--border)}.wc-trust-grid{display:grid;grid-template-columns:repeat(4,1fr)}.wc-trust-item{padding:22px 20px;display:flex;align-items:center;justify-content:center;gap:11px;font-size:.85rem;font-weight:800;text-align:center;border-right:1px solid var(--border)}.wc-trust-item:last-child{border-right:0}.wc-trust-item svg{width:21px;height:21px;color:var(--accent);flex:0 0 auto}
     .wc-compare{display:grid;grid-template-columns:1fr 1fr;gap:22px}.wc-compare-card{padding:31px;border-radius:18px;border:1px solid var(--border);background:#fff}.wc-compare-card.before{background:#fafafa;color:#596577}.wc-compare-card.after{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:var(--shadow)}.wc-compare-card h3{font-size:1.35rem;margin:0 0 21px}.wc-check-list{display:grid;gap:13px;margin:0;padding:0;list-style:none}.wc-check-list li{display:flex;gap:11px;align-items:flex-start;line-height:1.5}.wc-check-list li:before{content:"×";display:grid;place-items:center;flex:0 0 23px;height:23px;border-radius:50%;background:#eef0f2;color:#8a95a2;font-weight:900}.wc-compare-card.after .wc-check-list li:before{content:"✓";background:rgba(244,123,32,.18);color:#ff9c52}
-    .wc-feature-six{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.wc-feature-v2{padding:27px;border:1px solid var(--border);border-radius:16px;background:#fff;transition:.2s ease}.wc-feature-v2:hover{transform:translateY(-3px);box-shadow:0 16px 35px rgba(16,24,40,.08);border-color:#d6dce3}.wc-icon{width:43px;height:43px;border-radius:12px;background:#fff2e9;color:var(--accent);display:grid;place-items:center;margin-bottom:19px}.wc-icon svg{width:22px;height:22px}.wc-feature-v2 h3{font-size:1.08rem;margin:0 0 9px}.wc-feature-v2 p{margin:0;color:var(--muted);font-size:.94rem;line-height:1.65}
+    .wc-feature-six{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.wc-feature-v2{padding:27px;border:1px solid var(--border);border-radius:16px;background:#fff;transition:.2s ease}.wc-feature-v2:hover{transform:translateY(-3px);box-shadow:0 16px 35px rgba(16,24,40,.08);border-color:#d6dce3}.wc-icon{width:43px;height:43px;border-radius:12px;background:#fff0f1;color:var(--accent);display:grid;place-items:center;margin-bottom:19px}.wc-icon svg{width:22px;height:22px}.wc-feature-v2 h3{font-size:1.08rem;margin:0 0 9px}.wc-feature-v2 p{margin:0;color:var(--muted);font-size:.94rem;line-height:1.65}
     .wc-process-v2{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;counter-reset:workstep}.wc-process-v2 .wc-process-item{position:relative;padding:27px;overflow:visible;box-shadow:none}.wc-process-v2 .wc-process-item:before{counter-increment:workstep;content:"0" counter(workstep);display:block;color:var(--accent);font-size:.78rem;font-weight:900;letter-spacing:.08em;margin-bottom:28px}.wc-process-v2 .wc-process-item:not(:last-child):after{content:"";position:absolute;right:-19px;top:41px;width:20px;height:1px;background:#ccd3da;z-index:2}.wc-process-v2 h3{font-size:1.05rem;margin:0 0 10px}.wc-process-v2 p{font-size:.9rem;line-height:1.6;color:var(--muted);margin:0}
-    .wc-yw-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:60px;align-items:center}.wc-yw-panel{padding:38px;border-radius:22px;background:linear-gradient(145deg,var(--primary),#234d6d);color:#fff;box-shadow:var(--shadow)}.wc-yw-panel h3{font-size:1.55rem;margin:0 0 11px}.wc-yw-panel p{color:rgba(255,255,255,.76);line-height:1.7}.wc-yw-services{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:25px}.wc-yw-services span{padding:13px;border-radius:10px;background:rgba(255,255,255,.08);font-size:.82rem;font-weight:800}.wc-yw-points{display:grid;gap:18px}.wc-yw-point{display:grid;grid-template-columns:44px 1fr;gap:14px}.wc-yw-point strong{width:42px;height:42px;border-radius:12px;background:#fff2e9;color:var(--accent);display:grid;place-items:center}.wc-yw-point h3{margin:1px 0 5px;font-size:1.05rem}.wc-yw-point p{margin:0;color:var(--muted);line-height:1.6}
+    .wc-yw-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:60px;align-items:center}.wc-yw-panel{padding:38px;border-radius:22px;background:linear-gradient(145deg,var(--primary),#245d73);color:#fff;box-shadow:var(--shadow)}.wc-yw-panel h3{font-size:1.55rem;margin:0 0 11px}.wc-yw-panel p{color:rgba(255,255,255,.76);line-height:1.7}.wc-yw-services{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:25px}.wc-yw-services span{padding:13px;border-radius:10px;background:rgba(255,255,255,.08);font-size:.82rem;font-weight:800}.wc-yw-points{display:grid;gap:18px}.wc-yw-point{display:grid;grid-template-columns:44px 1fr;gap:14px}.wc-yw-point strong{width:42px;height:42px;border-radius:12px;background:#fff0f1;color:var(--accent);display:grid;place-items:center}.wc-yw-point h3{margin:1px 0 5px;font-size:1.05rem}.wc-yw-point p{margin:0;color:var(--muted);line-height:1.6}
     .wc-faq{max-width:880px;margin:0 auto;display:grid;gap:11px}.wc-faq details{border:1px solid var(--border);border-radius:13px;background:#fff;padding:0 20px}.wc-faq summary{cursor:pointer;font-weight:800;padding:18px 32px 18px 0;position:relative}.wc-faq summary:after{content:"+";position:absolute;right:0;font-size:1.25rem;color:var(--accent)}.wc-faq details[open] summary:after{content:"−"}.wc-faq details p{color:var(--muted);line-height:1.7;margin:0;padding:0 32px 19px 0}
     .wc-final-cta{position:relative;overflow:hidden;padding:52px;border-radius:22px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:30px}.wc-final-cta:after{content:"";position:absolute;width:230px;height:230px;border-radius:50%;right:-90px;top:-100px;background:var(--accent);opacity:.18}.wc-final-cta h2{color:#fff;max-width:700px;margin-bottom:10px}.wc-final-cta p{color:rgba(255,255,255,.72);margin:0}.wc-final-cta .btn{position:relative;z-index:2;white-space:nowrap;padding:15px 21px}
     @media(max-width:1050px){.wc-hero-grid{grid-template-columns:1fr;gap:50px}.wc-browser{max-width:680px;transform:none}.wc-feature-six{grid-template-columns:repeat(2,1fr)}.wc-process-v2{grid-template-columns:repeat(2,1fr)}.wc-process-v2 .wc-process-item:after{display:none}.wc-yw-grid{gap:35px}.public-links{gap:13px}.public-links a{font-size:.88rem}}
@@ -470,9 +472,9 @@ function site_brand_style(): string {
     </style>';
 }
 
-function site_brand_html(bool $withName=true): string {
-    $logo=yw_site_logo_path();
-    $title=current_site_setting('site_title','WorkwearCenter');
+function site_brand_html(bool $withName=true,bool $darkSurface=false): string {
+    $logo=yw_site_logo_path($darkSurface);
+    $title=$withName?current_site_setting('site_title','WorkwearCenter'):'WorkwearCenter';
     return '<div class="site-brand-wrap"><a href="/" aria-label="'.e($title).'"><img class="main-site-logo" src="/'.e($logo).'" alt="'.e($title).'"></a></div>';
 }
 
@@ -482,11 +484,13 @@ function maintenance_enabled(): bool {
 }
 
 function maintenance_page(): void {
-    $primary=current_site_setting('site_primary','#17324d');
-    $accent=current_site_setting('site_accent','#f47b20');
-    if(!color_ok($primary))$primary='#17324d';
-    if(!color_ok($accent))$accent='#f47b20';
-    $logo=yw_site_logo_path();
+    $primary=strtolower(trim(current_site_setting('site_primary','#fc6904')));
+    $accent=strtolower(trim(current_site_setting('site_accent','#fc6904')));
+    if(in_array($primary,['#287f9d','#b64f1d'],true))$primary='#fc6904';
+    if(in_array($accent,['#c54b55','#c45c27'],true))$accent='#fc6904';
+    if(!color_ok($primary))$primary='#fc6904';
+    if(!color_ok($accent))$accent='#fc6904';
+    $logo=yw_site_logo_path(true);
     $title=current_site_setting('site_title','WorkwearCenter');
 
     http_response_code(503);
@@ -502,7 +506,7 @@ function maintenance_page(): void {
             background:
                 radial-gradient(circle at 20% 20%, '.e($accent).'22 0, transparent 28%),
                 radial-gradient(circle at 80% 80%, '.e($accent).'18 0, transparent 30%),
-                '.e($primary).';
+                #292d2f;
             font-family:Arial,Helvetica,sans-serif;
         }
         .maintenance-wrap{
@@ -527,7 +531,7 @@ function maintenance_page(): void {
         }
         .maintenance-fallback{
             width:120px;height:120px;border-radius:26px;
-            background:#fff;color:'.e($primary).';
+            background:#292d2f;color:#fc6904;
             display:grid;place-items:center;
             font-size:40px;font-weight:900;
         }
@@ -550,6 +554,7 @@ function wc_public_icon(string $name): string {
         'spark'=>'<path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3ZM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/>',
         'home'=>'<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/>',
         'mail'=>'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+        'search'=>'<circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/>',
         'plus'=>'<path d="M12 5v14M5 12h14"/>',
         'file'=>'<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 13h6M9 17h6"/>',
         'settings'=>'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
@@ -629,7 +634,12 @@ function render_content_settings(): void {
 }
 
 function render_design_settings(): void {
-    $v=fn(string $k,string $d='')=>e(current_site_setting($k,$d));
+    $v=function(string $k,string $d=''): string {
+        $value=current_site_setting($k,$d);
+        if($k==='site_primary'&&in_array(strtolower(trim($value)),['#287f9d','#b64f1d'],true))$value='#fc6904';
+        if($k==='site_accent'&&in_array(strtolower(trim($value)),['#c54b55','#c45c27'],true))$value='#fc6904';
+        return e($value);
+    };
     $imageField=function(string $key,string $label): string {
         $p=yw_local_image_path(current_site_setting($key,''),['branding'],true);
         $html='<label>'.$label.'<input type="file" name="'.$key.'" accept="image/png,image/jpeg,image/webp"></label>';
@@ -643,7 +653,7 @@ function render_design_settings(): void {
     echo '<details class="settings-group" open><summary>Marke und Betrieb</summary><div class="settings-group-inner">';
     echo '<label class="check" style="margin-bottom:16px"><input type="checkbox" name="maintenance_mode" value="1" '.(maintenance_enabled()?'checked':'').'><span><strong>Wartungsmodus</strong><br><small>Öffentliche Seite ausblenden, Admin bleibt erreichbar.</small></span></label>';
     echo '<label>Seitentitel<input name="site_title" maxlength="190" value="'.$v('site_title','WorkwearCenter').'"></label>';
-    echo '<div class="grid2"><label>Hauptfarbe<input type="color" name="site_primary" value="'.$v('site_primary','#17324d').'"></label><label>Akzentfarbe<input type="color" name="site_accent" value="'.$v('site_accent','#f47b20').'"></label></div>';
+    echo '<div class="grid2"><label>Hauptfarbe<input type="color" name="site_primary" value="'.$v('site_primary','#fc6904').'"></label><label>Akzentfarbe<input type="color" name="site_accent" value="'.$v('site_accent','#fc6904').'"></label></div>';
     echo $imageField('site_logo','Logo');
     echo '</div></details>';
     echo '<details class="settings-group"><summary>Website-Fotos</summary><div class="settings-group-inner"><p class="muted">Empfohlen: echte Arbeiten im Querformat, mindestens 1.600 Pixel breit. Nur hier aufgeführte Bilder werden auf der Website verwendet.</p>'
@@ -690,7 +700,7 @@ function inquiry_page(): void {
             $success=true;
         } else {
             if(login_throttled('public-inquiry')){
-                $error='Zu viele Anfragen in kurzer Zeit. Bitte versuchen Sie es später erneut oder kontaktieren Sie uns telefonisch.';
+                $error='Zu viele Anfragen in kurzer Zeit. Bitte versuche es später erneut oder schreibe uns per E-Mail.';
             }
             record_login_failure('public-inquiry');
             $company=trim((string)($_POST['company']??''));
@@ -705,7 +715,7 @@ function inquiry_page(): void {
             elseif(!$company || mb_strlen($company)>190) $error='Bitte einen gültigen Firmennamen eingeben.';
             elseif(!$name || mb_strlen($name)>190) $error='Bitte einen gültigen Ansprechpartner eingeben.';
             elseif(!filter_var($email,FILTER_VALIDATE_EMAIL)) $error='Bitte eine gültige E-Mail-Adresse eingeben.';
-            elseif(mb_strlen($email)>190 || mb_strlen($phone)>80) $error='E-Mail-Adresse oder Telefonnummer ist zu lang.';
+            elseif(mb_strlen($email)>190 || mb_strlen($phone)>80) $error='Eine Eingabe ist zu lang. Bitte prüfe deine Angaben.';
             elseif($employees>100000) $error='Die angegebene Mitarbeiterzahl ist ungültig.';
             elseif(!$message || mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
             elseif(!$privacy) $error='Bitte bestätigen Sie die Datenschutzhinweise.';
@@ -738,7 +748,7 @@ function inquiry_page(): void {
                         $error=$e->getMessage().' Sie können die Anfrage auch ohne Logo absenden.';
                     }else{
                         error_log('Public inquiry: '.$e->getMessage());
-                        $error='Ihre Anfrage konnte gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut oder kontaktieren Sie uns telefonisch.';
+                        $error='Deine Anfrage konnte gerade nicht gespeichert werden. Bitte versuche es später erneut oder schreibe uns per E-Mail.';
                     }
                 }
             }
@@ -835,7 +845,7 @@ function yw_trust_content(): array {
     $t=fn(string $k)=>trim(current_site_setting($k,''));
     $photo=yw_local_image_path($t('trust_contact_photo'),['branding']);
     $c=[
-        'title'=>$t('trust_title')?:'Unternehmen, die uns vertrauen',
+        'title'=>$t('trust_title')?:'Diese Unternehmen / Kunden vertrauen uns',
         'logos'=>yw_trust_logos(),
         'quote'=>['text'=>$t('trust_quote_text'),'name'=>$t('trust_quote_name'),'company'=>$t('trust_quote_company')],
         'contact'=>['photo'=>$photo,'name'=>$t('trust_contact_name'),'role'=>$t('trust_contact_role'),'text'=>$t('trust_contact_text')],
@@ -850,8 +860,8 @@ function render_trust_settings(): void {
     $c=yw_trust_content();$v=fn(string $k)=>e(current_site_setting($k,''));
     echo '<form method="post" enctype="multipart/form-data" class="settings-form trust-settings">'.csrf_field().'<input type="hidden" name="action" value="save_trust_settings"><input type="hidden" name="return_tab" value="content">';
     echo '<details class="settings-group"'.($c['empty']?'':' open').'><summary>Startseite – Vertrauen (Referenzen, Kundenstimme, Ansprechpartner)</summary><div class="settings-group-inner"><p class="muted">Erscheint auf der Startseite nur, wenn mindestens ein Teil gepflegt ist. Nur Logos und Zitate mit Einverständnis der Kunden verwenden.</p>';
-    echo '<label>Überschrift<input name="trust_title" maxlength="160" value="'.$v('trust_title').'" placeholder="Unternehmen, die uns vertrauen"></label>';
-    echo '<div class="editor-block"><h3>Kundenlogos / Referenzen <small class="muted">(max. 12)</small></h3>';
+    echo '<label>Überschrift<input name="trust_title" maxlength="160" value="'.$v('trust_title').'" placeholder="Diese Unternehmen / Kunden vertrauen uns"></label>';
+    echo '<div class="editor-block"><h3>Kundenlogos im Laufband <small class="muted">(max. 12)</small></h3><p class="muted">Ab zwei Logos laufen sie automatisch durch. Bitte nur Firmenlogos mit Freigabe verwenden.</p>';
     if($c['logos']){
         echo '<div class="trust-logo-admin">';
         foreach($c['logos'] as $i=>$logo)echo '<div class="trust-logo-admin-item"><img src="/'.e($logo['path']).'" alt=""><label>Firmenname <small>für Bildbeschreibung</small><input name="trust_logo_name['.$i.']" maxlength="120" value="'.e($logo['name']).'"></label><label class="check"><input type="checkbox" name="trust_logo_remove['.$i.']" value="1"><span>Entfernen</span></label></div>';

@@ -7,25 +7,30 @@ require_once __DIR__.'/probeshop.php';
  * The purpose is to let prospects experience the product before requesting a shop.
  */
 function mustershop_page(): void {
-    render_head('Mustershop: Firmenshop live ausprobieren – WorkwearCenter');
-    echo site_brand_style();
-    public_header();
+    $embedded=(string)($_GET['embed']??'')==='1';
+    if($embedded)header('X-Robots-Tag: noindex, nofollow');
+    render_head('KANTENWERK Mustershop – Firmenshop live ausprobieren | WorkwearCenter');
+    if(!$embedded){echo site_brand_style();public_header();}
     $products=[];
     foreach([
-        ['Premium Workwear T-Shirt','T-Shirts','Brust links · DTF-Transfer',2490,'YW-TS01','Navy','XS–5XL','assets/media/products/workwear-tshirt.webp','width="1226" height="1283"'],
-        ['Heavy Workwear Hoodie','Hoodies','Brust links · Stick',5490,'YW-HD02','Graphit','XS–4XL','assets/media/products/workwear-hoodie.webp','width="1312" height="1199"'],
-        ['Softshelljacke Performance','Jacken','Brust links · Stick',8490,'YW-SJ03','Schwarz','S–5XL','assets/media/products/workwear-softshell.webp','width="1222" height="1287"'],
-    ] as $index=>[$name,$category,$detail,$cents,$sku,$color,$sizes,$image,$dimensions]){
-        $products[]=['name'=>$name,'category'=>$category,'detail'=>$detail,'cents'=>$cents,'sku'=>$sku,'color'=>$color,'sizes'=>$sizes,
-            'visual'=>'<img src="/'.e($image).'" '.$dimensions.' alt="'.e($name).' in '.e($color).'" loading="eager" decoding="async"'.($index===0?' fetchpriority="high"':'').'>'];
+        ['T-Shirt Classic','T-Shirts','Ein schlichtes Teamshirt für Arbeit und Alltag.',2490,'WC-TS01','Navy','XS–5XL',['XS','S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-tshirt.webp',['x'=>62,'y'=>30,'w'=>18],'T-SHIRT'],
+        ['Hoodie Team','Hoodies','Eine zusätzliche Schicht für kühle Arbeitstage.',5490,'WC-HD02','Graphit','XS–4XL',['XS','S','M','L','XL','2XL','3XL','4XL'],'assets/media/products/workwear-hoodie.webp',['x'=>62,'y'=>36,'w'=>17],'HOODIE'],
+        ['Softshelljacke','Jacken','Eine Jacke für den Einsatz im Freien.',8490,'WC-SJ03','Schwarz','S–5XL',['S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-softshell.webp',['x'=>63,'y'=>39,'w'=>17],'SOFTSHELL'],
+    ] as [$name,$category,$detail,$cents,$sku,$color,$sizes,$sizeOptions,$image,$zone,$code]){
+        $views=[['view'=>'front','label'=>'Vorderseite','image'=>$image,'layers'=>[['src'=>'assets/media/demo/kantenwerk-mark.svg','x'=>$zone['x'],'y'=>$zone['y'],'w'=>$zone['w'],'method'=>'embroidery','label'=>'KANTENWERK · Brust links']]]];
+        $visual=yw_mockup_html($views,$name.' in '.$color.' mit Logo-Vorschau',false,'demo-mockup');
+        $products[]=['name'=>$name,'category'=>$category,'detail'=>$detail,'cents'=>$cents,'sku'=>$sku,'color'=>$color,'sizes'=>$sizes,'size_options'=>$sizeOptions,'code'=>$code,'visual'=>$visual];
     }
+    $notice=$embedded
+        ?'<span><strong>KANTENWERK · Musterunternehmen</strong> · Preise, Budget und Auswahl sind Beispieldaten. Es wird keine Bestellung übertragen.</span>'
+        :'<span><strong>KANTENWERK · Musterunternehmen</strong> · Preise, Budget und Auswahl sind Beispieldaten. Es wird keine Bestellung übertragen.</span><a href="/anfrage">Eigenen Firmenshop besprechen →</a>';
     yw_demo_shop_render([
-        'company'=>'Musterbau GmbH',
-        'mark'=>'<div class="demo-company-mark">M</div>',
-        'notice'=>'<span><strong>Interaktiver Mustershop</strong> · Alle Inhalte und Bestellungen auf dieser Seite sind reine Beispieldaten.</span><a href="/anfrage">Eigenen Unternehmensshop anfragen →</a>',
+        'company'=>'KANTENWERK',
+        'mark'=>'<img src="/assets/media/demo/kantenwerk-logo.svg" alt="KANTENWERK – Industrie und Service">',
+        'notice'=>$notice,
         'products'=>$products,
     ]);
-    global_footer();
+    if(!$embedded)global_footer();
     render_foot();
 }
 
@@ -37,27 +42,45 @@ function mustershop_page(): void {
 function yw_demo_shop_render(array $o): void {
     $probe=!empty($o['probe']);
     $tone=($o['tone']??'dark')==='light'?'light':'dark';
-    $style=!empty($o['primary'])&&color_ok((string)$o['primary'])?' style="--demo-navy:'.e((string)$o['primary']).'"':'';
+    $style='';
+    if(!empty($o['primary'])&&color_ok((string)$o['primary'])){
+        $brand=strtolower((string)$o['primary']);
+        $deep=yw_shop_ink($brand);
+        $style=' style="--demo-navy:'.e($brand).';--demo-forest:'.e($brand).';--demo-forest-deep:'.e($deep).';--demo-on-brand:'.e(yw_shop_on_color($brand)).'"';
+    }
     echo '<style>'.yw_demo_shop_css().'</style>';
     echo '<main class="demo'.($probe?' demo-probe tone-'.$tone.(!empty($o['logo_dark'])?' logo-dark':''):'').'"'.$style.' id="inhalt"><div class="demo-shell">';
     echo '<div class="demo-notice">'.$o['notice'].'</div>';
-    echo '<section class="demo-app" aria-label="'.($probe?'Probeshop':'Mustershop').' für '.e((string)$o['company']).'">';
+    if(!$probe){
+        $categories=array_values(array_unique(array_column($o['products'],'category')));
+        echo '<section class="demo-app" aria-label="KANTENWERK Muster-Firmenshop"><header class="demo-shopbar"><a class="demo-brand" href="#demo-kollektion" aria-label="KANTENWERK Firmenshop">'.$o['mark'].'</a><div class="demo-shopbar-actions"><span class="demo-shopbar-label"><i aria-hidden="true"></i> MUSTER-FIRMENSHOP</span><button class="demo-cart" type="button" aria-controls="demo-selection" aria-expanded="false">Ihre Auswahl <span id="demo-count" aria-live="polite">0</span></button></div></header><div class="demo-main">';
+        echo '<section class="demo-hero" aria-labelledby="demo-hero-title"><div class="demo-hero-copy"><span class="demo-eyebrow">KANTENWERK · INDUSTRIE &amp; SERVICE</span><h1 id="demo-hero-title">Arbeitskleidung für unser Team.</h1><p>Wählen Sie die passende Kleidung, Größe und Menge aus der KANTENWERK-Kollektion.</p><a class="demo-hero-link" href="#demo-kollektion">Kollektion ansehen <span aria-hidden="true">→</span></a><div class="demo-assurances"><span><i aria-hidden="true">✓</i> KANTENWERK-Logo auf der Kleidung</span><span><i aria-hidden="true">✓</i> Auswahl nach Größe und Menge</span></div></div><aside class="demo-budget" aria-label="Beispielbudget"><span class="demo-budget-kicker">MUSTERBUDGET</span><span class="demo-budget-title">Verfügbar für die Ausstattung</span><strong id="demo-budget-value">218,70&nbsp;€</strong><div class="demo-progress" role="progressbar" aria-label="Verbleibendes Beispielbudget" aria-valuemin="0" aria-valuemax="30000" aria-valuenow="21870"><span id="demo-progress"></span></div><small>von 300,00&nbsp;€ · Beispieldaten</small><div class="demo-budget-foot"><span aria-hidden="true">●</span> Nur Vorschau – keine Bestellung</div></aside><span class="demo-hero-mark" aria-hidden="true"></span></section>';
+        echo '<div class="demo-content" id="demo-kollektion"><section class="demo-tools" aria-label="Kollektion filtern"><div class="demo-tools-title"><div><span class="demo-eyebrow">DIE KOLLEKTION</span><h2>Für jeden Einsatz.</h2></div><span class="demo-item-count">'.count($o['products']).' Artikel in der Kollektion</span></div><div class="demo-filters"><button class="demo-filter active" data-filter="Alle" type="button" aria-pressed="true">Alle Artikel</button>';
+        foreach($categories as $category)echo '<button class="demo-filter" data-filter="'.e($category).'" type="button" aria-pressed="false">'.e($category).'</button>';
+        echo '</div></section><section class="demo-selection" id="demo-selection" hidden aria-labelledby="demo-selection-title"><div class="demo-selection-head"><div><span class="demo-eyebrow">NUR IN DIESER VORSCHAU</span><h2 id="demo-selection-title">Ihre Auswahl</h2></div><button class="demo-clear" id="demo-clear" type="button">Auswahl leeren</button></div><ul id="demo-selection-items"></ul><p id="demo-selection-empty">Noch keine Artikel ausgewählt.</p><div class="demo-selection-total"><span>Verbleibendes Beispielbudget</span><strong id="demo-selection-budget">218,70&nbsp;€</strong></div></section><div class="demo-products" id="demo-produkte">';
+        foreach($o['products'] as $p){
+            $sizeOptions='';
+            foreach(($p['size_options']??[]) as $size)$sizeOptions.='<option value="'.e((string)$size).'">'.e((string)$size).'</option>';
+            echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)($p['code']??$p['category'])).'</span>'.$p['visual'].'<span class="demo-logo-caption"><span class="demo-mark-dot" aria-hidden="true"></span> Logo · Brust links</span></div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h3>'.e((string)$p['name']).'</h3><p>'.e((string)$p['detail']).'</p><div class="demo-product-foot"><span><i class="demo-color-dot" aria-hidden="true"></i> '.e((string)$p['color']).'</span><span>Größen <b>'.e((string)$p['sizes']).'</b></span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><span>Beispielpreis <b>je Stück</b></span></div><div class="demo-order-row"><label class="demo-size-label">Größe<select class="demo-size" aria-label="Größe für '.e((string)$p['name']).'"><option value="">Größe wählen</option>'.$sizeOptions.'</select></label><label class="demo-size-label">Anzahl<input class="demo-quantity" type="number" min="1" max="20" value="1" aria-label="Anzahl für '.e((string)$p['name']).'"></label><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-sku="'.e((string)$p['sku']).'" data-name="'.e((string)$p['name']).'" disabled><span>Größe wählen</span><span aria-hidden="true">+</span></button></div></div></article>';
+        }
+        echo '</div><p class="demo-sample-note">Alle Artikel, Preise und das Guthaben dienen nur zur Demonstration. Ihr echter Firmenshop wird mit Ihren Produkten, Farben und Regeln gestaltet.</p></div></div></section><div class="demo-toast" id="demo-toast" role="status"></div></main>';
+        return;
+    }
+    echo '<section class="demo-app" aria-label="Probeshop für '.e((string)$o['company']).'">';
     echo '<aside class="demo-side"><div class="demo-company">'.$o['mark'].'<div><strong>'.e((string)$o['company']).'</strong><small>Mitarbeiter-Shop</small></div></div>';
-    echo '<nav class="demo-nav" aria-label="'.($probe?'Probeshop':'Mustershop').' Navigation">';
-    foreach([['Übersicht','home'],['Produkte','shirt'],['Meine Bestellungen','box'],['Mein Profil','user']] as $i=>[$label,$icon])echo '<button'.($i===0?' class="active"':'').' type="button" data-demo-nav="'.e($label).'">'.wc_public_icon($icon).'<span>'.e($label).'</span></button>';
-    echo '</nav><div class="demo-person"><strong>Max Mustermann</strong><small>Produktion · Kostenstelle 120</small></div></aside>';
-    echo '<div class="demo-main"><header class="demo-top"><div class="demo-top-title"><strong>Ihre freigegebene Firmenkollektion</strong><small>'.($probe?e((string)$o['company']).' · ':'').'WorkwearCenter by Yanik Textildruck</small></div><div class="demo-avatar">MM</div></header>';
-    // 10.12: Begrüßung nach Tageszeit (wie im echten Firmenshop) statt fest „Guten Morgen“
-    echo '<div class="demo-content"><div class="demo-welcome"><div><h1>'.e(yw_shop_greeting('Max')).'</h1><p>Wählen Sie aus den für Ihr Team freigegebenen Artikeln.</p></div><div class="demo-budget"><div class="demo-budget-row"><span>Verfügbares Jahresbudget</span><strong id="demo-budget-value">218,70 €</strong></div><div class="demo-progress"><span id="demo-progress"></span></div></div></div>';
+    echo '<nav class="demo-nav" aria-label="Probeshop Navigation"><a class="active" href="#demo-kollektion">Kollektion</a></nav>';
+    echo '</aside>';
+    echo '<div class="demo-main"><header class="demo-top"><div class="demo-top-title"><strong>Ihre Firmenkollektion</strong><small>'.e((string)$o['company']).' · WorkwearCenter</small></div></header>';
+    echo '<div class="demo-content" id="demo-kollektion"><div class="demo-welcome"><div><h1>Arbeitskleidung für '.e((string)$o['company']).'</h1><p>Entdecken Sie Ihre Auswahl mit Firmenlogo in dieser persönlichen Vorschau.</p></div><div class="demo-budget"><div class="demo-budget-row"><span>Beispielbudget</span><strong id="demo-budget-value">218,70 €</strong></div><div class="demo-progress"><span id="demo-progress"></span></div></div></div>';
     $categories=array_values(array_unique(array_column($o['products'],'category')));
     echo '<div class="demo-tools"><div class="demo-filters"><button class="demo-filter active" data-filter="Alle">Alle Artikel</button>';
     foreach($categories as $category)echo '<button class="demo-filter" data-filter="'.e($category).'">'.e($category).'</button>';
     echo '</div>';
-    if($probe)echo '<div class="demo-tone" role="group" aria-label="Textilfarbe der Vorschau"><span>Textilfarbe</span><button type="button" data-probe-tone="dark" aria-pressed="'.($tone==='dark'?'true':'false').'">Dunkel</button><button type="button" data-probe-tone="light" aria-pressed="'.($tone==='light'?'true':'false').'">Hell</button></div>';
+    echo '<div class="demo-tone" role="group" aria-label="Textilfarbe der Vorschau"><span>Textilfarbe</span><button type="button" data-probe-tone="dark" aria-pressed="'.($tone==='dark'?'true':'false').'">Dunkel</button><button type="button" data-probe-tone="light" aria-pressed="'.($tone==='light'?'true':'false').'">Hell</button></div>';
     echo '<button class="demo-cart" type="button">Auswahl · <span id="demo-count">0</span></button></div><div class="demo-products">';
     foreach($o['products'] as $p){
         $color=e((string)$p['color']);
-        if($probe&&!empty($p['color_light']))$color='<i class="tone-dark-only">'.$color.'</i><i class="tone-light-only">'.e((string)$p['color_light']).'</i>';
+        if(!empty($p['color_light']))$color='<i class="tone-dark-only">'.$color.'</i><i class="tone-light-only">'.e((string)$p['color_light']).'</i>';
         echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)$p['sku']).'</span>'.$p['visual'].'</div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h2>'.e((string)$p['name']).'</h2><p>'.e((string)$p['detail']).'</p><div class="demo-meta"><span>'.$color.'</span><span>Größen '.e((string)$p['sizes']).'</span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-name="'.e((string)$p['name']).'">Auswählen</button></div></div></article>';
     }
     echo '</div></div></div></section></div><div class="demo-toast" id="demo-toast" role="status"></div></main>';
@@ -110,7 +133,195 @@ function yw_demo_shop_css(): string {
 .demo-probe .demo-company{flex-direction:row;align-items:center}.demo-probe.logo-dark .demo-company-logo{background:none;padding:0}.demo-company-logo img{max-height:40px}
 .demo-probe .demo-product:hover .demo-mockup{transform:none}.demo-tone button[aria-pressed="true"]{background:#101828;border-color:#101828}
 @media(max-width:1050px){.demo-person{display:none}.demo-nav button{padding:0 8px;font-size:.82rem}}
-@media(max-width:760px){.demo-side{height:auto;flex-wrap:wrap;gap:6px;padding:12px 16px 0}.demo-nav{width:100%;overflow:auto;height:44px}.demo-nav button{white-space:nowrap}.demo-content{padding:18px 14px}.demo-welcome{padding:20px}.demo-products{gap:20px 12px}.demo-visual{height:auto}}
+@media(max-width:760px){.demo-side{height:auto;flex-wrap:wrap;gap:6px;padding:12px 16px 10px}.demo-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:100%;height:auto;overflow:visible;align-self:auto;margin:8px 0 0}.demo-nav button{justify-content:center;min-height:42px;padding:0 10px;border-radius:8px;white-space:normal}.demo-nav button.active{background:#eef2f6;color:#101828}.demo-nav button.active:after{left:14px;right:14px;bottom:2px}.demo-content{padding:18px 14px}.demo-welcome{padding:20px}.demo-products{gap:20px 12px}.demo-visual{height:auto}}
 @media(max-width:500px){.demo-products{grid-template-columns:1fr 1fr}.demo-buy{flex-direction:column;align-items:stretch;gap:8px}.demo-product p{display:none}}
+/* KANTENWERK: ruhige, eigenständige Markenwelt mit klarer Bestelloberfläche */
+.demo:not(.demo-probe){
+  --demo-forest:#294238;
+  --demo-forest-deep:#20352d;
+  --demo-lime:#b68b5b;
+  --demo-ink:#24322d;
+  --demo-muted:#65736b;
+  --demo-paper:#f4f2ed;
+  --demo-line:#dedfd9;
+  background:#f2f1ec;
+  color:var(--demo-ink);
+  min-height:100vh;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+.demo:not(.demo-probe) *{box-sizing:border-box}
+.demo:not(.demo-probe) .demo-shell{width:min(1320px,calc(100% - 48px));margin:0 auto;padding:18px 0 52px}
+.demo:not(.demo-probe) .demo-notice{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:0 2px 12px;margin:0 0 13px;border:0;border-bottom:1px solid #d9dbd5;border-radius:0;background:transparent;color:#69736e;font-size:.76rem;line-height:1.5}
+.demo:not(.demo-probe) .demo-notice strong{color:var(--demo-forest);font-weight:730}
+.demo:not(.demo-probe) .demo-notice a{color:var(--demo-forest);font-weight:700;text-decoration:underline;text-decoration-color:#aab2a8;text-underline-offset:3px;white-space:nowrap}
+.demo:not(.demo-probe) .demo-notice a:hover{text-decoration-color:var(--demo-forest)}
+.demo:not(.demo-probe) .demo-app{display:block;min-height:0;overflow:hidden;border:1px solid #dcddd7;border-radius:3px;background:#fff;box-shadow:0 6px 22px rgba(32,45,38,.045)}
+.demo:not(.demo-probe) .demo-shopbar{min-height:76px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px clamp(18px,3vw,34px);border-bottom:1px solid #e5e6e1;background:#fff}
+.demo:not(.demo-probe) .demo-brand{display:flex;align-items:center;max-width:55%;color:var(--demo-forest);text-decoration:none}
+.demo:not(.demo-probe) .demo-brand img{display:block;width:min(244px,100%);height:52px;object-fit:contain;object-position:left center}
+.demo:not(.demo-probe) .demo-shopbar-actions{display:flex;align-items:center;gap:22px}
+.demo:not(.demo-probe) .demo-shopbar-label{display:flex;align-items:center;gap:8px;color:#6c7771;font-size:.64rem;font-weight:720;letter-spacing:.105em}
+.demo:not(.demo-probe) .demo-shopbar-label i{width:7px;height:7px;border-radius:50%;background:#758e7d}
+.demo:not(.demo-probe) .demo-cart{display:inline-flex;align-items:center;gap:10px;margin:0;padding:9px 12px;border:1px solid #d9ddd7;border-radius:4px;background:#fff;color:var(--demo-forest);font:inherit;font-size:.76rem;font-weight:680;cursor:pointer;transition:background .16s,border-color .16s}
+.demo:not(.demo-probe) .demo-cart:hover{border-color:#9aa89d;background:#f7f8f5}
+.demo:not(.demo-probe) .demo-cart span{display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:3px;background:#e9ece7;color:var(--demo-forest);font-size:.68rem;font-weight:760}
+.demo:not(.demo-probe) .demo-main{min-width:0;background:#fff}
+.demo:not(.demo-probe) [id]{scroll-margin-top:98px}
+.demo:not(.demo-probe) .demo-hero{position:relative;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(250px,.65fr);align-items:center;gap:clamp(32px,6vw,78px);min-height:315px;padding:clamp(35px,5vw,60px) clamp(25px,5vw,68px);overflow:hidden;background:#f1f1ed;color:var(--demo-ink)}
+.demo:not(.demo-probe) .demo-hero-copy{position:relative;z-index:1;max-width:660px}
+.demo:not(.demo-probe) .demo-eyebrow{display:block;margin:0 0 10px;color:#8a6846;font-size:.63rem;font-weight:740;letter-spacing:.13em;line-height:1.45}
+.demo:not(.demo-probe) .demo-hero .demo-eyebrow{color:#886543}
+.demo:not(.demo-probe) .demo-hero h1{max-width:610px;margin:0;color:var(--demo-forest-deep);font-size:clamp(2.25rem,4.5vw,3.55rem);font-weight:670;line-height:1.04;letter-spacing:-.045em}
+.demo:not(.demo-probe) .demo-hero-copy>p{max-width:54ch;margin:15px 0 0;color:#56645c;font-size:.91rem;line-height:1.65}
+.demo:not(.demo-probe) .demo-hero-link{display:inline-flex;align-items:center;gap:22px;margin-top:20px;padding:11px 15px;border:1px solid var(--demo-forest);border-radius:3px;background:var(--demo-forest);color:#fff;font-size:.76rem;font-weight:700;text-decoration:none;transition:background .16s,border-color .16s}
+.demo:not(.demo-probe) .demo-hero-link:hover{border-color:#172d25;background:#172d25}
+.demo:not(.demo-probe) .demo-hero-link span{font-size:1rem}
+.demo:not(.demo-probe) .demo-assurances{display:flex;flex-wrap:wrap;gap:12px 21px;margin-top:20px;color:#59675e;font-size:.68rem;font-weight:570}
+.demo:not(.demo-probe) .demo-assurances span{display:inline-flex;align-items:center;gap:7px}
+.demo:not(.demo-probe) .demo-assurances i{display:grid;place-items:center;width:16px;height:16px;border:1px solid #a88a68;border-radius:50%;color:#806143;font-size:.6rem;font-style:normal}
+.demo:not(.demo-probe) .demo-budget{position:relative;z-index:1;display:flex;flex-direction:column;gap:7px;min-width:0;padding:9px 0 9px 25px;border:0;border-left:1px solid #d1d4cd;border-radius:0;background:transparent;color:var(--demo-ink);box-shadow:none}
+.demo:not(.demo-probe) .demo-budget-kicker{color:#806143;font-size:.59rem;font-weight:750;letter-spacing:.12em}
+.demo:not(.demo-probe) .demo-budget-title{color:#5c6961;font-size:.74rem;font-weight:560}
+.demo:not(.demo-probe) .demo-budget strong{display:block;color:var(--demo-forest-deep);font-size:clamp(1.85rem,3vw,2.35rem);font-weight:680;letter-spacing:-.035em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.demo:not(.demo-probe) .demo-progress{height:4px;margin-top:3px;overflow:hidden;border-radius:0;background:#dfe2dc}
+.demo:not(.demo-probe) .demo-progress span{display:block;width:73%;height:100%;border-radius:0;background:#7d9686;transition:width .25s}
+.demo:not(.demo-probe) .demo-budget small{display:block;margin:2px 0 0;color:#707a73;font-size:.66rem;line-height:1.4}
+.demo:not(.demo-probe) .demo-budget-foot{display:flex;align-items:center;gap:7px;margin-top:9px;padding-top:10px;border-top:1px solid #dfe1dc;color:#67726a;font-size:.65rem;font-weight:560}
+.demo:not(.demo-probe) .demo-budget-foot span{color:#7b917f;font-size:.55rem}
+.demo:not(.demo-probe) .demo-hero-mark{display:none}
+.demo:not(.demo-probe) .demo-content{max-width:1320px;margin:0 auto;padding:37px clamp(18px,4vw,48px) 38px}
+.demo:not(.demo-probe) .demo-tools{display:grid;gap:15px;margin:0 0 18px;padding:0;border:0}
+.demo:not(.demo-probe) .demo-tools-title{display:flex;justify-content:space-between;align-items:end;gap:16px}
+.demo:not(.demo-probe) .demo-tools-title .demo-eyebrow{margin:0 0 5px;color:#806143}
+.demo:not(.demo-probe) .demo-tools-title h2{margin:0;color:var(--demo-forest-deep);font-size:clamp(1.4rem,2.3vw,1.85rem);font-weight:660;letter-spacing:-.035em}
+.demo:not(.demo-probe) .demo-item-count{color:#707a73;font-size:.7rem;font-weight:570}
+.demo:not(.demo-probe) .demo-filters{display:flex;flex-wrap:wrap;gap:7px}
+.demo:not(.demo-probe) .demo-filter{padding:8px 12px;border:1px solid #d8dcd6;border-radius:3px;background:#fff;color:#4f5e55;font:inherit;font-size:.72rem;font-weight:620;cursor:pointer;transition:background .16s,border-color .16s,color .16s}
+.demo:not(.demo-probe) .demo-filter:hover{border-color:#8d9c91}
+.demo:not(.demo-probe) .demo-filter.active{border-color:var(--demo-forest);background:var(--demo-forest);color:#fff}
+.demo:not(.demo-probe) .demo-product[hidden]{display:none}
+.demo:not(.demo-probe) .demo-selection{margin:0 0 20px;padding:17px 18px;border:1px solid #d9ded7;border-left:3px solid var(--demo-forest);border-radius:2px;background:#f6f7f4}
+.demo:not(.demo-probe) .demo-selection[hidden]{display:none}
+.demo:not(.demo-probe) .demo-selection .demo-eyebrow{margin-bottom:5px;color:#806143}
+.demo:not(.demo-probe) .demo-selection-head{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.demo:not(.demo-probe) .demo-selection-head h2{margin:0;color:var(--demo-forest);font-size:1.08rem}
+.demo:not(.demo-probe) .demo-clear{padding:7px 10px;border:1px solid #d4d9d2;border-radius:3px;background:#fff;color:#405148;font:inherit;font-size:.7rem;font-weight:650;cursor:pointer}
+.demo:not(.demo-probe) .demo-selection ul{display:grid;gap:6px;margin:12px 0 0;padding:0;list-style:none}
+.demo:not(.demo-probe) .demo-selection li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #e1e4de;color:#405047;font-size:.76rem}
+.demo:not(.demo-probe) .demo-remove{flex:0 0 auto;border:0;background:none;color:#795d40;font:inherit;font-weight:650;cursor:pointer}
+.demo:not(.demo-probe) .demo-selection>p{margin:11px 0;color:#68736c;font-size:.78rem}
+.demo:not(.demo-probe) .demo-selection-total{display:flex;justify-content:space-between;gap:14px;margin-top:12px;color:#58665d;font-size:.75rem}
+.demo:not(.demo-probe) .demo-selection-total strong{color:var(--demo-forest);font-size:.88rem}
+.demo:not(.demo-probe) .demo-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;gap:22px}
+.demo:not(.demo-probe) .demo-product{min-width:0;overflow:hidden;border:1px solid #e2e3dd;border-radius:2px;background:#fff;transition:border-color .16s}
+.demo:not(.demo-probe) .demo-product:hover{transform:none;border-color:#b8c0b8;box-shadow:none}
+.demo:not(.demo-probe) .demo-visual{position:relative;display:grid;place-items:center;aspect-ratio:1.17/1;height:auto;padding:13px;overflow:hidden;background:#f0f0ec}
+.demo:not(.demo-probe) .demo-visual:before{display:none}
+.demo:not(.demo-probe) .demo-visual .company-product-visual{position:absolute;inset:0;width:100%;height:100%}
+.demo:not(.demo-probe) .demo-visual .mockup-view{position:relative;width:100%;height:100%}
+.demo:not(.demo-probe) .demo-visual .mockup-base{position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply;filter:none;transition:none}
+.demo:not(.demo-probe) .demo-visual .mockup-layers{position:absolute;pointer-events:none}
+.demo:not(.demo-probe) .demo-visual .mockup-logo{position:absolute;z-index:2;transform:translate(-50%,-50%);line-height:0}
+.demo:not(.demo-probe) .demo-visual .mockup-logo img{display:block;width:100%;height:auto;filter:drop-shadow(0 .4px .6px rgba(0,0,0,.2))}
+.demo:not(.demo-probe) .demo-product-code{position:absolute;z-index:3;top:11px;left:11px;padding:5px 7px;border:1px solid rgba(38,54,44,.08);border-radius:2px;background:rgba(255,255,255,.88);color:#59665e;font-size:.57rem;font-weight:700;letter-spacing:.08em}
+.demo:not(.demo-probe) .demo-logo-caption{position:absolute;right:10px;bottom:10px;z-index:3;display:flex;align-items:center;gap:6px;padding:5px 7px;border:1px solid rgba(218,221,214,.9);border-radius:2px;background:rgba(255,255,255,.9);color:#526056;font-size:.57rem;font-weight:610}
+.demo:not(.demo-probe) .demo-mark-dot{width:7px;height:7px;border-radius:1px;background:#7f9684}
+.demo:not(.demo-probe) .demo-product-body{padding:15px 15px 16px}
+.demo:not(.demo-probe) .demo-cat{color:#806143;font-size:.6rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+.demo:not(.demo-probe) .demo-product h3{margin:5px 0;color:#27372f;font-size:.98rem;font-weight:660;line-height:1.28;letter-spacing:-.015em}
+.demo:not(.demo-probe) .demo-product p{min-height:2.7em;margin:0;color:#66736b;font-size:.72rem;line-height:1.5}
+.demo:not(.demo-probe) .demo-product-foot{display:flex;justify-content:space-between;gap:8px;margin-top:11px;padding-top:10px;border-top:1px solid #eceee9;color:#707b73;font-size:.63rem}
+.demo:not(.demo-probe) .demo-product-foot span{display:flex;align-items:center;gap:5px}
+.demo:not(.demo-probe) .demo-product-foot b{color:#46564b;font-size:.65rem;font-weight:650}
+.demo:not(.demo-probe) .demo-color-dot{width:9px;height:9px;border:1px solid rgba(0,0,0,.13);border-radius:50%;background:#253c52}
+.demo:not(.demo-probe) .demo-product[data-category="Hoodies"] .demo-color-dot{background:#454b49}
+.demo:not(.demo-probe) .demo-product[data-category="Jacken"] .demo-color-dot{background:#252a28}
+.demo:not(.demo-probe) .demo-buy{display:flex;align-items:baseline;gap:8px;margin-top:11px;padding:0}
+.demo:not(.demo-probe) .demo-buy strong{color:var(--demo-forest);font-size:1.08rem;font-weight:700;font-variant-numeric:tabular-nums}
+.demo:not(.demo-probe) .demo-buy span{color:#778078;font-size:.61rem}
+.demo:not(.demo-probe) .demo-buy span b{color:#536158;font-weight:650}
+.demo:not(.demo-probe) .demo-order-row{display:grid;grid-template-columns:minmax(0,1fr) 76px;align-items:end;gap:8px;margin-top:12px}
+.demo:not(.demo-probe) .demo-size-label{display:grid;gap:5px;color:#526057;font-size:.65rem;font-weight:630}
+.demo:not(.demo-probe) .demo-size,.demo:not(.demo-probe) .demo-quantity{width:100%;min-height:40px;padding:0 9px;border:1px solid #d6dbd4;border-radius:3px;background:#fff;color:#283a30;font:inherit;font-size:.73rem}
+.demo:not(.demo-probe) .demo-add{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;min-height:41px;padding:0 12px;border:1px solid var(--demo-forest);border-radius:3px;background:var(--demo-forest);color:#fff;font:inherit;font-size:.73rem;font-weight:680;cursor:pointer;transition:background .15s,border-color .15s}
+.demo:not(.demo-probe) .demo-add>span:last-child{color:#dec6a8;font-size:1rem}
+.demo:not(.demo-probe) .demo-add:hover:not(:disabled){border-color:#172d25;background:#172d25}
+.demo:not(.demo-probe) .demo-add:disabled{border-color:#e0e3de;background:#f0f2ee;color:#79837b;cursor:not-allowed}
+.demo:not(.demo-probe) .demo-add:disabled>span:last-child{color:#879087}
+.demo:not(.demo-probe) .demo-sample-note{margin:16px 0 0;color:#737d75;font-size:.67rem;line-height:1.55}
+.demo:not(.demo-probe) .demo-toast{position:fixed;right:22px;bottom:22px;z-index:99;max-width:min(410px,calc(100vw - 32px));padding:12px 15px;border:1px solid rgba(255,255,255,.14);border-radius:3px;background:var(--demo-forest-deep);color:#fff;box-shadow:0 8px 25px rgba(0,0,0,.17);font-size:.78rem;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .18s,transform .18s}
+.demo:not(.demo-probe) .demo-toast.show{opacity:1;transform:none}
+.demo:not(.demo-probe) :focus-visible{outline:3px solid #b68b5b;outline-offset:3px}
+.demo-probe .demo-nav a{position:relative;display:flex;align-items:center;padding:0 12px;color:#5b6678;font-size:.86rem;font-weight:700;text-decoration:none;white-space:nowrap}
+.demo-probe .demo-nav a.active{color:#101828}
+.demo-probe .demo-nav a.active:after{position:absolute;right:12px;bottom:-1px;left:12px;height:2px;border-radius:2px;background:var(--demo-navy);content:""}
+@media(max-width:980px){
+  .demo:not(.demo-probe) .demo-products{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .demo:not(.demo-probe) .demo-hero{gap:28px;padding-inline:32px}
+}
+@media(max-width:700px){
+  .demo:not(.demo-probe) .demo-shell{width:calc(100% - 24px);padding:12px 0 30px}
+  .demo:not(.demo-probe) .demo-notice{display:block;padding:0 0 10px;margin-bottom:10px;font-size:.72rem}
+  .demo:not(.demo-probe) .demo-notice a{display:inline-block;margin:5px 0 0 8px;white-space:normal}
+  .demo:not(.demo-probe) .demo-app{border-radius:2px}
+  .demo:not(.demo-probe) .demo-shopbar{min-height:65px;padding:8px 13px;gap:8px}
+  .demo:not(.demo-probe) .demo-brand{max-width:53%}
+  .demo:not(.demo-probe) .demo-brand img{width:100%;height:43px}
+  .demo:not(.demo-probe) .demo-shopbar-actions{gap:0}
+  .demo:not(.demo-probe) .demo-shopbar-label{display:none}
+  .demo:not(.demo-probe) .demo-cart{gap:7px;padding:7px 9px;font-size:.69rem}
+  .demo:not(.demo-probe) .demo-cart span{min-width:20px;height:20px}
+  .demo:not(.demo-probe) .demo-hero{grid-template-columns:1fr;gap:22px;min-height:0;padding:30px 21px 23px}
+  .demo:not(.demo-probe) .demo-hero h1{font-size:clamp(2rem,9vw,2.85rem)}
+  .demo:not(.demo-probe) .demo-hero-copy>p{margin-top:11px;font-size:.84rem;line-height:1.56}
+  .demo:not(.demo-probe) .demo-hero-link{margin-top:16px}
+  .demo:not(.demo-probe) .demo-assurances{gap:9px 14px;margin-top:16px;font-size:.65rem}
+  .demo:not(.demo-probe) .demo-budget{width:100%;padding:13px 0 4px;border-top:1px solid #d1d4cd;border-left:0}
+  .demo:not(.demo-probe) .demo-budget strong{font-size:1.75rem}
+  .demo:not(.demo-probe) .demo-budget-foot{margin-top:5px;padding-top:8px}
+  .demo:not(.demo-probe) .demo-content{padding:25px 16px 25px}
+  .demo:not(.demo-probe) .demo-tools{gap:12px;margin-bottom:14px}
+  .demo:not(.demo-probe) .demo-tools-title{align-items:center}
+  .demo:not(.demo-probe) .demo-item-count{font-size:.64rem;text-align:right}
+  .demo:not(.demo-probe) .demo-filter{padding:7px 10px;font-size:.69rem}
+  .demo:not(.demo-probe) .demo-products{grid-template-columns:1fr;gap:14px}
+  .demo:not(.demo-probe) .demo-product{display:block}
+  .demo:not(.demo-probe) .demo-visual{aspect-ratio:1.55/1;padding:10px}
+  .demo:not(.demo-probe) .demo-product-code{top:9px;left:9px;padding:5px 7px;font-size:.56rem}
+  .demo:not(.demo-probe) .demo-logo-caption{right:8px;bottom:8px;padding:5px 7px;font-size:.56rem}
+  .demo:not(.demo-probe) .demo-product-body{padding:14px 14px 15px}
+  .demo:not(.demo-probe) .demo-product h3{font-size:.98rem}
+  .demo:not(.demo-probe) .demo-product p{min-height:0;font-size:.76rem}
+  .demo:not(.demo-probe) .demo-product-foot{display:flex;gap:8px;margin-top:10px;padding-top:9px;font-size:.66rem}
+  .demo:not(.demo-probe) .demo-product-foot b{font-size:.68rem}
+  .demo:not(.demo-probe) .demo-buy{gap:7px;margin-top:10px}
+  .demo:not(.demo-probe) .demo-buy strong{font-size:1.05rem}
+  .demo:not(.demo-probe) .demo-buy span{font-size:.62rem}
+  .demo:not(.demo-probe) .demo-order-row{grid-template-columns:minmax(0,1fr) 74px;gap:8px;margin-top:10px}
+  .demo:not(.demo-probe) .demo-size-label{font-size:.65rem}
+  .demo:not(.demo-probe) .demo-size,.demo:not(.demo-probe) .demo-quantity{min-height:42px;padding:0 9px;font-size:.75rem}
+  .demo:not(.demo-probe) .demo-add{min-height:42px;padding:0 11px;font-size:.75rem}
+  .demo:not(.demo-probe) .demo-sample-note{margin-top:13px;font-size:.68rem}
+}
+@media(max-width:420px){
+  .demo:not(.demo-probe) .demo-shell{width:calc(100% - 18px)}
+  .demo:not(.demo-probe) .demo-notice a{display:block;margin-left:0}
+  .demo:not(.demo-probe) .demo-shopbar{padding:8px 9px}
+  .demo:not(.demo-probe) .demo-brand{max-width:49%}
+  .demo:not(.demo-probe) .demo-brand img{height:40px}
+  .demo:not(.demo-probe) .demo-cart{padding:6px 7px;font-size:.64rem}
+  .demo:not(.demo-probe) .demo-hero{padding:27px 16px 19px}
+  .demo:not(.demo-probe) .demo-hero h1{font-size:2.15rem}
+  .demo:not(.demo-probe) .demo-assurances{display:grid;gap:7px}
+  .demo:not(.demo-probe) .demo-content{padding:21px 11px 22px}
+  .demo:not(.demo-probe) .demo-selection{padding:14px}
+  .demo:not(.demo-probe) .demo-order-row{grid-template-columns:minmax(0,1fr) 53px}
+  .demo:not(.demo-probe) .demo-remove{font-size:.66rem}
+}
+@media(max-width:350px){
+  .demo:not(.demo-probe) .demo-product-body{padding:12px}
+  .demo:not(.demo-probe) .demo-brand{max-width:45%}
+  .demo:not(.demo-probe) .demo-cart{font-size:.6rem}
+}
 CSS;
 }

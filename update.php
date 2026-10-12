@@ -37,7 +37,7 @@ render_head('WorkwearCenter aktualisieren');
 echo '<main class="install-card"><div class="eyebrow">SYSTEMUPDATE</div><h1>WorkwearCenter aktualisieren</h1>';
 if($error) echo '<div class="flash error">'.e($error).'</div>';
 elseif(is_post()) echo '<div class="flash success">Update abgeschlossen. '.count($changes).' Datenbankanpassungen wurden ausgeführt.</div><p><a class="btn primary" href="/admin">Zur Verwaltung</a></p>';
-else echo '<p><strong>Version '.e(app_version()).'</strong> bringt den Firmenshop im neuen Design, Umtausch und Rückgabe, Anmeldelink und Freigabe per E-Mail, Sammelbestellung, Probeshops für Interessenten, die Lexware-Office-Anbindung und Beträge, die exakt wie in der Lexware-Rechnung gerundet sind. Das Update legt neue Tabellen und Spalten an; bis es ausgeführt ist, bleibt der Shop für Besucher gesperrt. Bestehende Firmen, Produkte, Konten, Bestellungen (mit ihren bisherigen Beträgen) und individuell gepflegte Inhalte bleiben erhalten.</p><p><strong>Vor dem Update Webspace und Datenbank vollständig sichern.</strong></p><form method="post">'.csrf_field().'<label><input type="checkbox" name="backup_confirmed" value="yes" required> Aktuelle Sicherung vorhanden</label><button class="btn primary" type="submit">Datenbank jetzt aktualisieren</button></form>';
+else echo '<p><strong>Version '.e(app_version()).'</strong> ordnet die Verwaltung nach Arbeitsabläufen, ergänzt einen zentralen Posteingang für Mitarbeiterfreigaben und verhindert doppelte oder veraltete Freigabeentscheidungen. Für diese Überarbeitung von 10.16.3 auf 10.16.4 ist keine Datenbankänderung nötig. Bei älteren Installationen führt dieser Assistent noch offene Datenbankanpassungen aus und prüft anschließend das Schema vollständig.</p><p><strong>Vor dem Ausführen Webspace und Datenbank vollständig sichern.</strong></p><form method="post">'.csrf_field().'<label><input type="checkbox" name="backup_confirmed" value="yes" required> Aktuelle Sicherung vorhanden</label><button class="btn primary" type="submit">Datenbank prüfen und nötige Updates ausführen</button></form>';
 // Diagnose: prüft, ob alle Programmteile laden und die Datenbank vollständig ist.
 $diag=['Programmversion'=>app_version(),'PHP-Version'=>PHP_VERSION.(version_compare(PHP_VERSION,'8.1.0','<')?' – ZU ALT, mindestens 8.1 nötig':' – in Ordnung')];
 $modulesOk=true;
@@ -54,8 +54,10 @@ if($modulesOk && function_exists('yw_schema_ready')){
     try{$diag['Datenbankstände']=(string)db()->query("SELECT GROUP_CONCAT(version SEPARATOR ', ') FROM yw_schema_versions")->fetchColumn();}catch(Throwable $x){$diag['Datenbankstände']='nicht lesbar: '.$x->getMessage();}
     try{$diag['Wartungsmodus']=current_site_setting('maintenance_mode','0')==='1'?'AN (Besucher sehen die Wartungsseite)':'aus';}catch(Throwable $x){}
 }
-$lastErrorFile=__DIR__.'/app/letzter-fehler.txt';
-if(is_file($lastErrorFile))$diag['Letzter schwerer Fehler']=(string)file_get_contents($lastErrorFile,false,null,0,2000);
+$runtimeErrors=function_exists('yw_runtime_recent_errors')?yw_runtime_recent_errors(24,1):null;
+if($runtimeErrors===null)$diag['Fehlerprotokoll']='Privater Datenordner nicht lesbar';
+elseif($runtimeErrors){$incident=$runtimeErrors[0];$when=strtotime((string)$incident['at']);$diag['Letzter unerwarteter Fehler']=trim((string)$incident['id'].' · '.($when?date('d.m.Y H:i',$when):'Zeit unbekannt').' · '.(string)$incident['route'].' · '.(string)$incident['file'].':'.(int)$incident['line']);}
+else $diag['Letzter unerwarteter Fehler']='Keine unbehandelten PHP-Fehler in den letzten 24 Stunden';
 echo '<h2 style="margin-top:28px">Systemprüfung</h2><table class="table" style="min-width:0"><tbody>';
 foreach($diag as $label=>$value)echo '<tr><th style="width:34%">'.e($label).'</th><td style="word-break:break-word">'.e($value).'</td></tr>';
 echo '</tbody></table><p class="muted">Bei einem Problem diese Tabelle bitte als Bildschirmfoto an den Support schicken.</p>';

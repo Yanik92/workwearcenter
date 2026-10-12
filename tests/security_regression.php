@@ -4,6 +4,7 @@ declare(strict_types=1);
 $config=['base_domain'=>'workwearcenter.de','db_pass'=>'test-secret'];
 $_SESSION=[];
 require dirname(__DIR__).'/app/functions.php';
+require dirname(__DIR__).'/app/request_security.php';
 require dirname(__DIR__).'/app/modules/public.php';
 require dirname(__DIR__).'/app/modules/corporate.php';
 require dirname(__DIR__).'/app/modules/admin_account.php';
@@ -127,7 +128,7 @@ test_ok(yw_zones_sanitize(['front'=>['chest_left'=>['x'=>60,'y'=>30,'w'=>14],'ka
 // 10.8: API v1 – Schlüsselrechte und HTTPS-Pflicht
 test_ok(yw_api_scopes(['scopes'=>'orders:read, orders:write ,,'])===['orders:read','orders:write'],'API-Rechte werden sauber aus dem Schlüssel gelesen');
 test_ok(!in_array('customers:read',yw_api_scopes(['scopes'=>'orders:read']),true),'API-Schlüssel ohne customers:read hat dieses Recht nicht');
-$_SERVER['HTTPS']='';$_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['REMOTE_ADDR']='203.0.113.9';
+$_SERVER['HTTPS']='';$_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['REMOTE_ADDR']='203.0.113.9';$config['trusted_proxies']=['203.0.113.0/24'];
 test_ok(!yw_api_https_ok(),'API über unverschlüsseltes HTTP von außen wird abgelehnt');
 $_SERVER['HTTP_X_FORWARDED_PROTO']='https';test_ok(yw_api_https_ok(),'API hinter HTTPS-Proxy wird angenommen');
 $_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['HTTPS']='on';test_ok(yw_api_https_ok(),'API über HTTPS wird angenommen');
@@ -415,7 +416,14 @@ test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/ap
 test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/corporate_admin.php'),"'/.htaccess'=>'RewriteRule'"),'Systemstatus prüft auch versteckte Dateien, uploads/-Sperre und SVG-Header');
 
 // Härtung CSRF: GET-Links mit Wirkung (Vorschau, Sicherung) nicht von fremden Seiten aus auslösbar
-$crossSite=static fn(string $site): string => (string)shell_exec(escapeshellarg(PHP_BINARY).' -r '.escapeshellarg('$_SERVER["HTTP_SEC_FETCH_SITE"]='.var_export($site,true).';require '.var_export(dirname(__DIR__).'/app/functions.php',true).';yw_block_cross_site_get();echo "weiter";').' 2>&1');
+$crossSite=static function(string $site): string {
+    $code='$_SERVER["HTTP_SEC_FETCH_SITE"]='.var_export($site,true).';require '.var_export(dirname(__DIR__).'/app/functions.php',true).';yw_block_cross_site_get();echo "weiter";';
+    $pipes=[];$process=proc_open([PHP_BINARY,'-r',$code],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);
+    if(!is_resource($process))return '';
+    fclose($pipes[0]);$output=(string)stream_get_contents($pipes[1]).(string)stream_get_contents($pipes[2]);
+    fclose($pipes[1]);fclose($pipes[2]);proc_close($process);
+    return $output;
+};
 test_ok(!str_contains($crossSite('cross-site'),'weiter')&&str_contains($crossSite('same-origin'),'weiter')&&str_contains($crossSite(''),'weiter'),'Fremdseiten-Aufruf (Sec-Fetch-Site: cross-site) wird abgewiesen, eigene Links und alte Browser nicht');
 $adminTools=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_tools.php');
 test_ok(substr_count($adminTools,'yw_block_cross_site_get();')>=2,'Vorschau beenden und Datensicherung prüfen Sec-Fetch-Site (Vorschau starten nur per POST+CSRF)');
