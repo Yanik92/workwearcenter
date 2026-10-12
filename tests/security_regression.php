@@ -608,4 +608,12 @@ test_ok(str_contains($shopSrc19,"if(!\$sizeKnown)\$html.='<option value=\"\" sel
 test_ok(str_contains($shopSrc19,"SELECT id,name FROM employee_accounts WHERE company_id=? AND id IN ("),'Bestellungen: Name der bestellenden Person nur aus derselben Firma');
 test_ok(!str_contains($adminSrc,"'hero_title'=>trim("),'Admin Inhalte: wirkungslose Startseitenfelder werden nicht mehr überschrieben');
 
+// 10.20: neue Website und Kundenleiste
+$siteSrc20=(string)file_get_contents(dirname(__DIR__).'/app/modules/site.php');
+$publicSrc20=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
+test_ok(yw_is_website_path('/')&&yw_is_website_path('/zugang')&&!yw_is_website_path('/mustershop')&&!yw_is_website_path('/admin'),'Website: neues Design nur auf den Website-Seiten, Mustershop und Verwaltung unverändert');
+test_ok(str_contains($publicSrc20,"WHERE active=1 AND id IN (")&&str_contains($publicSrc20,"array_map('intval',(array)(\$_POST['trust_company_ids']??[]))"),'Kundenleiste: nur aktive Firmen, Haken werden als Zahlen geprüft');
+test_ok(!preg_match('/\b\d{1,3}\.?\d{3}\s*(?:Stiche|Teile)|\d+\+/u',$siteSrc20),'Website: keine erfundenen Kennzahlen (Stiche, Teile, Firmen)');
+test_ok(str_contains($siteSrc20,"if(!\$c['logos'])return;"),'Kundenleiste erscheint nur mit freigegebenen Logos');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

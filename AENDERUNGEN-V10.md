@@ -2,6 +2,17 @@
 
 Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.20.0 – Neue Website „Werkstatt-Premium“ mit Kundenleiste
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+Umsetzung des freigegebenen Konzepts, Paket 1 von 4 (Website). Firmenshops, Mustershop, Probeshop und Verwaltung sehen aus wie bisher.
+- Alle Website-Seiten neu gestaltet: Startseite, Leistungen, So funktioniert’s, Über uns, Kontakt, Anfrage, Kundenlogin, Impressum, Datenschutz. Navy und Orange, die gestrichelte Naht als Erkennungszeichen, eigene Schriften (Archivo, Manrope, JetBrains Mono, liegen auf dem eigenen Server, keine Google-Verbindung).
+- Startseite: großer Kopfbereich mit Werkstattfoto und schwebenden Karten (Freigabe, Veredelung, Budget, Status), Faktenband ohne Zahlen, Übersicht „Alles in einem Shop“, zwei Bestellwege, Werkstatt-Bereich mit Vorher-nachher-Regler (Shop-Vorschau gegen echten Stick), Ablauf in fünf Schritten mit Nahtlinie, die sich beim Scrollen füllt, Ansprechpartner, häufige Fragen, Abschluss mit Anfrage.
+- Kundenleiste „Diese Kunden vertrauen uns“ ganz unten: Unter Verwaltung → Website & Design → Inhalte → „Startseite – Vertrauen“ gibt es jetzt pro Kundenfirma einen Haken. Angehakte, aktive Firmen mit Logo erscheinen automatisch mit ihrem Shop-Logo; zusätzlich lassen sich weiter Logos hochladen. Ab drei Logos läuft die Leiste durch (anhaltbar), grau und beim Darüberfahren farbig. Ohne Logos bleibt die Leiste weg.
+- Kundenstimme erscheint nur, wenn sie in der Verwaltung gepflegt ist. Der Ansprechpartner zeigt ohne Eintrag den Inhaber aus dem Impressum.
+- Texte: Produktion in Paderborn genannt (Impressum-Anschrift bleibt wie eingetragen), keine Angaben zu Stichzahlen oder Motivgrößen, keine Kennzahlen.
+- Technik: Die Website lädt nur noch eine Stylesheet-Datei (assets/web.css) und ein kleines Skript (assets/web.js) statt vier Stylesheets. Bewegungen werden bei „Bewegung reduzieren“ abgeschaltet; ohne JavaScript ist alles sichtbar.
+
 ## 10.19.2 – Befunde aus dem echten Shop und der Verwaltung
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
 
