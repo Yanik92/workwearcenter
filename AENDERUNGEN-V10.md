@@ -2,6 +2,25 @@
 
 Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.18.0 – Deine Weiterentwicklung (10.16.23) und 10.17.0 zusammengeführt
+**Datenbank-Update nötig:** Dateien hochladen (immer überschreiben), danach als Administrator https://workwearcenter.de/update.php aufrufen. Bis dahin zeigt der Shop „Update erforderlich“.
+
+Enthält alles aus 10.16.1 bis 10.16.23 (neue Website, Logo und Farben, Verwaltung nach Arbeitsabläufen, Mitarbeiter-Freigaben, Team-Bestellung, Fehlerprotokoll) und alles aus 10.17.0 (Seite „Schnittstellen“, Schlüssel in der Verwaltung, Abrechnung im Tagesgeschäft).
+
+**So wurde zusammengeführt**
+- Verwaltungsmenü: die aufklappbaren Bereiche aus 10.16.23 mit „Mitarbeiter-Freigaben“. Übergabe, API und Lexware-Verbindung stehen wie in 10.17.0 gemeinsam unter System → Schnittstellen, die Rechnungen unter Aufträge & Produktion → Abrechnung. Alte Links führen automatisch dorthin.
+- Systemstatus: die Prüfungen aus 10.17.0 mit Knopf zum Beheben, dazu die neuen Prüfungen aus 10.16.23 (PHP-Erweiterungen und -Werte, Upload-Ordner, privater Datenordner, App-Schlüssel, unbehandelte Fehler mit Referenzliste). Mail- und Übergabefehler zählen beim Menüpunkt Schnittstellen.
+
+**Bei der Prüfung gefunden und behoben**
+- Team-Bestellung: „Mitarbeiter hinzufügen“ ging nicht (Fehler im Skript), jetzt behoben.
+- Team-Bestellung: Wer für andere bestellt, kann diese Aufträge nicht selbst freigeben, solange es eine weitere verantwortliche Person gibt (Vier-Augen-Prinzip wie bei eigenen Bestellungen). Team-Bestellungen zahlt die Firma ganz; ein Eigenanteil per Lohnabzug entsteht nur, wenn die Person selbst bestellt.
+- HTTPS: Läuft die Website beim Hoster hinter einem Proxy, der nicht in `trusted_proxies` steht, entsteht keine endlose Umleitung mehr (die Seite wäre sonst nach dem Update nicht erreichbar gewesen). Der Systemstatus nennt dann die Proxy-Adresse zum Eintragen.
+- Öffentliche Website: Platzhalter wie „[ANTWORTZEIT BESTÄTIGEN]“ oder „[MINDESTBESTELLMENGE EINTRAGEN]“ waren für Besucher sichtbar. Sie sind durch Texte ohne feste Zusagen ersetzt; der leere Referenzbereich wird ausgeblendet, bis Referenzen gepflegt sind. Das Werkstattbild auf „Leistungen“ wird wieder angezeigt.
+- Verwaltung am Handy: Das Menü lief seitlich aus dem Bild und die Seite ließ sich seitlich verschieben, jetzt untereinander mit aufklappbaren Bereichen. Text im Suchfeld und Fußzeilen-Links waren weiß auf hellem Grund.
+- Privater Datenordner gilt als geschützt, wenn er von außen gesperrt ist (Standard `app/private`), statt dauerhaft als Warnung.
+
+**Getestet** in einer Testinstallation (PHP 8.3, MariaDB): Neuinstallation und Update-Assistent, alle Verwaltungsseiten am Computer und Handy ohne Fehler und ohne seitliches Scrollen, Daiber-Artikel anlegen mit automatischen Bildern, Firmenshop anlegen, Verantwortliche einladen, Registrierung und Freigabe über „Mitarbeiter-Freigaben“, Bestellung mit Eigenanteil, Freigabe im Shop, Team-Bestellung mit Vier-Augen-Prüfung (zweite verantwortliche Person gibt frei), alle Seiten der Website am Computer und Handy, Anfrage mit Logo und Probeshop, Mustershop, Cronjob, Sicherheits-Regressionstests grün.
+
 ## 10.16.23 – Öffentliche Website: klare B2B-Texte und neues Farbsystem
 Kein Datenbank-Update nötig.
 

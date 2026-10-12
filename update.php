@@ -14,6 +14,8 @@ if(is_post()){
         $locked=(int)db()->query("SELECT GET_LOCK('yanik_workwear_schema_update',0)")->fetchColumn()===1;
         if(!$locked) throw new RuntimeException('Ein anderes Update läuft bereits.');
         $changes=run_schema_updates(db());
+        // Bis 10.16 lagen Fehlerdetails in app/letzter-fehler.txt; seit 10.16.1 nur noch bereinigt im privaten Datenordner.
+        if(is_file(__DIR__.'/app/letzter-fehler.txt')&&@unlink(__DIR__.'/app/letzter-fehler.txt'))$changes[]='Alte Fehlerdatei app/letzter-fehler.txt entfernt';
         // Ab 10.3 werden sitemap.xml und robots.txt automatisch erzeugt. Alte, feste Dateien
         // aus V9/V10 würden sonst Vorrang haben – nur unveränderte Originale werden entfernt.
         foreach(['sitemap.xml'=>'https://workwearcenter.de/leistungen','robots.txt'=>'Sitemap: https://workwearcenter.de/sitemap.xml'] as $staticFile=>$marker){

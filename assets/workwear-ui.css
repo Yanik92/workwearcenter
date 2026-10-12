@@ -769,3 +769,20 @@ html body .wcm-public-home .wcm-faq-answer p{color:#354b60;font-size:.88rem;line
  html body .wcm-public-home .wcm-footer-grid{grid-template-columns:minmax(0,1fr);gap:22px}
 }
 
+/* 10.18: Ältere Regeln aus v9.css (waagerechte Menüleiste) überstimmten auf dem Handy die aufklappbaren Bereiche. */
+@media(max-width:900px){
+ html body .admin-sidebar .admin-menu{display:grid;flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}
+ html body .admin-sidebar .admin-menu-group{display:block}
+ html body .admin-sidebar .admin-menu a{white-space:normal;flex:initial}
+}
+@media(max-width:650px){
+ html body .admin-shell .admin-sidebar{position:relative;z-index:auto}
+}
+@media(max-width:420px){
+ html body .admin-topbar .admin-topbar-inner > .btn[href="/admin?tab=account"]{display:none}
+}
+/* 10.18: Suchfeld und Fußzeile der Verwaltung waren weiß auf hellem Grund (alte dunkle Kopfzeile aus v9.css). */
+html body .admin-topbar .admin-search input{color:var(--wc-ink)}
+html body .admin-topbar .admin-search input::placeholder{color:var(--wc-muted)}
+html body .admin-footer a{color:var(--wc-ink)}
+html body .admin-footer a:hover{color:var(--wc-ink);text-decoration:underline}

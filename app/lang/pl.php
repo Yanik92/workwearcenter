@@ -70,7 +70,7 @@ return [
     'team.no_people' => 'Brak aktywnych pracowników z zatwierdzonym kontem.',
     'team.go_people' => 'Zarządzaj pracownikami',
     'team.limit_notice' => 'Jedno zgłoszenie może obejmować maksymalnie 20 osób. Większe zespoły podziel na kilka zamówień.',
-    'team.saved' => 'Zamówienie zespołowe utworzono dla {n} osób. Indywidualne zamówienia znajdziesz w sekcji Zamówienia.',
+    'team.saved' => ['Zamówienie zespołowe utworzono dla {n} osoby. Zamówienie znajdziesz w sekcji Zamówienia.', 'Zamówienie zespołowe utworzono dla {n} osób. Indywidualne zamówienia znajdziesz w sekcji Zamówienia.', 'Zamówienie zespołowe utworzono dla {n} osób. Indywidualne zamówienia znajdziesz w sekcji Zamówienia.'],
     'nav.logout' => 'Wyloguj',
     'foot.imprint' => 'Nota prawna',
     'foot.privacy' => 'Ochrona danych',

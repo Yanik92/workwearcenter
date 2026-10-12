@@ -70,7 +70,7 @@ return [
     'team.no_people' => 'Onaylı hesabı bulunan aktif çalışan yok.',
     'team.go_people' => 'Çalışanları yönet',
     'team.limit_notice' => 'Bir toplu siparişte en fazla 20 kişi yer alabilir. Daha büyük ekipleri birkaç siparişe bölün.',
-    'team.saved' => 'Toplu sipariş {n} kişi için oluşturuldu. Bireysel siparişleri Siparişler bölümünde görebilirsiniz.',
+    'team.saved' => ['Toplu sipariş {n} kişi için oluşturuldu. Siparişi Siparişler bölümünde görebilirsiniz.', 'Toplu sipariş {n} kişi için oluşturuldu. Bireysel siparişleri Siparişler bölümünde görebilirsiniz.'],
     'nav.logout' => 'Çıkış yap',
     'foot.imprint' => 'Künye',
     'foot.privacy' => 'Gizlilik',

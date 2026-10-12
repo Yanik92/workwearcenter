@@ -70,7 +70,7 @@ return [
     'team.no_people' => 'Nu există încă angajați activi cu un cont aprobat.',
     'team.go_people' => 'Gestionează angajații',
     'team.limit_notice' => 'O comandă de echipă poate include cel mult 20 de persoane. Împarte echipele mai mari în mai multe comenzi.',
-    'team.saved' => 'Comanda echipei a fost creată pentru {n} persoane. Găsești comenzile individuale la Comenzi.',
+    'team.saved' => ['Comanda echipei a fost creată pentru {n} persoană. Găsești comanda la Comenzi.', 'Comanda echipei a fost creată pentru {n} persoane. Găsești comenzile individuale la Comenzi.', 'Comanda echipei a fost creată pentru {n} de persoane. Găsești comenzile individuale la Comenzi.'],
     'nav.logout' => 'Deconectare',
     'foot.imprint' => 'Date legale',
     'foot.privacy' => 'Confidențialitate',

@@ -867,6 +867,7 @@ function yw_shop_auth_page(array $company,string $title,array $intro,string $car
 
 /** 10.16: bis zu drei Produktfotos der Kollektion (ohne Preise) für die Anmeldeseite. */
 function yw_shop_login_images(array $company): array {
+    if((int)($company['id']??0)<1)return [];
     try{
         $q=db()->prepare('SELECT p.name,p.image_path,cp.preview_front_path FROM company_products cp JOIN products p ON p.id=cp.product_id WHERE cp.company_id=? AND p.active=1 ORDER BY p.category,p.name LIMIT 40');
         $q->execute([(int)$company['id']]);
