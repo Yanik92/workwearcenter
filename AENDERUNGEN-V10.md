@@ -2,6 +2,15 @@
 
 Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.19.2 – Befunde aus dem echten Shop und der Verwaltung
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+- Firmenshop: Ist die Firmenfarbe ein heller Grauton (z. B. bei WDP #9ca0a5) oder fast weiß, sahen alle Knöpfe wie gesperrt aus und der Fortschritt bei Bestellungen war kaum zu erkennen. Der Shop dunkelt solche Farben für Knöpfe und Akzente jetzt automatisch ab (WDP: #696c6f mit weißer Schrift). Kräftige Farben bleiben unverändert.
+- Team-Bestellung: Der lange Regeltext stand doppelt auf der Seite (Seitenleiste und Absenden). Jetzt nur noch beim Absenden.
+- Profil: „Abteilung (Verwaltung)“ hieß missverständlich nach einer Abteilung; jetzt „Abteilung (legt dein Unternehmen fest)“.
+- Systemstatus: neue Prüfung „Hochgeladene Bilder vorhanden“. Sie zählt Produktbilder, Firmenlogos und Website-Bilder, deren Datei auf dem Server fehlt, nennt Beispiele und sagt, wie man sie zurückholt.
+- Systemstatus „App-Schlüssel“: zeigt jetzt eine fertige Zeile zum Einfügen in config.php und erklärt, wofür der Schlüssel gut ist.
+
 ## 10.19.1 – Fehler auf der Live-Website behoben
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
 

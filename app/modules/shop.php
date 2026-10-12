@@ -325,6 +325,11 @@ function shipping_rule_label(array $company): string {
 function yw_shop_colors(array $company): array {
     $primary=color_ok((string)($company['primary_color']??'')) ? strtolower((string)$company['primary_color']) : '#152a40';
     $accent=color_ok((string)($company['accent_color']??'')) ? strtolower((string)$company['accent_color']) : '#ff6b00';
+    // 10.19.2: Helle Grautöne (z. B. #9ca0a5) ließen alle Knöpfe wie gesperrt aussehen, fast weiße Farben verschwanden auf Weiß.
+    // Für Knöpfe und Akzente wird die Farbe dann so weit abgedunkelt, dass sie lesbar und klar anklickbar ist.
+    $rgb=[hexdec(substr($primary,1,2)),hexdec(substr($primary,3,2)),hexdec(substr($primary,5,2))];
+    $grey=max($rgb)-min($rgb)<32;$lum=yw_shop_luminance($primary);
+    if(($grey && $lum>0.2) || $lum>0.75)$primary=yw_shop_ink($primary);
     return [$primary,$accent];
 }
 
@@ -1047,7 +1052,7 @@ function company_portal_team_order(array $company,array $account): void {
     echo '<div class="cp-team-people" data-team-people></div><p class="cp-team-feedback" data-team-feedback role="status" aria-live="polite"></p>';
     echo '<label class="cp-team-note">'.e(t('team.note')).'<small>'.e(t('team.note_hint')).'</small><textarea name="team_note" maxlength="350"></textarea></label>';
     echo '<div class="cp-team-submit"><div><strong>'.e(t('team.rules_title')).'</strong><p>'.e(t('team.rules_text')).'</p></div><button class="cp-btn" type="submit">'.e(t('team.submit')).'</button></div></form>';
-    echo '<aside class="cp-team-aside"><div class="cp-team-aside-icon" aria-hidden="true">'.yw_shop_icon('users').'</div><h2>'.e(t('team.preview_title')).'</h2><ol><li><span>1</span>'.e(t('team.person')).'</li><li><span>2</span>'.e(t('team.item')).'</li><li><span>3</span>'.e(t('team.step_orders')).'</li></ol><div class="cp-team-policy"><strong>'.e(t('team.costs')).'</strong><ul><li>'.e(financing_label(['financing_mode'=>'company']+$company)).'</li><li>'.e(shipping_rule_label(['shipping_payer'=>'company']+$company)).'</li><li>'.e(((int)($company['approval_required']??1)===1)?t('rules.internal_approval'):t('rules.no_approval')).'</li></ul></div><p>'.e(t('team.rules_text')).'</p></aside></div>';
+    echo '<aside class="cp-team-aside"><div class="cp-team-aside-icon" aria-hidden="true">'.yw_shop_icon('users').'</div><h2>'.e(t('team.preview_title')).'</h2><ol><li><span>1</span>'.e(t('team.person')).'</li><li><span>2</span>'.e(t('team.item')).'</li><li><span>3</span>'.e(t('team.step_orders')).'</li></ol><div class="cp-team-policy"><strong>'.e(t('team.costs')).'</strong><ul><li>'.e(financing_label(['financing_mode'=>'company']+$company)).'</li><li>'.e(shipping_rule_label(['shipping_payer'=>'company']+$company)).'</li><li>'.e(((int)($company['approval_required']??1)===1)?t('rules.internal_approval'):t('rules.no_approval')).'</li></ul></div></aside></div>'; // 10.19.2: Regeltext stand doppelt (Seitenleiste und Absenden)
     echo '<template data-team-person-template><section class="cp-card cp-team-person" data-team-person><div class="cp-team-person-head"><span class="cp-team-person-index" data-team-number>1</span><button type="button" class="cp-team-remove" data-team-remove>'.e(t('team.remove_person')).'</button></div><label class="cp-team-select">'.e(t('team.person')).'<select data-team-account>'.$employeeOptions.'</select></label><div class="cp-team-items" data-team-items></div><button type="button" class="cp-team-add-item" data-team-add-item>+ '.e(t('team.add_item')).'</button><template data-team-item-template><div class="cp-team-item" data-team-item><label>'.e(t('team.product')).'<select data-team-product><option value="">'.e(t('team.choose_product')).'</option></select></label><label>'.e(t('team.size')).'<select data-team-size disabled><option value="">'.e(t('team.choose_size')).'</option></select></label><label>'.e(t('team.quantity')).'<input type="number" min="1" max="10" value="1" inputmode="numeric" data-team-quantity></label><button type="button" class="cp-team-item-remove" data-team-remove-item aria-label="'.e(t('common.close')).'">×</button></div></template></section></template>';
     echo '</section>';
 }

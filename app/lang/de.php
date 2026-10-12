@@ -310,8 +310,8 @@ return [
     // Profil
     'profile.title' => 'Profil',
     'profile.intro' => 'Deine persönlichen Daten im Firmenshop.',
-    'profile.department' => 'Abteilung (Verwaltung)',
-    'profile.cost_center' => 'Kostenstelle (Verwaltung)',
+    'profile.department' => 'Abteilung (legt dein Unternehmen fest)',
+    'profile.cost_center' => 'Kostenstelle (legt dein Unternehmen fest)',
     'profile.language' => 'Sprache',
     'profile.language_hint' => 'für Shop und E-Mails',
     'profile.save' => 'Profil speichern',

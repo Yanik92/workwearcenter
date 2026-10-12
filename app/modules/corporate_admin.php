@@ -343,6 +343,7 @@ function yw_system(): void {
         $missingSupplierData=(int)db()->query("SELECT COUNT(*) FROM products WHERE active=1 AND (TRIM(COALESCE(sku,''))='' OR TRIM(COALESCE(supplier_name,''))='')")->fetchColumn();
         $duplicateSkus=(int)db()->query("SELECT COUNT(*) FROM (SELECT LOWER(TRIM(sku)) normalized_sku FROM products WHERE TRIM(COALESCE(sku,''))<>'' GROUP BY LOWER(TRIM(sku)) HAVING COUNT(*)>1) duplicates")->fetchColumn();
     }catch(Throwable $e){}
+    $missingUploads=yw_missing_upload_files();
     $mailIssues=yw_mail_config_issues();
     [$exposureOk,$exposureHint]=yw_private_exposure_check(isset($_GET['pruefen']));
     $cronLast=current_site_setting('cron_last_run','');
@@ -376,7 +377,9 @@ function yw_system(): void {
         ['Upload-Ordner beschreibbar',$runtime['uploads_writable'],'Ordner uploads/ und Unterordner beim Hoster beschreibbar machen','',''],
         // Standard app/private liegt im Webspace, ist aber per .htaccess gesperrt; das prüft „Interne Dateien gesperrt“.
         ['Privater Datenordner geschützt',$runtime['private_writable']&&($runtime['private_outside_webroot']||$exposureOk===true),$runtime['private_writable']?'Ordner ist von außen erreichbar – Webserver-Sperre prüfen oder private_dir in config.php außerhalb des Webspace festlegen':'Privaten Datenordner (app/private oder private_dir) anlegen und für PHP beschreibbar machen','',''],
-        ['App-Schlüssel gesetzt',$runtime['app_secret_ok'],'In config.php app_secret mit mindestens 32 zufälligen Zeichen setzen','',''],
+        // 10.19.2: konkrete Zeile zum Einfügen statt nur „setzen“ (der Schlüssel ist eine zusätzliche Absicherung der Freigabe-Links aus E-Mails)
+        ['App-Schlüssel gesetzt',$runtime['app_secret_ok'],'Empfohlen: In config.php diese Zeile ergänzen: \'app_secret\' => \''.bin2hex(random_bytes(24)).'\', – schützt Freigabe-Links aus E-Mails zusätzlich, falls jemand die Datenbank bekommt.','',''],
+        ['Hochgeladene Bilder vorhanden',$missingUploads['count']===0,$missingUploads['count'].' Bild(er) fehlen auf dem Server'.($missingUploads['examples']?' (z. B. '.implode(', ',$missingUploads['examples']).')':'').'. Aus der letzten Datensicherung (Ordner uploads) per FTP zurückspielen oder neu hochladen.',$missingUploads['href'],'Öffnen'],
         ['Unbehandelte Fehler (24 Stunden)',$runtimeErrors!==null&&$runtimeErrors===[],$runtimeErrors===null?'Privates Fehlerprotokoll nicht lesbar – private_dir und Schreibrechte prüfen':count($runtimeErrors).' Fehlerreferenz(en) – Liste unten','',''],
         ['Wartungsmodus aus',!maintenance_enabled(),'Die Website zeigt Besuchern gerade die Wartungsseite','/admin?tab=design','Ausschalten'],
         ['Beschaffungsdaten',$missingSupplierData===0,$missingSupplierData===null?'Datenbankschema aktualisieren':$missingSupplierData.' aktive Produkte ohne Lieferant oder Artikelnummer','/admin?tab=products','Produkte'],
@@ -447,4 +450,28 @@ function export_procurement_csv(): void {
         fputcsv($out,array_map('yw_csv_safe',$values),';','"','');
     }
     fclose($out);exit;
+}
+
+
+/**
+ * 10.19.2: Hinterlegte Bilder (Produkte, Firmenlogos, Website), deren Datei auf dem Server fehlt –
+ * z. B. wenn der Ordner uploads/ beim Umzug oder per FTP nicht mit übertragen wurde.
+ * @return array{count:int,examples:list<string>,href:string}
+ */
+function yw_missing_upload_files(): array {
+    $root=dirname(__DIR__,2);$missing=[];$href='';
+    $check=static function(string $path,string $label,string $link) use($root,&$missing,&$href): void {
+        $path=trim($path);
+        if($path===''||!str_starts_with($path,'uploads/')||str_contains($path,'..'))return;
+        if(is_file($root.'/'.$path))return;
+        $missing[]=$label;if($href==='')$href=$link;
+    };
+    try{
+        foreach(db()->query("SELECT id,name,image_path,image_back_path,image_sleeve_path FROM products WHERE active=1") as $p)
+            foreach(['image_path','image_back_path','image_sleeve_path'] as $col)$check((string)($p[$col]??''),'Produkt „'.$p['name'].'“','/admin?tab=products');
+        foreach(db()->query("SELECT id,shop_name,legal_name,logo_path FROM companies") as $c)$check((string)($c['logo_path']??''),'Logo '.($c['shop_name']?:$c['legal_name']),'/admin?tab=companies&company='.(int)$c['id']);
+        foreach(db()->query("SELECT setting_key,setting_value FROM site_settings WHERE setting_key LIKE '%image' OR setting_key LIKE '%logo%' OR setting_key LIKE '%photo'") as $r)$check((string)$r['setting_value'],'Website-Bild','/admin?tab=design');
+    }catch(Throwable $e){return ['count'=>0,'examples'=>[],'href'=>''];}
+    $examples=array_slice(array_values(array_unique($missing)),0,3);
+    return ['count'=>count($missing),'examples'=>$examples,'href'=>$href];
 }
