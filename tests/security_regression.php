@@ -341,6 +341,7 @@ foreach(array_keys(YW_LANGS) as $code){
     foreach($de as $key=>$value){
         $tv=$table[$key];
         if($key==='fmt.months'){if(count($tv)!==12)$bad[]=$key;continue;}
+        if($key==='fmt.weekdays'){if(count($tv)!==7)$bad[]=$key;continue;} // 10.21
         if(is_array($value)!==is_array($tv)||(is_array($tv)&&count($tv)!==$plural[$code]))$bad[]=$key;
         $a=$placeholders($value);$b=$placeholders($tv);sort($a);sort($b);
         if($a!==$b)$bad[]=$key;
@@ -611,9 +612,21 @@ test_ok(!str_contains($adminSrc,"'hero_title'=>trim("),'Admin Inhalte: wirkungsl
 // 10.20: neue Website und Kundenleiste
 $siteSrc20=(string)file_get_contents(dirname(__DIR__).'/app/modules/site.php');
 $publicSrc20=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
-test_ok(yw_is_website_path('/')&&yw_is_website_path('/zugang')&&!yw_is_website_path('/mustershop')&&!yw_is_website_path('/admin'),'Website: neues Design nur auf den Website-Seiten, Mustershop und Verwaltung unverändert');
+test_ok(yw_is_website_path('/')&&yw_is_website_path('/zugang')&&!yw_is_website_path('/admin')&&!yw_is_website_path('/kantenwerk'),'Website: neues Design nur auf den Website-Seiten, nicht in Verwaltung und Firmenshops');
 test_ok(str_contains($publicSrc20,"WHERE active=1 AND id IN (")&&str_contains($publicSrc20,"array_map('intval',(array)(\$_POST['trust_company_ids']??[]))"),'Kundenleiste: nur aktive Firmen, Haken werden als Zahlen geprüft');
 test_ok(!preg_match('/\b\d{1,3}\.?\d{3}\s*(?:Stiche|Teile)|\d+\+/u',$siteSrc20),'Website: keine erfundenen Kennzahlen (Stiche, Teile, Firmen)');
 test_ok(str_contains($siteSrc20,"if(!\$c['logos'])return;"),'Kundenleiste erscheint nur mit freigegebenen Logos');
+
+// 10.21: Firmenshop „Werkstatt-Premium“, Mein Spind, Erfolgsbild
+$shopSrc21=(string)file_get_contents(dirname(__DIR__).'/app/modules/shop.php');
+$shopJs21=(string)file_get_contents(dirname(__DIR__).'/assets/shop.js');
+test_ok(str_contains($shopSrc21,"WHERE o.company_id=? AND o.employee_account_id=? AND o.status='approved' ORDER BY o.id DESC,i.id ASC LIMIT 600")&&str_contains($shopSrc21,"\$q->execute([(int)\$company['id'],(int)\$account['id']]);\n    \$rows=\$q->fetchAll();"),'Mein Spind: nur eigene, freigegebene Bestellungen der eigenen Firma');
+test_ok(str_contains($shopSrc21,"(int)(\$done['company']??0)!==(int)\$company['id']")&&str_contains($shopSrc21,"WHERE o.id=? AND o.company_id=? AND o.employee_account_id=?")&&str_contains($shopSrc21,"unset(\$_SESSION['yw_order_done']);"),'Erfolgsbild: einmalig, nur eigene Bestellung derselben Firma');
+test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/index.php'),'(produkte|bestellungen|freigaben|mitarbeiter|profil|spind)'),'Route /firma/spind läuft über das geschützte Firmenportal');
+test_ok(str_contains($shopJs21,"s.classList.add('sp-native-size');")&&str_contains($shopJs21,"if (size.ywChips) size.ywChips.focus(); else size.focus();"),'Größenknöpfe: Auswahlfeld bleibt Quelle für Formular und Prüfung');
+$langMissing21=[];
+foreach(['de','en','pl','tr','ru','ro'] as $l21){$a21=require dirname(__DIR__).'/app/lang/'.$l21.'.php';foreach(['nav.spind','nav.short.spind','fmt.weekdays','spind.intro','spind.count','done.title','done.items','price.you_pay','budget.free_of'] as $k21)if(!isset($a21[$k21]))$langMissing21[]=$l21.':'.$k21;}
+test_ok(!$langMissing21,'Neue Shop-Texte in allen sechs Sprachen'.($langMissing21?' (fehlt: '.implode(', ',$langMissing21).')':''));
+test_ok(yw_is_website_path('/mustershop')&&yw_is_website_path('/probeshop/abc'),'Mustershop und Probeshop im Rahmen der Website');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

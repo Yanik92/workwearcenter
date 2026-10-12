@@ -241,8 +241,7 @@ function yw_probeshop_page(array $shop): void {
     }
     $mark=$logo!==''?'<div class="demo-company-mark demo-company-logo"><img src="/'.e($logo).'" alt=""></div>':'<div class="demo-company-mark">'.e(mb_strtoupper(mb_substr($name,0,1))).'</div>';
     render_head('Probeshop für '.$name.' – WorkwearCenter');
-    echo site_brand_style();
-    public_header();
+    w_header(); // 10.21: gleicher Kopf wie die Website
     yw_demo_shop_render([
         'company'=>$name,
         'mark'=>$mark,
@@ -253,8 +252,8 @@ function yw_probeshop_page(array $shop): void {
         'probe'=>true,
         'logo_dark'=>$logo!==''&&yw_probeshop_suggest_tone($logo)==='light',
     ]);
-    echo '<section class="demo-probe-next"><div class="demo-shell demo-probe-next-inner"><div><h2>Gefällt dir, was du siehst?</h2><p>Im echten Firmenshop legen wir gemeinsam deine Kollektion, Logo-Positionen, Budgets und Freigaben fest. Dein Team bestellt danach selbst – am Computer oder Smartphone.</p></div><div class="demo-probe-actions"><a class="s-btn s-btn-orange" href="mailto:'.e(s_mail()).'?subject='.rawurlencode('Firmenshop für '.$name).'">Gespräch vereinbaren</a><a class="s-btn s-btn-navy" href="/so-funktionierts">So funktioniert’s</a></div></div></section>';
-    global_footer();
+    echo '<section class="demo-probe-next"><div class="demo-shell demo-probe-next-inner"><div><h2>Gefällt dir, was du siehst?</h2><p>Im echten Firmenshop legen wir gemeinsam deine Kollektion, Logo-Positionen, Budgets und Freigaben fest. Dein Team bestellt danach selbst – am Computer oder Smartphone.</p></div><div class="demo-probe-actions"><a class="w-btn w-btn-o" href="mailto:'.e(s_mail()).'?subject='.rawurlencode('Firmenshop für '.$name).'">Gespräch vereinbaren</a><a class="w-btn w-btn-dark" href="/so-funktionierts">So funktioniert’s</a></div></div></section>';
+    w_footer();
     render_foot();
 }
 

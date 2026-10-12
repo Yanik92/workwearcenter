@@ -262,6 +262,12 @@
     addPerson('');
   });
 
+  // 10.21: Erfolgsbild nach dem Absenden als modaler Dialog (Fokus bleibt darin, Esc schließt).
+  var done = document.querySelector('dialog[data-done][open]');
+  if (done && typeof done.showModal === 'function') {
+    try { done.close(); done.showModal(); } catch (e) { done.setAttribute('open', ''); }
+  }
+
   var form = document.querySelector('form[data-order-form]');
   if (!form) return;
 
@@ -529,7 +535,8 @@
     var status = dialog ? dialog.querySelector('[data-detail-status]') : null;
     if (status) status.textContent = msg;
     size.setAttribute('aria-invalid', 'true');
-    window.setTimeout(function () { size.focus(); }, 60);
+    if (size.ywChips) size.ywChips.sync();
+    window.setTimeout(function () { if (size.ywChips) size.ywChips.focus(); else size.focus(); }, 60);
     toast(msg);
   };
   form.querySelectorAll('select[data-size-select]').forEach(function (s) {
@@ -539,6 +546,56 @@
       var status = dialog ? dialog.querySelector('[data-detail-status]') : null;
       if (status) status.textContent = '';
     });
+  });
+  // 10.21: Größen als Knöpfe. Das Auswahlfeld bleibt die Quelle für Formular und Prüfung (ohne JavaScript sichtbar).
+  form.querySelectorAll('select[data-size-select]').forEach(function (s) {
+    var options = Array.prototype.filter.call(s.options, function (o) { return o.value !== ''; });
+    var label = s.closest('label');
+    if (!label || options.length < 2 || options.length > 18) return;
+    var title = label.querySelector('span');
+    var box = document.createElement('div');
+    box.className = 'sp-size-chips';
+    box.setAttribute('role', 'radiogroup');
+    if (title) { title.id = s.id + '-label'; box.setAttribute('aria-labelledby', title.id); }
+    var buttons = options.map(function (o) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.textContent = o.textContent; b.dataset.value = o.value;
+      b.setAttribute('role', 'radio'); b.disabled = s.disabled;
+      box.appendChild(b);
+      return b;
+    });
+    var sync = function () {
+      var any = buttons.some(function (b) { return b.dataset.value === s.value; });
+      buttons.forEach(function (b, i) {
+        var on = b.dataset.value === s.value;
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+        b.tabIndex = on || (!any && i === 0) ? 0 : -1;
+      });
+      box.classList.toggle('is-invalid', s.getAttribute('aria-invalid') === 'true');
+    };
+    var pick = function (b) {
+      if (!b || b.disabled) return;
+      s.value = b.dataset.value;
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+      sync(); b.focus();
+    };
+    box.addEventListener('click', function (e) { pick(e.target.closest('button')); });
+    box.addEventListener('keydown', function (e) {
+      var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      var i = buttons.indexOf(document.activeElement);
+      pick(buttons[(i + step + buttons.length) % buttons.length]);
+    });
+    s.addEventListener('change', sync);
+    s.ywChips = { sync: sync, focus: function () { var b = box.querySelector('[tabindex="0"]'); if (b) b.focus(); } };
+    s.classList.add('sp-native-size');
+    s.tabIndex = -1;
+    s.setAttribute('aria-hidden', 'true');
+    s.insertAdjacentElement('afterend', box);
+    var fields = label.closest('.sp-fields');
+    if (fields) fields.classList.add('has-chips');
+    sync();
   });
   document.querySelectorAll('[data-add-detail]').forEach(function (button) {
     button.addEventListener('click', function () {
