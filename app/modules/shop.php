@@ -418,7 +418,9 @@ function company_portal_style(array $company): string {
     [$primary,$accent]=yw_shop_colors($company);
     $vars='--cp-primary:'.$primary.';--cp-accent:'.$accent.';--cp-on-primary:'.yw_shop_on_color($primary).';--cp-on-accent:'.yw_shop_on_color($accent)
         .';--cp-primary-ink:'.yw_shop_ink($primary).';--cp-accent-ink:'.yw_shop_ink($accent).';--shop-primary:'.$primary.';--shop-accent:'.$accent;
-    return '<link rel="stylesheet" href="'.e(asset_url('assets/shop.css')).'"><style>:root{'.e($vars).'}</style>';
+    // 10.21: shop-pro.css legt das Design „Werkstatt-Premium“ über den Shop (Schriften wie die Website).
+    return '<link rel="preload" href="/assets/fonts/Archivo-Variable.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/assets/fonts/Manrope-Variable.woff2" as="font" type="font/woff2" crossorigin>'
+        .'<link rel="stylesheet" href="'.e(asset_url('assets/shop.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/shop-pro.css')).'"><style>:root{'.e($vars).'}</style>';
 }
 
 /** Kleine Strich-Icons wie im Mustershop. */
@@ -436,6 +438,9 @@ function yw_shop_icon(string $name): string {
         'logout'=>'<path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4M6 12h10"/>',
         'repeat'=>'<path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/>',
         'arrow'=>'<path d="M5 12h14M13 6l6 6-6 6"/>',
+        'locker'=>'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M12 3v18M9 8h1M14 8h1M9 11h1M14 11h1"/>',
+        'truck'=>'<path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+        'calendar'=>'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
     ];
     return '<svg class="cp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'.($paths[$name]??'').'</svg>';
 }
@@ -448,7 +453,7 @@ function yw_shop_brand_mark(array $company,string $class='cp-brand'): string {
 }
 
 function company_portal_section_title(string $section): string {
-    return ['overview'=>t('nav.overview'),'produkte'=>t('nav.products'),'bestellungen'=>t('nav.orders'),'freigaben'=>t('nav.approvals'),'mitarbeiter'=>t('nav.people'),'team-order'=>t('nav.team_order'),'profil'=>t('nav.profile')][$section]??t('nav.shop');
+    return ['overview'=>t('nav.overview'),'produkte'=>t('nav.products'),'bestellungen'=>t('nav.orders'),'freigaben'=>t('nav.approvals'),'mitarbeiter'=>t('nav.people'),'team-order'=>t('nav.team_order'),'profil'=>t('nav.profile'),'spind'=>t('nav.spind')][$section]??t('nav.shop');
 }
 
 function company_portal_footer(array $company): void {
@@ -476,6 +481,139 @@ function yw_shop_budget_box(array $company,array $account): string {
         .'<small>'.e(t('budget.of_until',['limit'=>money((int)$b['limit']),'date'=>$b['to']])).'</small></div>';
 }
 
+/** 10.21: Budget als Ring (Begrüßung). Ohne Limit nur der Hinweis. */
+function yw_shop_budget_ring(array $b): string {
+    if($b['remaining']===null)return '<div class="cp-ring is-open"><div class="cp-ring-in"><strong>'.e(t('budget.unlimited')).'</strong><small>'.e(t('budget.annual')).'</small></div></div>';
+    return '<div class="cp-ring" role="img" aria-label="'.e(t('budget.available_annual').': '.money((int)$b['remaining'])).'"><svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><circle class="cp-ring-track" cx="60" cy="60" r="52" pathLength="100"/><circle class="cp-ring-bar" cx="60" cy="60" r="52" pathLength="100" style="--p:'.(int)$b['percent'].'"/></svg>'
+        .'<div class="cp-ring-in" aria-hidden="true"><strong>'.money((int)$b['remaining']).'</strong><small>'.e(t('budget.free_of',['limit'=>money((int)$b['limit'])])).'</small><span>'.e(t('budget.valid_until',['date'=>$b['to']])).'</span></div></div>';
+}
+
+/**
+ * 10.21: „Mein Spind“ – gelieferte Teile je Artikel und Größe. Abgeschlossene Rückgaben ziehen ab,
+ * abgeschlossener Größentausch verschiebt die Stücke in die neue Größe. Freigegebene, noch nicht
+ * verschickte Positionen stehen unter „unterwegs“. Nur eigene Bestellungen der Person.
+ */
+function yw_spind_data(array $company,array $account): array {
+    $q=db()->prepare("SELECT i.id item_id,i.product_id,i.product_name,i.size,i.quantity,i.decoration_snapshot_json,o.id order_id,o.status,o.fulfillment_status,o.created_at,o.decided_at,o.production_updated_at FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.company_id=? AND o.employee_account_id=? AND o.status='approved' ORDER BY o.id DESC,i.id ASC LIMIT 600");
+    $q->execute([(int)$company['id'],(int)$account['id']]);
+    $rows=$q->fetchAll();
+    $requests=yw_exchange_requests_for_orders(array_column($rows,'order_id'));
+    $days=(int)($company['exchange_window_days']??30);
+    $items=[];$onway=[];
+    foreach($rows as $r){
+        if(!in_array((string)$r['fulfillment_status'],['shipped','picked_up','completed'],true)){$onway[]=$r;continue;}
+        $date=yw_exchange_window_base($r);
+        $pieces=[(string)$r['size']=>(int)$r['quantity']];
+        $busy=false;
+        foreach($requests[(int)$r['item_id']]??[] as $x){
+            $n=(int)$x['quantity'];
+            if((string)$x['status']==='done'){
+                $pieces[(string)$r['size']]-=$n;
+                if((string)$x['type']==='exchange'&&(string)$x['new_size']!==''){$new=(string)$x['new_size'];$pieces[$new]=($pieces[$new]??0)+$n;}
+            }elseif((string)$x['status']!=='rejected')$busy=true;
+        }
+        $open=yw_exchange_window_open($company,$r);
+        $until=$open?yw_exchange_deadline($date,$days):null;
+        $snapshot=json_decode((string)($r['decoration_snapshot_json']??''),true);
+        foreach($pieces as $size=>$n){
+            if($n<1)continue;
+            $key=(int)$r['product_id'].'|'.$size;
+            $items[$key]??=['product_id'=>(int)$r['product_id'],'name'=>(string)$r['product_name'],'color'=>is_array($snapshot)?trim((string)($snapshot['color']??'')):'','size'=>(string)$size,'qty'=>0,'first'=>$date,'last'=>$date,'exchange_order'=>0,'exchange_until'=>null,'busy'=>false];
+            $items[$key]['qty']+=$n;
+            if(strcmp($date,$items[$key]['first'])<0)$items[$key]['first']=$date;
+            if(strcmp($date,$items[$key]['last'])>0)$items[$key]['last']=$date;
+            if($open && !$items[$key]['exchange_order']){$items[$key]['exchange_order']=(int)$r['order_id'];$items[$key]['exchange_until']=$until;}
+            if($busy)$items[$key]['busy']=true;
+        }
+    }
+    $items=array_values($items);
+    usort($items,fn($a,$b)=>strcmp((string)$b['last'],(string)$a['last']));
+    return ['items'=>$items,'onway'=>$onway];
+}
+
+/** Kleines Bild eines Spind-Teils aus der aktuellen Kollektion (sonst Symbol). */
+function yw_spind_visual(?array $product,array $motifs,string $name): string {
+    $views=$product?yw_mockup_views($product,$motifs):[];
+    return '<span class="cp-locker-visual">'.($views?yw_mockup_html([$views[0]],$name,false,'sp-card-mockup'):'<span class="sp-card-placeholder">'.yw_shop_icon('shirt').'</span>').'</span>';
+}
+
+/** Startseite: die neuesten Teile aus dem Spind. */
+function yw_spind_card(array $company,array $account): string {
+    $data=yw_spind_data($company,$account);
+    $slug='/'.$company['slug'];
+    $total=0;foreach($data['items'] as $it)$total+=$it['qty'];
+    $onway=0;foreach($data['onway'] as $r)$onway+=(int)$r['quantity'];
+    $html='<section class="cp-card cp-spind-card"><div class="cp-card-head"><div><span class="cp-eyebrow">'.e(t('nav.spind')).'</span><h2>'.e(t('spind.card_title')).'</h2></div>'.($total?'<span class="cp-count">'.$total.'</span>':'').'</div>';
+    if($data['items']){
+        $products=[];foreach(shop_company_products((int)$company['id'],$account) as $p)$products[(int)$p['id']]=$p;
+        $motifs=yw_company_motifs_by_id((int)$company['id']);
+        $html.='<ul class="cp-spind-mini">';
+        foreach(array_slice($data['items'],0,3) as $it){
+            $html.='<li>'.yw_spind_visual($products[$it['product_id']]??null,$motifs,$it['name']).'<div><strong>'.e($it['name']).' · '.e($it['size']).'</strong><small>'.e(t('spind.since',['date'=>yw_date((string)$it['first'])])).'</small></div><b>'.(int)$it['qty'].'×</b></li>';
+        }
+        $html.='</ul>';
+    }else $html.='<p>'.e(t('spind.card_empty')).'</p>';
+    if($onway)$html.='<p class="cp-spind-onway">'.yw_shop_icon('truck').'<span>'.e(tn('spind.onway_count',$onway)).'</span></p>';
+    return $html.'<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/spind">'.e(t('spind.open')).' '.yw_shop_icon('arrow').'</a></div></section>';
+}
+
+/** 10.21: Seite „Mein Spind“. */
+function company_portal_spind(array $company,array $account): void {
+    $data=yw_spind_data($company,$account);
+    $slug='/'.$company['slug'];
+    $total=0;foreach($data['items'] as $it)$total+=$it['qty'];
+    echo '<div class="cp-section-head"><div><span class="cp-eyebrow">'.e((string)$company['legal_name']).'</span><h1>'.e(t('nav.spind')).'</h1><p>'.e(t('spind.intro')).'</p></div>'.($total?'<span class="cp-head-stat">'.yw_shop_icon('locker').e(tn('spind.count',$total)).'</span>':'').'</div>';
+    $products=[];foreach(shop_company_products((int)$company['id'],$account) as $p)$products[(int)$p['id']]=$p;
+    $motifs=yw_company_motifs_by_id((int)$company['id']);
+    if($data['onway']){
+        echo '<section class="cp-card cp-onway"><div class="cp-card-head"><div><h2>'.yw_shop_icon('truck').e(t('spind.onway_title')).'</h2><p>'.e(t('spind.onway_text')).'</p></div></div><ul class="cp-mini-items">';
+        foreach(array_slice($data['onway'],0,8) as $r)echo '<li><span>'.(int)$r['quantity'].'×</span> '.e(yw_shop_item_label($r)).'<b><a href="'.e($slug).'/bestellungen#bestellung-'.(int)$r['order_id'].'">#'.(int)$r['order_id'].' · '.e(company_portal_fulfillment_status((string)$r['fulfillment_status'])).'</a></b></li>';
+        echo '</ul></section>';
+    }
+    if(!$data['items']){
+        echo '<div class="cp-locker-empty">'.yw_shop_icon('locker').'<h2>'.e(t('spind.empty_title')).'</h2><p>'.e(t('spind.empty')).'</p><a class="cp-cta" href="'.e($slug).'/produkte">'.e(t('overview.start_order')).yw_shop_icon('arrow').'</a></div>';
+        return;
+    }
+    echo '<div class="cp-locker">';
+    foreach($data['items'] as $it){
+        $product=$products[$it['product_id']]??null;
+        echo '<article class="cp-locker-item">'.yw_spind_visual($product,$motifs,$it['name']).'<div class="cp-locker-body">';
+        echo '<h2>'.e($it['name']).'</h2>'.($it['color']!==''?'<p class="cp-locker-color">'.e($it['color']).'</p>':'');
+        echo '<div class="cp-locker-tags"><span class="cp-tag is-size">'.e(t('common.size_value',['size'=>$it['size']])).'</span><span class="cp-tag">'.e(tn('x.pieces',(int)$it['qty'])).'</span>'.($it['busy']?'<span class="cp-tag is-warn">'.e(t('spind.exchange_running')).'</span>':'').'</div>';
+        $dates=$it['first']===$it['last']?t('spind.received',['date'=>yw_date((string)$it['first'])]):t('spind.received_range',['first'=>yw_date((string)$it['first']),'last'=>yw_date((string)$it['last'])]);
+        echo '<p class="cp-locker-date">'.yw_shop_icon('calendar').'<span>'.e($dates).'</span></p>';
+        echo '<div class="cp-locker-actions">';
+        if($product)echo '<a class="cp-btn" href="'.e($slug).'/produkte?artikel='.(int)$it['product_id'].'">'.yw_shop_icon('repeat').e(t('spind.reorder')).'</a>';
+        else echo '<span class="cp-locker-note">'.e(t('spind.not_available')).'</span>';
+        if($it['exchange_order'])echo '<a class="cp-btn cp-btn-light" href="'.e($slug).'/bestellungen#bestellung-'.(int)$it['exchange_order'].'" title="'.e($it['exchange_until']?t('x.until',['date'=>yw_date($it['exchange_until'])]):t('x.title')).'">'.e(t('spind.exchange')).'</a>';
+        echo '</div></div></article>';
+    }
+    echo '</div>';
+}
+
+/** 10.21: Erfolgsbild nach dem Absenden (einmalig, aus der Sitzung). Ohne JavaScript schließt das Formular den Dialog. */
+function yw_order_done_dialog(array $company,array $account): string {
+    $done=$_SESSION['yw_order_done']??null;
+    unset($_SESSION['yw_order_done']);
+    if(!is_array($done)||(int)($done['company']??0)!==(int)$company['id'])return '';
+    $q=db()->prepare('SELECT o.id,o.status,o.employee_total_cents,(SELECT COALESCE(SUM(quantity),0) FROM order_items WHERE order_id=o.id) pieces FROM orders o WHERE o.id=? AND o.company_id=? AND o.employee_account_id=?');
+    $q->execute([(int)($done['id']??0),(int)$company['id'],(int)$account['id']]);
+    $o=$q->fetch();
+    if(!$o)return '';
+    $b=yw_shop_budget_info($company,$account);
+    $colors=['var(--cp-accent)','#ff6a13','#ffffff','var(--cp-primary)','#ffd166','#7bdcb5'];
+    $confetti='';
+    for($i=0;$i<36;$i++)$confetti.='<i style="--x:'.random_int(0,100).'%;--d:'.random_int(0,1600).'ms;--t:'.random_int(2400,4200).'ms;--r:'.random_int(-540,540).'deg;--w:'.random_int(6,11).'px;background:'.$colors[$i%count($colors)].'"></i>';
+    $employee=(int)$o['employee_total_cents'];
+    $html='<dialog class="cp-done" open data-done aria-labelledby="cp-done-title"><div class="cp-confetti" aria-hidden="true">'.$confetti.'</div><div class="cp-done-box">';
+    $html.='<span class="cp-done-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>';
+    $html.='<h2 id="cp-done-title">'.e(t('done.title')).'</h2><p>'.e((string)$o['status']==='pending'?t('done.text_approval'):t('done.text_direct')).'</p>';
+    $html.='<dl class="cp-done-sum"><div><dt>'.e(t('done.order')).'</dt><dd>#'.(int)$o['id'].'</dd></div><div><dt>'.e(tn('done.items',(int)$o['pieces'])).'</dt><dd>'.e($employee>0?t('done.you_pay',['amount'=>money($employee)]):t('done.company_pays')).'</dd></div>';
+    if($b['remaining']!==null)$html.='<div><dt>'.e(t('done.budget_after')).'</dt><dd>'.e(t('done.budget_free',['amount'=>money((int)$b['remaining'])])).'</dd></div>';
+    $html.='</dl><form method="dialog"><button class="cp-cta" type="submit" autofocus>'.e(t('done.track')).'</button></form></div></dialog>';
+    return $html;
+}
+
 function yw_shop_greeting(string $name,?int $hour=null): string {
     $hour=$hour??(int)date('G');
     $first=trim((string)(preg_split('/\s+/u',trim($name))[0]??''));
@@ -491,6 +629,7 @@ function company_portal_header(array $company,array $account,string $section): v
         'overview'=>[t('nav.overview'),$slug,'home'],
         'produkte'=>[t('nav.products'),$slug.'/produkte','shirt'],
         'bestellungen'=>[t('nav.orders'),$slug.'/bestellungen','box'],
+        'spind'=>[t('nav.spind'),$slug.'/spind','locker'], // 10.21: alles, was schon geliefert wurde
     ];
     $pending=0;
     if($manager){
@@ -503,9 +642,12 @@ function company_portal_header(array $company,array $account,string $section): v
     $links=function(string $class) use($nav,$section,$pending): string {
         $html='';
         foreach($nav as $key=>[$label,$href,$icon]){
+            // 10.21: Verantwortliche haben unten schon sechs Punkte – „Mein Spind“ dort über Startseite und Kontomenü.
+            if($class==='cp-tab' && $key==='spind' && count($nav)>4)continue;
             $badge=$key==='freigaben'&&$pending>0?'<span class="cp-nav-badge" aria-label="'.e(tn('nav.open_count',$pending)).'">'.$pending.'</span>':'';
             // 10.19: Untere Leiste am Handy mit Kurzbezeichnungen, damit sechs Punkte ohne „Meine B…“ passen.
-            $short=$class==='cp-tab'?yw_lang_raw('nav.short.'.$key):null;
+            // 10.21: auch oben kurze Bezeichnungen (Start, Bestellungen …), damit „Mein Spind“ in die Kopfzeile passt.
+            $short=$class==='cp-tab'||$key!=='spind'?yw_lang_raw('nav.short.'.$key):null;
             $text=is_string($short)&&$short!==''?$short:$label;
             $html.='<a class="'.$class.($section===$key?' active':'').'" href="'.e($href).'"'.($section===$key?' aria-current="page"':'').($text!==$label?' aria-label="'.e($label).'"':'').'>'.yw_shop_icon($icon).'<span>'.e($text).'</span>'.$badge.'</a>';
         }
@@ -520,11 +662,12 @@ function company_portal_header(array $company,array $account,string $section): v
     echo '<nav class="cp-nav" aria-label="'.e(t('nav.aria')).'">'.$links('cp-nav-link').'</nav>';
     echo '<div class="cp-header-tools">';
     $budget=yw_shop_budget_info($company,$account);
-    if($budget['remaining']!==null)echo '<a class="cp-budget-pill" href="'.e($slug).'" title="'.e(t('budget.available_annual')).'"><span>'.e(t('budget.annual')).'</span><strong>'.money((int)$budget['remaining']).'</strong></a>';
+    if($budget['remaining']!==null)echo '<a class="cp-budget-pill" href="'.e($slug).'" title="'.e(t('budget.available_annual')).'"><span class="cp-mini-ring" style="--p:'.(int)$budget['percent'].'" aria-hidden="true"></span><span>'.e(t('budget.annual')).'</span><strong>'.money((int)$budget['remaining']).'</strong></a>';
     echo yw_lang_switcher($company,'cp-top-lang');
     echo '<details class="cp-account"><summary aria-label="'.e(t('nav.profile')).'"><span class="cp-avatar" aria-hidden="true">'.e(yw_shop_initials((string)$account['name'])).'</span><span class="cp-account-name">'.e((string)(preg_split('/\s+/u',trim((string)$account['name']))[0]??'')).'</span></summary>';
     echo '<div class="cp-account-menu"><div class="cp-account-who"><strong>'.e($account['name']).'</strong><small>'.e($manager?t('nav.role_manager'):t('nav.role_employee')).(!empty($account['department'])?' · '.e($account['department']):'').'</small></div>';
     echo '<a href="'.e($slug).'/profil"'.($section==='profil'?' aria-current="page"':'').'>'.yw_shop_icon('user').'<span>'.e(t('nav.profile')).'</span></a>';
+    echo '<a href="'.e($slug).'/spind"'.($section==='spind'?' aria-current="page"':'').'>'.yw_shop_icon('locker').'<span>'.e(t('nav.spind')).'</span></a>';
     echo '<form method="post" action="'.e($slug).'/logout">'.csrf_field().'<button class="cp-logout" type="submit">'.yw_shop_icon('logout').'<span>'.e(t('nav.logout')).'</span></button></form></div></details>';
     echo '</div></div></header>';
     echo '<nav class="cp-tabbar" aria-label="'.e(t('nav.aria')).'">'.$links('cp-tab').'</nav>';
@@ -638,6 +781,15 @@ function yw_shop_price_html(array $breakdowns): string {
     return '<span class="sp-price is-company"><strong>'.e($amount).'</strong><small>'.e(t('price.company_pays')).'</small></span>';
 }
 
+/** 10.21: Preis im Artikel aufgeteilt – was die Firma übernimmt und was du zahlst. */
+function yw_shop_price_split(array $b): string {
+    $gross=max(0,(int)$b['gross']);$employee=max(0,(int)$b['employee']);$employer=max(0,(int)$b['employer']);
+    $pct=$gross>0?(int)round($employer/$gross*100):100;
+    return '<div class="sp-split"><div class="sp-split-head"><span>'.e(t('price.price',['amount'=>money($gross)])).'</span><strong'.($employee===0?' class="is-free"':'').'>'.e(t('price.you_pay',['amount'=>money($employee)])).'</strong></div>'
+        .'<div class="sp-split-bar" aria-hidden="true"><span style="width:'.$pct.'%"></span></div>'
+        .'<ul><li><i class="is-company" aria-hidden="true"></i><span>'.e(t('price.company_pays_label')).'</span><b>'.money($employer).'</b></li><li><i aria-hidden="true"></i><span>'.e(t('price.your_share')).'</span><b>'.money($employee).'</b></li></ul></div>';
+}
+
 /** Kategorie-Filter wie im Mustershop. */
 function company_shop_categories(array $groups): void {
     $categories=[];
@@ -729,7 +881,7 @@ function company_product_detail(array $variants,array $company,array $motifs,int
         $vName=company_product_display_name($v);
         $color=trim((string)$v['color']);
         $html.='<fieldset class="sp-variant'.($pid===(int)$active['id']?' is-active':'').'" data-variant-panel="'.$pid.'"><legend class="sp-variant-legend">'.e($vName).($color!==''?' · '.e($color):'').'</legend>';
-        $html.='<div class="sp-variant-price">'.yw_shop_price_html([$price]).'</div>';
+        $html.='<div class="sp-variant-price">'.yw_shop_price_split($price).'</div>';
         // 10.19: Ohne bekannte Größe muss bewusst gewählt werden (früher stand still die erste Größe drin).
         $sizeKnown=count($sizes)===1 || in_array($preSize,array_map('strval',$sizes),true);
         $html.='<div class="sp-fields"><label class="sp-field"><span>'.e(t('common.size')).'</span><select id="size-'.$pid.'" name="size['.$pid.']" data-size-select'.($maxQty===0?' disabled':'').'>';
@@ -1000,6 +1152,8 @@ function company_portal_page(string $slug,string $section='overview'): void {
         company_portal_team_order($company,$account);
     }elseif($section==='profil'){
         company_portal_profile($company,$account);
+    }elseif($section==='spind'){
+        company_portal_spind($company,$account);
     }
 
     echo '</main>';
@@ -1070,9 +1224,16 @@ function company_portal_overview(array $company,array $account): void {
     $manager=account_is_manager($account);
     $approval=(int)($company['approval_required']??1)===1;
 
-    echo '<div class="cp-welcome"><div><h1>'.e(yw_shop_greeting((string)$account['name'])).'</h1><p>'.e(t('overview.intro',['company'=>$company['legal_name']])).'</p>';
-    echo '<p class="cp-rules">'.e(financing_label($company)).' · '.e(shipping_rule_label($company)).' · '.e($approval?t('rules.internal_approval'):t('rules.no_approval')).'</p></div>';
-    echo yw_shop_budget_box($company,$account).'</div>';
+    // 10.21: Begrüßung als Fläche in Firmenfarbe mit Datum, Budget-Ring und den zwei wichtigsten Wegen.
+    $weekdays=yw_lang_raw('fmt.weekdays');
+    $eyebrow=[is_array($weekdays)?(string)($weekdays[(int)date('N')-1]??''):'',yw_date(time())];
+    $where=trim((string)($account['department']??''));
+    $eyebrow[]=$where!==''?$where:(string)$company['legal_name'];
+    echo '<section class="cp-hero">';
+    echo '<div class="cp-hero-copy"><span class="cp-eyebrow">'.e(implode(' · ',array_filter($eyebrow,fn($v)=>$v!==''))).'</span><h1>'.e(yw_shop_greeting((string)$account['name'])).'</h1><p>'.e(t('overview.intro',['company'=>$company['legal_name']])).'</p>';
+    echo '<p class="cp-hero-rules">'.e(financing_label($company)).' · '.e(shipping_rule_label($company)).' · '.e($approval?t('rules.internal_approval'):t('rules.no_approval')).'</p>';
+    echo '<div class="cp-hero-actions"><a class="cp-cta" href="'.e($slug).'/produkte">'.e(t('overview.start_order')).yw_shop_icon('arrow').'</a><a class="cp-ghost" href="'.e($slug).'/spind">'.yw_shop_icon('locker').e(t('nav.spind')).'</a></div></div>';
+    echo yw_shop_budget_ring(yw_shop_budget_info($company,$account)).'</section>';
 
     $equipmentProfile=yw_account_equipment_profile($account);
     echo yw_batch_shop_notice($company); // 10.11: Sammelbestellung
@@ -1096,7 +1257,8 @@ function company_portal_overview(array $company,array $account): void {
         $items=order_items_grouped([(int)$last['id']])[(int)$last['id']]??[];
         $status=(string)$last['status'];
         $gross=(int)($last['gross_total_cents']??0); if($gross<=0)$gross=(int)$last['total_cents'];
-        echo '<section class="cp-card cp-last-order"><div class="cp-card-head"><div><h2>'.e(t('overview.last_title')).'</h2><p>#'.(int)$last['id'].' · '.e(yw_date((string)$last['created_at'])).' · '.money($gross).'</p></div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div>';
+        $pieces=0;foreach($items as $item)$pieces+=(int)$item['quantity'];
+        echo '<section class="cp-card cp-last-order"><div class="cp-card-head"><div><span class="cp-eyebrow">#'.(int)$last['id'].' · '.e(tn('x.pieces',$pieces)).'</span><h2>'.e(t('overview.last_title')).'</h2><p>'.e(yw_date((string)$last['created_at'])).' · '.money($gross).'</p></div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div>';
         echo '<ul class="cp-mini-items">';
         foreach(array_slice($items,0,3) as $item)echo '<li><span>'.(int)$item['quantity'].'×</span> '.e(yw_shop_item_label($item)).'</li>';
         if(count($items)>3)echo '<li class="muted">'.e(tn('overview.more_items',count($items)-3)).'</li>';
@@ -1130,10 +1292,9 @@ function company_portal_overview(array $company,array $account): void {
             }
             echo '</ul>'.(count($registrations)>6?'<div class="cp-card-actions"><a class="cp-btn cp-btn-light" href="'.e($slug).'/mitarbeiter">'.e(t('overview.registrations_all')).'</a></div>':'').'</section>';
         }
-    }elseif($last){
-        // 10.19: statt einer zweiten „Kollektion“-Karte der nächste Schritt für eine neue Bestellung
-        echo '<section class="cp-card cp-shop-card"><h2>'.e(t('overview.new_order_title')).'</h2><p>'.e(t('overview.new_order_text')).'</p><div class="cp-card-actions"><a class="cp-btn" href="'.e($slug).'/produkte">'.e(t('overview.choose_items')).' '.yw_shop_icon('arrow').'</a></div></section>';
     }
+    // 10.21: „Mein Spind“ – die neueste Kleidung auf einen Blick (der Weg zur neuen Bestellung steht oben in der Begrüßung).
+    echo yw_spind_card($company,$account);
     echo '</div>';
     echo company_portal_collection_preview($company,$account);
 
@@ -1298,6 +1459,7 @@ function company_portal_my_orders(array $company,array $account): void {
         foreach($q as $r)$placers[(int)$r['id']]=(string)$r['name'];
     }
 
+    echo yw_order_done_dialog($company,$account); // 10.21: einmalig nach dem Absenden
     echo '<div class="cp-section-head"><div><h1>'.e(t('nav.orders')).'</h1><p>'.e(t('orders.intro')).'</p></div></div>';
 
     if(!$orders){
@@ -1316,7 +1478,7 @@ function company_portal_my_orders(array $company,array $account): void {
         // 10.19: Fertigungsstand steht in der Fortschrittsleiste; hier nur Datum und ggf. wer die Team-Bestellung aufgegeben hat.
         $placer=(int)($o['placed_by_account_id']??0);
         $placedBy=$placer>0 && $placer!==(int)$account['id']?($placers[$placer]??''):'';
-        echo '<article class="cp-order"><div class="cp-order-head"><div class="cp-order-title"><strong>'.e(t('orders.order_no',['id'=>(int)$o['id']])).'</strong><div class="cp-order-meta">'.e(yw_date($o['created_at'],'datetime')).($placedBy!==''?' · '.e(t('orders.placed_by',['name'=>$placedBy])):'').'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
+        echo '<article class="cp-order" id="bestellung-'.(int)$o['id'].'"><div class="cp-order-head"><div class="cp-order-title"><strong>'.e(t('orders.order_no',['id'=>(int)$o['id']])).'</strong><div class="cp-order-meta">'.e(yw_date($o['created_at'],'datetime')).($placedBy!==''?' · '.e(t('orders.placed_by',['name'=>$placedBy])):'').'</div></div><div><span class="cp-status '.e($status).'">'.e(company_portal_order_status($status)).'</span></div></div>';
         echo '<div class="cp-order-items">';
         foreach($items as $item){
             echo '<div class="cp-order-item"><span>'.(int)$item['quantity'].'× '.e(yw_shop_item_label($item)).'</span><strong>'.money(yw_order_item_amounts($item)['gross']).'</strong></div>';

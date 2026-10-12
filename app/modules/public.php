@@ -798,13 +798,35 @@ function yw_trust_logos(): array {
     return array_slice($out,0,12);
 }
 
+/** 10.20: Firmen, deren Shop-Logo als Referenz in der Kundenleiste laufen darf (Admin → Inhalte). */
+function yw_trust_company_ids(): array {
+    $ids=json_decode(current_site_setting('trust_company_ids','[]'),true);
+    return array_values(array_unique(array_filter(array_map('intval',is_array($ids)?$ids:[]),fn(int $id)=>$id>0)));
+}
+
+/** Logos der als Referenz markierten, aktiven Firmen (nur wenn ein Shop-Logo hinterlegt ist). */
+function yw_trust_company_logos(): array {
+    $ids=yw_trust_company_ids();
+    if(!$ids)return [];
+    try{
+        $q=db()->prepare('SELECT id,legal_name,shop_name,logo_path FROM companies WHERE active=1 AND id IN ('.implode(',',array_fill(0,count($ids),'?')).') ORDER BY legal_name');
+        $q->execute($ids);
+    }catch(Throwable $e){return [];}
+    $out=[];
+    foreach($q->fetchAll() as $company){
+        $path=yw_company_logo_path($company);
+        if($path!=='')$out[]=['path'=>$path,'name'=>trim((string)$company['legal_name'])?:trim((string)$company['shop_name'])];
+    }
+    return $out;
+}
+
 /** Alle Inhalte des Abschnitts; leer, wenn nichts gepflegt ist. */
 function yw_trust_content(): array {
     $t=fn(string $k)=>trim(current_site_setting($k,''));
     $photo=yw_local_image_path($t('trust_contact_photo'),['branding']);
     $c=[
-        'title'=>$t('trust_title')?:'Diese Unternehmen / Kunden vertrauen uns',
-        'logos'=>yw_trust_logos(),
+        'title'=>$t('trust_title')?:'Diese Kunden vertrauen uns',
+        'logos'=>array_merge(yw_trust_company_logos(),yw_trust_logos()),
         'quote'=>['text'=>$t('trust_quote_text'),'name'=>$t('trust_quote_name'),'company'=>$t('trust_quote_company')],
         'contact'=>['photo'=>$photo,'name'=>$t('trust_contact_name'),'role'=>$t('trust_contact_role'),'text'=>$t('trust_contact_text')],
     ];
@@ -818,18 +840,33 @@ function render_trust_settings(): void {
     $c=yw_trust_content();$v=fn(string $k)=>e(current_site_setting($k,''));
     echo '<form method="post" enctype="multipart/form-data" class="settings-form trust-settings">'.csrf_field().'<input type="hidden" name="action" value="save_trust_settings"><input type="hidden" name="return_tab" value="content">';
     echo '<details class="settings-group"'.($c['empty']?'':' open').'><summary>Startseite – Vertrauen (Referenzen, Kundenstimme, Ansprechpartner)</summary><div class="settings-group-inner"><p class="muted">Erscheint auf der Startseite nur, wenn mindestens ein Teil gepflegt ist. Nur Logos und Zitate mit Einverständnis der Kunden verwenden.</p>';
-    echo '<label>Überschrift<input name="trust_title" maxlength="160" value="'.$v('trust_title').'" placeholder="Diese Unternehmen / Kunden vertrauen uns"></label>';
-    echo '<div class="editor-block"><h3>Kundenlogos im Laufband <small class="muted">(max. 12)</small></h3><p class="muted">Ab zwei Logos laufen sie automatisch durch. Bitte nur Firmenlogos mit Freigabe verwenden.</p>';
-    if($c['logos']){
+    echo '<label>Überschrift<input name="trust_title" maxlength="160" value="'.$v('trust_title').'" placeholder="Diese Kunden vertrauen uns"></label>';
+    // 10.20: Kundenfirmen per Haken als Referenz zeigen; das Logo kommt aus ihrem Firmenshop.
+    $chosen=yw_trust_company_ids();
+    $companies=db()->query('SELECT id,legal_name,shop_name,logo_path,active FROM companies ORDER BY legal_name')->fetchAll();
+    echo '<div class="editor-block"><h3>Kundenfirmen als Referenz</h3><p class="muted">Haken setzen, wenn die Firma zugestimmt hat. Ihr Logo aus dem Firmenshop läuft dann in der Leiste „Diese Kunden vertrauen uns“ auf der Startseite. Inaktive Firmen und Firmen ohne Logo erscheinen nicht.</p>';
+    if(!$companies)echo '<p class="muted">Noch keine Firmen angelegt.</p>';
+    else{
+        echo '<div class="trust-company-list" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">';
+        foreach($companies as $co){
+            $logo=yw_company_logo_path($co);$note=!(int)$co['active']?'inaktiv':($logo===''?'kein Logo hinterlegt':'');
+            echo '<label class="check" style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid #dde1dc;border-radius:10px;background:#fff"><input type="checkbox" name="trust_company_ids[]" value="'.(int)$co['id'].'"'.(in_array((int)$co['id'],$chosen,true)?' checked':'').'>'.($logo!==''?'<img src="/'.e($logo).'" alt="" style="height:28px;max-width:80px;object-fit:contain">':'').'<span>'.e((string)$co['legal_name']).($note!==''?' <small class="muted">('.e($note).')</small>':'').'</span></label>';
+        }
+        echo '</div>';
+    }
+    echo '</div>';
+    echo '<div class="editor-block"><h3>Weitere Kundenlogos hochladen <small class="muted">(max. 12)</small></h3><p class="muted">Für Kunden ohne eigenen Firmenshop. Ab drei Logos laufen sie automatisch durch. Bitte nur Firmenlogos mit Freigabe verwenden.</p>';
+    $uploaded=yw_trust_logos();
+    if($uploaded){
         echo '<div class="trust-logo-admin">';
-        foreach($c['logos'] as $i=>$logo)echo '<div class="trust-logo-admin-item"><img src="/'.e($logo['path']).'" alt=""><label>Firmenname <small>für Bildbeschreibung</small><input name="trust_logo_name['.$i.']" maxlength="120" value="'.e($logo['name']).'"></label><label class="check"><input type="checkbox" name="trust_logo_remove['.$i.']" value="1"><span>Entfernen</span></label></div>';
+        foreach($uploaded as $i=>$logo)echo '<div class="trust-logo-admin-item"><img src="/'.e($logo['path']).'" alt=""><label>Firmenname <small>für Bildbeschreibung</small><input name="trust_logo_name['.$i.']" maxlength="120" value="'.e($logo['name']).'"></label><label class="check"><input type="checkbox" name="trust_logo_remove['.$i.']" value="1"><span>Entfernen</span></label></div>';
         echo '</div>';
     }
     echo '<label>Logos hinzufügen <small>PNG, JPG oder WebP, gern mit transparentem Hintergrund</small><input type="file" name="trust_logo_new[]" multiple accept="image/png,image/jpeg,image/webp"></label></div>';
     echo '<div class="editor-block"><h3>Kundenstimme</h3><label>Zitat<textarea name="trust_quote_text" rows="3" maxlength="600">'.$v('trust_quote_text').'</textarea></label><div class="grid2"><label>Name<input name="trust_quote_name" maxlength="120" value="'.$v('trust_quote_name').'"></label><label>Firma / Funktion<input name="trust_quote_company" maxlength="160" value="'.$v('trust_quote_company').'"></label></div></div>';
-    echo '<div class="editor-block"><h3>Ihr Ansprechpartner</h3><label>Foto<input type="file" name="trust_contact_photo" accept="image/png,image/jpeg,image/webp"></label>';
+    echo '<div class="editor-block"><h3>Dein Ansprechpartner <small class="muted">(leer: Inhaber aus dem Impressum)</small></h3><label>Foto<input type="file" name="trust_contact_photo" accept="image/png,image/jpeg,image/webp"></label>';
     if($c['contact']['photo']!=='')echo '<div class="editor-image-preview"><img src="/'.e($c['contact']['photo']).'" alt=""><label class="check"><input type="checkbox" name="remove_trust_contact_photo" value="1"><span>Foto löschen</span></label></div>';
-    echo '<div class="grid2"><label>Name<input name="trust_contact_name" maxlength="120" value="'.$v('trust_contact_name').'"></label><label>Rolle<input name="trust_contact_role" maxlength="120" value="'.$v('trust_contact_role').'" placeholder="z. B. Inhaber und Ihr Ansprechpartner"></label></div><label>Kurzer Satz<input name="trust_contact_text" maxlength="300" value="'.$v('trust_contact_text').'" placeholder="z. B. Ich berate Sie persönlich – vom ersten Muster bis zur Lieferung."></label></div>';
+    echo '<div class="grid2"><label>Name<input name="trust_contact_name" maxlength="120" value="'.$v('trust_contact_name').'"></label><label>Rolle<input name="trust_contact_role" maxlength="120" value="'.$v('trust_contact_role').'" placeholder="z. B. Inhaber, Yanik Textildruck"></label></div><label>Kurzer Satz<input name="trust_contact_text" maxlength="300" value="'.$v('trust_contact_text').'" placeholder="z. B. Ich berate dich persönlich, vom ersten Muster bis zur Lieferung."></label></div>';
     echo '<button class="btn primary" type="submit">Vertrauensbereich speichern</button></div></details></form>';
 }
 
@@ -866,6 +903,12 @@ function yw_save_trust_settings(): void {
         if($photo!==$base&&$photo!=='')$new[]=$photo;
         $fields['trust_contact_photo']=$photo;
         $fields['trust_logos_json']=json_encode($logos,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        $wanted=array_values(array_unique(array_filter(array_map('intval',(array)($_POST['trust_company_ids']??[])),fn(int $id)=>$id>0)));
+        if($wanted){
+            $q=db()->prepare('SELECT id FROM companies WHERE id IN ('.implode(',',array_fill(0,count($wanted),'?')).')');$q->execute($wanted);
+            $wanted=array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN));sort($wanted);
+        }
+        $fields['trust_company_ids']=json_encode($wanted);
         db()->beginTransaction();
         foreach($fields as $k=>$val)set_site_setting($k,(string)$val);
         db()->commit();
@@ -876,5 +919,5 @@ function yw_save_trust_settings(): void {
     }
     foreach($removed as $path)delete_site_image($path);
     if($oldPhoto!==''&&$oldPhoto!==$fields['trust_contact_photo'])delete_site_image($oldPhoto);
-    audit_log('site.trust_updated','site',null,['logos'=>count($logos)]);
+    audit_log('site.trust_updated','site',null,['logos'=>count($logos),'companies'=>json_decode($fields['trust_company_ids'],true)]);
 }

@@ -293,6 +293,7 @@ function place_account_order(array $company,array $account): never {
     $statusUrl=workwearcenter_url((string)$company['slug'].'/bestellungen');
     notify_order_employee($orderId,fn(array $p)=>[t('mail.confirm.subject',['id'=>$orderId]),t('mail.hello',['name'=>$p['name']])."\n\n".t('mail.confirm.body')."\n\n".yw_order_mail_summary($orderId)."\n\n".t('mail.view_status').': '.$statusUrl]);
     flash('success',t('flash.order_saved',['id'=>$orderId]).' '.($status==='pending'?t('flash.order_saved_pending'):t('flash.order_saved_approved')));
+    $_SESSION['yw_order_done']=['id'=>(int)$orderId,'company'=>(int)$company['id']]; // 10.21: Erfolgsbild auf „Meine Bestellungen“
     redirect('/'.$company['slug'].'/bestellungen');
 }
 

@@ -10,7 +10,7 @@ function mustershop_page(): void {
     $embedded=(string)($_GET['embed']??'')==='1';
     if($embedded)header('X-Robots-Tag: noindex, nofollow');
     render_head('KANTENWERK Mustershop – Firmenshop live ausprobieren | WorkwearCenter');
-    if(!$embedded){echo site_brand_style();public_header();}
+    if(!$embedded)w_header(); // 10.21: gleicher Kopf wie die Website
     $products=[];
     foreach([
         ['T-Shirt Classic','T-Shirts','Ein schlichtes Teamshirt für Arbeit und Alltag.',2490,'WC-TS01','Navy','XS–5XL',['XS','S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-tshirt.webp',['x'=>62,'y'=>30,'w'=>18],'T-SHIRT'],
@@ -30,7 +30,7 @@ function mustershop_page(): void {
         'notice'=>$notice,
         'products'=>$products,
     ]);
-    if(!$embedded)global_footer();
+    if(!$embedded)w_footer();
     render_foot();
 }
 
@@ -48,7 +48,7 @@ function yw_demo_shop_render(array $o): void {
         $deep=yw_shop_ink($brand);
         $style=' style="--demo-navy:'.e($brand).';--demo-forest:'.e($brand).';--demo-forest-deep:'.e($deep).';--demo-on-brand:'.e(yw_shop_on_color($brand)).'"';
     }
-    echo '<style>'.yw_demo_shop_css().'</style>';
+    echo '<style>'.yw_demo_shop_css().yw_demo_pro_css().'</style>';
     echo '<main class="demo'.($probe?' demo-probe tone-'.$tone.(!empty($o['logo_dark'])?' logo-dark':''):'').'"'.$style.' id="inhalt"><div class="demo-shell">';
     echo '<div class="demo-notice">'.$o['notice'].'</div>';
     if(!$probe){
@@ -84,6 +84,69 @@ function yw_demo_shop_render(array $o): void {
         echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)$p['sku']).'</span>'.$p['visual'].'</div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h2>'.e((string)$p['name']).'</h2><p>'.e((string)$p['detail']).'</p><div class="demo-meta"><span>'.$color.'</span><span>Größen '.e((string)$p['sizes']).'</span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-name="'.e((string)$p['name']).'">Auswählen</button></div></div></article>';
     }
     echo '</div></div></div></section></div><div class="demo-toast" id="demo-toast" role="status"></div></main>';
+}
+
+/**
+ * 10.21: Mustershop und Probeshop im Design der Firmenshops („Werkstatt-Premium“):
+ * Begrüßung in Firmenfarbe mit Naht, runde Karten, Orange nur für „In die Auswahl“.
+ * Präfix body.w-body main.demo überstimmt die älteren .demo:not(.demo-probe)-Regeln.
+ */
+function yw_demo_pro_css(): string {
+    return <<<'CSS'
+body.w-body main.demo{--demo-ink:#121b24;--demo-line:#e0e3de;--demo-hero:color-mix(in srgb,var(--demo-forest,#294238) 62%,#0c1a2a);--demo-hero-2:color-mix(in srgb,var(--demo-forest,#294238) 30%,#08121d);background:var(--paper,#f4f5f2);font-family:var(--f-body)}
+body.w-body main.demo h1,body.w-body main.demo h2,body.w-body main.demo h3{font-family:var(--f-display);font-stretch:86%}
+body.w-body main.demo .demo-notice{border-radius:16px;border:1px dashed #ffb27f;background:#fff4eb}
+body.w-body main.demo .demo-app{border-radius:28px;border:1px solid var(--demo-line);box-shadow:0 2px 6px rgba(8,18,29,.08),0 30px 60px -20px rgba(8,18,29,.3)}
+body.w-body main.demo .demo-shopbar{border-bottom:1px solid var(--demo-line);box-shadow:inset 0 3px 0 var(--demo-forest,#294238)}
+body.w-body main.demo .demo-shopbar-label{font-family:var(--f-mono);color:var(--orange-deep,#c94c00)}
+body.w-body main.demo .demo-cart{border-radius:999px;background:var(--navy-900,#0c1a2a);color:#fff;border:0;padding:10px 16px;font-weight:800}
+body.w-body main.demo .demo-cart span{display:inline-block;min-width:22px;padding:2px 7px;background:var(--orange,#ff6a13);color:#fff;border-radius:999px;text-align:center}
+body.w-body main.demo .demo-hero{position:relative;margin:18px;border-radius:24px;background:radial-gradient(120% 140% at 100% 0%,rgba(182,139,91,.28),transparent 55%),linear-gradient(135deg,var(--demo-hero),var(--demo-hero-2));color:#fff;padding:clamp(34px,5vw,56px) clamp(24px,5vw,56px) clamp(44px,5vw,64px)}
+body.w-body main.demo .demo-hero::after{content:"";position:absolute;left:0;right:0;bottom:12px;border-top:3px dashed rgba(214,180,140,.85)}
+body.w-body main.demo .demo-hero h1{color:#fff;font-size:clamp(2.3rem,4.6vw,3.8rem);font-weight:850;line-height:.98}
+body.w-body main.demo .demo-hero .demo-eyebrow{font-family:var(--f-mono);color:rgba(255,255,255,.72)}
+body.w-body main.demo .demo-hero-copy>p{color:rgba(255,255,255,.82)}
+body.w-body main.demo .demo-hero-link{min-height:52px;padding:0 24px;border:0;border-radius:999px;background:linear-gradient(180deg,var(--orange-2,#ff8f45),var(--orange,#ff6a13));color:#fff;font-size:.95rem;font-weight:800;box-shadow:0 10px 26px -8px rgba(255,106,19,.6)}
+body.w-body main.demo .demo-assurances span{color:rgba(255,255,255,.85)}
+body.w-body main.demo .demo-hero-mark{opacity:.08}
+body.w-body main.demo .demo-hero .demo-budget{padding:22px 24px;border:1px solid rgba(255,255,255,.16);border-radius:20px;background:rgba(255,255,255,.07);color:#fff;backdrop-filter:blur(6px)}
+body.w-body main.demo .demo-hero .demo-budget-kicker{font-family:var(--f-mono);color:rgba(255,255,255,.7)}
+body.w-body main.demo .demo-hero .demo-budget-title,body.w-body main.demo .demo-hero .demo-budget small,body.w-body main.demo .demo-hero .demo-budget-foot{color:rgba(255,255,255,.75);border-color:rgba(255,255,255,.14)}
+body.w-body main.demo .demo-hero .demo-budget strong{color:#fff;font-family:var(--f-display);font-stretch:86%;font-size:2.8rem}
+body.w-body main.demo .demo-progress{height:8px;border-radius:999px;background:rgba(255,255,255,.15)}
+body.w-body main.demo .demo-progress span{border-radius:999px;background:#d6b48c}
+body.w-body main.demo .demo-filter{border-radius:999px;padding:10px 18px;font-weight:750;font-size:.86rem;background:#fff;color:var(--demo-ink);border:1px solid var(--demo-line)}
+body.w-body main.demo .demo-filter.active{background:var(--demo-ink);border-color:var(--demo-ink);color:#fff}
+body.w-body main.demo .demo-product{background:#fff;border:1px solid var(--demo-line);border-radius:22px;padding:10px;overflow:hidden;transition:transform .2s,box-shadow .2s}
+body.w-body main.demo .demo-product:hover{transform:translateY(-4px);box-shadow:0 30px 60px -20px rgba(8,18,29,.3)}
+body.w-body main.demo .demo-visual{border-radius:15px;overflow:hidden;background:radial-gradient(circle at 50% 35%,#fbfbf9,#eef0ec 75%)}
+body.w-body main.demo .demo-product-body{padding:16px 8px 6px}
+body.w-body main.demo .demo-cat{font-family:var(--f-mono);letter-spacing:.12em}
+body.w-body main.demo .demo-product h2,body.w-body main.demo .demo-product h3{font-family:var(--f-body);font-stretch:100%;font-weight:800}
+body.w-body main.demo .demo-buy strong{font-family:var(--f-display);font-stretch:90%;font-weight:850;font-size:1.4rem}
+body.w-body main.demo .demo-size,body.w-body main.demo .demo-qty,body.w-body main.demo .demo-order-row select,body.w-body main.demo .demo-order-row input{border-radius:12px}
+body.w-body main.demo .demo-add{min-height:46px;border:0;border-radius:999px;background:linear-gradient(180deg,var(--orange-2,#ff8f45),var(--orange,#ff6a13));color:#fff;font-weight:800;box-shadow:0 8px 20px -8px rgba(255,106,19,.6)}
+body.w-body main.demo .demo-add:disabled{background:#e3e6e1;color:#6b747c;box-shadow:none}
+body.w-body main.demo .demo-selection{border-radius:20px}
+body.w-body main.demo .demo-toast{border-radius:16px;background:var(--navy-900,#0c1a2a);border-bottom:3px solid var(--orange,#ff6a13)}
+body.w-body main.demo.demo-probe .demo-welcome{position:relative;overflow:hidden;padding:32px 34px 42px;border:0;border-radius:24px;background:linear-gradient(135deg,var(--demo-hero),var(--demo-hero-2));color:#fff}
+body.w-body main.demo.demo-probe .demo-welcome::after{content:"";position:absolute;left:0;right:0;bottom:10px;border-top:3px dashed rgba(214,180,140,.85)}
+body.w-body main.demo.demo-probe .demo-welcome h1{color:#fff;font-weight:850}
+body.w-body main.demo.demo-probe .demo-welcome p{color:rgba(255,255,255,.82)}
+body.w-body main.demo.demo-probe .demo-budget{border:1px solid rgba(255,255,255,.16);border-radius:18px;background:rgba(255,255,255,.07);color:#fff;box-shadow:none}
+body.w-body main.demo.demo-probe .demo-budget-row,body.w-body main.demo.demo-probe .demo-budget-row strong{color:#fff}
+body.w-body main.demo .demo-company-logo{width:auto;min-width:42px;max-width:130px;height:42px;padding:4px 8px;border-radius:10px;background:#fff;overflow:hidden}
+body.w-body main.demo .demo-company-logo img{display:block;width:auto;max-width:100%;max-height:34px;object-fit:contain}
+body.w-body .demo-probe-next{background:var(--paper,#f4f5f2)}
+body.w-body .demo-probe-next-inner{border-radius:24px;border:1px solid var(--demo-line,#e0e3de);background:#fff}
+body.w-body .demo-probe-actions{display:flex;flex-wrap:wrap;gap:10px}
+@media(max-width:760px){
+  body.w-body main.demo .demo-hero{margin:10px;border-radius:20px}
+  body.w-body main.demo .demo-hero .demo-budget strong{font-size:2.2rem}
+  body.w-body main.demo .demo-product{border-radius:18px;padding:7px}
+}
+@media(prefers-reduced-motion:reduce){body.w-body main.demo .demo-product{transition:none}}
+CSS;
 }
 
 function yw_demo_shop_css(): string {

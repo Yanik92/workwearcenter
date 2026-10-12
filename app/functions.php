@@ -660,18 +660,20 @@ function render_head(string $title, ?array $brand = null): void {
     $brandTokens=$brand?';--wc-accent:'.e($primary).';--wc-orange:'.e($accent).';--wc-button-ink:'.$buttonInk:'';
     $path=path_only();
     $public=in_array($path,['/','/leistungen','/ueber-uns','/so-funktionierts','/mustershop','/kontakt','/anfrage','/impressum','/datenschutz','/zugang'],true);
+    // 10.20: Die Website-Seiten nutzen nur noch assets/web.css (Mustershop und Shops bleiben unverändert).
+    $website=yw_is_website_path($path);
     $robots=$public&&$path!=='/zugang'?'index,follow,max-image-preview:large':($path==='/zugang'?'noindex,follow':'noindex,nofollow');
     $url='https://'.yw_public_host().$path;
     $canonical=$public?'<link rel="canonical" href="'.e($url).'">':'';
     $descriptions=[
-        '/'=>'WorkwearCenter ist der digitale Firmenshop für Arbeitskleidung: Mitarbeitende bestellen selbst oder Verantwortliche erfassen Teamaufträge – mit Logo-Veredelung aus Salzkotten.',
-        '/leistungen'=>'Arbeitskleidung und Teamkleidung mit Logo: Stick, Textildruck und Transferdruck aus eigener Produktion in Salzkotten – inklusive Firmenshop mit Budgets und Freigaben.',
-        '/ueber-uns'=>'Yanik Textildruck aus Salzkotten: Textilveredelung aus eigener Hand, persönliche Beratung und ein Online-Shop für die Firmenkleidung deines Teams.',
-        '/so-funktionierts'=>'In vier Schritten zum eigenen Firmenshop: Kollektion abstimmen, Regeln festlegen, Team bestellen lassen, fertig veredelte Kleidung erhalten.',
+        '/'=>'WorkwearCenter ist der digitale Firmenshop für Arbeitskleidung: Mitarbeitende bestellen selbst oder Verantwortliche erfassen Teamaufträge – mit Stick und Druck aus eigener Produktion in Paderborn.',
+        '/leistungen'=>'Arbeitskleidung und Teamkleidung mit Logo: Stick, Textildruck und Transferdruck aus eigener Produktion in Paderborn – inklusive Firmenshop mit Budgets und Freigaben.',
+        '/ueber-uns'=>'Yanik Textildruck: Textilveredelung aus eigener Hand mit Produktion in Paderborn, persönliche Beratung und ein Online-Shop für die Firmenkleidung deines Teams.',
+        '/so-funktionierts'=>'In fünf Schritten zum eigenen Firmenshop: anfragen, Kollektion abstimmen, freigeben, Team bestellen lassen, fertig veredelte Kleidung erhalten.',
         '/mustershop'=>'Probier einen Beispiel-Firmenshop aus – mit echten Artikeln, Budget, Größenwahl und Freigabe durch den Verantwortlichen.',
-        '/kontakt'=>'Kontakt zu Yanik Textildruck in Salzkotten: Beratung zu Firmenkleidung, Veredelung und eigenem Unternehmensshop.',
+        '/kontakt'=>'Kontakt zu Yanik Textildruck: persönliche Beratung zu Firmenkleidung, Veredelung und eigenem Unternehmensshop.',
         '/anfrage'=>'Unverbindlich anfragen: eigener Online-Shop für die Firmenkleidung deines Teams, mit Logo-Veredelung von Yanik Textildruck.',
-        '/impressum'=>'Impressum von Yanik Textildruck, Salzkotten – Betreiber des WorkwearCenters.',
+        '/impressum'=>'Impressum von Yanik Textildruck – Betreiber des WorkwearCenters.',
         '/datenschutz'=>'Datenschutzhinweise für das WorkwearCenter von Yanik Textildruck.',
         '/zugang'=>'Kunden-Login: Über den Kurznamen direkt zum eigenen Firmenshop im WorkwearCenter.',
     ];
@@ -702,8 +704,10 @@ function render_head(string $title, ?array $brand = null): void {
         $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
     }
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
-    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<link rel="stylesheet" href="'.e(asset_url('assets/workwear-ui.css')).'"><style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . $brandTokens.'}</style>'.$structured.'</head><body>';
+    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title>'.($website?'<link rel="preload" href="/assets/fonts/Archivo-Variable.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/assets/fonts/Manrope-Variable.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="'.e(asset_url('assets/web.css')).'">'.$structured.'</head><body class="w-body">':'<link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<link rel="stylesheet" href="'.e(asset_url('assets/workwear-ui.css')).'"><style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . $brandTokens.'}</style>'.$structured.'</head><body'.($brand?' class="yw-shop"':'').'>');
 }
 // 10.15: data-flash – assets/app.js setzt die Rückmeldung nach dem Speichern an das Sprungziel (z. B. #person-12).
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '" data-flash>' . e($f[1]) . '</div>'; }
-function render_foot(): void { echo yw_old_input_script().'<script src="'.e(asset_url('assets/app.js')).'" defer></script></body></html>'; }
+function render_foot(): void { echo yw_old_input_script().'<script src="'.e(asset_url('assets/app.js')).'" defer></script>'.(yw_is_website_path(path_only())?'<script src="'.e(asset_url('assets/web.js')).'" defer></script>':'').'</body></html>'; }
+/** 10.20: Seiten der öffentlichen Website im neuen Design (ohne Mustershop, Probeshop und Firmenshops). */
+function yw_is_website_path(string $path): bool { return in_array($path,['/','/leistungen','/ueber-uns','/so-funktionierts','/kontakt','/anfrage','/impressum','/datenschutz','/zugang','/mustershop'],true) || str_starts_with($path,'/probeshop/'); } // 10.21: Mustershop und Probeshop im Rahmen der Website

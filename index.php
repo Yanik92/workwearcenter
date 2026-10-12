@@ -200,7 +200,7 @@ if (preg_match('#^/([a-z0-9-]+)/sammelbestellung$#', $path, $match)) {
     company_portal_page($match[1],'team-order');
     exit;
 }
-if (preg_match('#^/([a-z0-9-]+)/(produkte|bestellungen|freigaben|mitarbeiter|profil)$#', $path, $match)) {
+if (preg_match('#^/([a-z0-9-]+)/(produkte|bestellungen|freigaben|mitarbeiter|profil|spind)$#', $path, $match)) {
     company_portal_page($match[1],$match[2]);
     exit;
 }

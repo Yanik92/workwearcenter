@@ -2,6 +2,32 @@
 
 Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.21.0 – Firmenshops im neuen Design, „Mein Spind“ und Erfolgsbild
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+Paket 2 von 4 des freigegebenen Konzepts. Die Verwaltung sieht aus wie bisher (kommt mit Paket 3 und 4).
+- Firmenshop im Design „Werkstatt-Premium“: Kopfzeile mit Menü als Pillen und Budget-Ring, Begrüßung als große Fläche in Firmenfarbe mit Datum, Abteilung, Budget-Ring und den Knöpfen „Neue Bestellung starten“ und „Mein Spind“, gestrichelte Naht als Abschluss. Gleiche Schriften wie die Website. Firmenfarbe für Flächen und Auswahl, Orange nur für die Hauptaktionen (neue Bestellung, in die Auswahl, absenden).
+- Startseite: Karten für die letzte Bestellung (Fortschritt mit Lieferwagen), offene Freigaben und „Mein Spind“; die Kollektion als Karten mit Bild.
+- Artikel: Größen als Knöpfe (mit Pfeiltasten bedienbar, Vorschlag aus der letzten Bestellung bleibt), Preis aufgeteilt in „Firma übernimmt“ und „Dein Anteil“ mit Balken.
+- Neu „Mein Spind“ (/firma/spind): alle gelieferten Teile mit Größe, Menge und Lieferdatum, abgeschlossener Größentausch und Rückgaben sind eingerechnet. Je Teil „Nachbestellen“ und, solange die Frist läuft, „Größe tauschen“. Freigegebene, noch nicht verschickte Teile stehen unter „Unterwegs zu dir“. Im Menü für alle, in der Handy-Leiste für Mitarbeitende (Verantwortliche über Startseite und Kontomenü).
+- Nach dem Absenden: Erfolgsbild mit Konfetti, Bestellnummer, Anzahl Teile, eigenem Anteil und Budget danach. Erscheint einmal, „Status ansehen“ schließt es.
+- Handy: schwebende Menüleiste unten, Begrüßung mit Budget oben, Artikel als Vollbild mit Größenknöpfen.
+- Anmeldeseite des Shops im gleichen Stil.
+- Mustershop und Probeshop laufen jetzt im Rahmen der neuen Website (gleicher Kopf und Fuß) und haben das neue Shop-Design.
+- Neue Texte in allen sechs Sprachen.
+- Technik: neue Datei assets/shop-pro.css (liegt über dem bisherigen Shop-Stil). Ohne JavaScript bleibt die Größenauswahl als Auswahlfeld nutzbar; Bewegungen werden bei „Bewegung reduzieren“ abgeschaltet.
+
+## 10.20.0 – Neue Website „Werkstatt-Premium“ mit Kundenleiste
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+Umsetzung des freigegebenen Konzepts, Paket 1 von 4 (Website). Firmenshops, Mustershop, Probeshop und Verwaltung sehen aus wie bisher.
+- Alle Website-Seiten neu gestaltet: Startseite, Leistungen, So funktioniert’s, Über uns, Kontakt, Anfrage, Kundenlogin, Impressum, Datenschutz. Navy und Orange, die gestrichelte Naht als Erkennungszeichen, eigene Schriften (Archivo, Manrope, JetBrains Mono, liegen auf dem eigenen Server, keine Google-Verbindung).
+- Startseite: großer Kopfbereich mit Werkstattfoto und schwebenden Karten (Freigabe, Veredelung, Budget, Status), Faktenband ohne Zahlen, Übersicht „Alles in einem Shop“, zwei Bestellwege, Werkstatt-Bereich mit Vorher-nachher-Regler (Shop-Vorschau gegen echten Stick), Ablauf in fünf Schritten mit Nahtlinie, die sich beim Scrollen füllt, Ansprechpartner, häufige Fragen, Abschluss mit Anfrage.
+- Kundenleiste „Diese Kunden vertrauen uns“ ganz unten: Unter Verwaltung → Website & Design → Inhalte → „Startseite – Vertrauen“ gibt es jetzt pro Kundenfirma einen Haken. Angehakte, aktive Firmen mit Logo erscheinen automatisch mit ihrem Shop-Logo; zusätzlich lassen sich weiter Logos hochladen. Ab drei Logos läuft die Leiste durch (anhaltbar), grau und beim Darüberfahren farbig. Ohne Logos bleibt die Leiste weg.
+- Kundenstimme erscheint nur, wenn sie in der Verwaltung gepflegt ist. Der Ansprechpartner zeigt ohne Eintrag den Inhaber aus dem Impressum.
+- Texte: Produktion in Paderborn genannt (Impressum-Anschrift bleibt wie eingetragen), keine Angaben zu Stichzahlen oder Motivgrößen, keine Kennzahlen.
+- Technik: Die Website lädt nur noch eine Stylesheet-Datei (assets/web.css) und ein kleines Skript (assets/web.js) statt vier Stylesheets. Bewegungen werden bei „Bewegung reduzieren“ abgeschaltet; ohne JavaScript ist alles sichtbar.
+
 ## 10.19.2 – Befunde aus dem echten Shop und der Verwaltung
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
 
