@@ -438,7 +438,7 @@ function yw_shop_brand_mark(array $company,string $class='cp-brand'): string {
 }
 
 function company_portal_section_title(string $section): string {
-    return ['overview'=>t('nav.overview'),'produkte'=>t('nav.products'),'bestellungen'=>t('nav.orders'),'freigaben'=>t('nav.approvals'),'mitarbeiter'=>t('nav.people'),'profil'=>t('nav.profile')][$section]??t('nav.shop');
+    return ['overview'=>t('nav.overview'),'produkte'=>t('nav.products'),'bestellungen'=>t('nav.orders'),'freigaben'=>t('nav.approvals'),'mitarbeiter'=>t('nav.people'),'team-order'=>t('nav.team_order'),'profil'=>t('nav.profile')][$section]??t('nav.shop');
 }
 
 function company_portal_footer(array $company): void {
@@ -484,6 +484,7 @@ function company_portal_header(array $company,array $account,string $section): v
     ];
     $pending=0;
     if($manager){
+        $nav['team-order']=[t('nav.team_order'),$slug.'/sammelbestellung','users'];
         $nav['freigaben']=[t('nav.approvals'),$slug.'/freigaben','check'];
         $nav['mitarbeiter']=[t('nav.people'),$slug.'/mitarbeiter','users'];
         $pending=yw_pending_decision_count((int)$company['id'],(int)$account['id']); // 10.15: wie die Seite „Freigaben“, ohne eigene Bestellungen
@@ -901,7 +902,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
     yw_shop_lang_init($company,$account); // 10.12: Sprache des Kontos (sonst Cookie/Browser)
 
     $manager=account_is_manager($account);
-    if(in_array($section,['freigaben','mitarbeiter'],true) && !$manager){
+    if(in_array($section,['freigaben','mitarbeiter','team-order'],true) && !$manager){
         http_response_code(403);
         simple_message(t('err.no_access_title'),t('err.no_access_text'));
         return;
@@ -914,6 +915,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
 
         if($manager && $action==='registration_decision' && in_array($section,['mitarbeiter','overview'],true)) yw_registration_decision($company,$account,$section==='overview'?'':'/mitarbeiter');
         if($manager && in_array($action,['customer_employee_add','customer_employee_save','customer_employee_import','customer_employee_link','customer_employee_anonymize'],true) && $section==='mitarbeiter') yw_customer_employee_action($company,$account,$action);
+        if($manager && $action==='team_order' && $section==='team-order') place_team_order($company,$account);
         if($action==='order' && $section==='produkte'){
             place_account_order($company,$account);
         }
@@ -977,6 +979,8 @@ function company_portal_page(string $slug,string $section='overview'): void {
         company_portal_approvals($company,$account);
     }elseif($section==='mitarbeiter'){
         company_portal_people($company,$account);
+    }elseif($section==='team-order'){
+        company_portal_team_order($company,$account);
     }elseif($section==='profil'){
         company_portal_profile($company,$account);
     }
@@ -985,6 +989,55 @@ function company_portal_page(string $slug,string $section='overview'): void {
     company_portal_footer($company);
     echo '<script src="'.e(asset_url('assets/shop.js')).'" defer></script>';
     render_foot();
+}
+
+/** Sammelbestellung: Verantwortliche erfassen Mitarbeiteraufträge in einem Arbeitsgang. */
+function company_portal_team_order(array $company,array $account): void {
+    $companyId=(int)$company['id'];
+    $q=db()->prepare("SELECT id,company_id,name,department,employee_number,equipment_profile_id FROM employee_accounts WHERE company_id=? AND active=1 AND registration_status='approved' AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) ORDER BY name,id");
+    $q->execute([$companyId]);$people=$q->fetchAll();
+    $baseProducts=shop_company_products($companyId);$profileCatalogs=[];$accountCatalog=[];
+    foreach($people as $person){
+        $id=(int)$person['id'];$profileId=(int)($person['equipment_profile_id']??0);
+        $catalogKey=$profileId>0?'profile-'.$profileId:'all';
+        if(!array_key_exists($catalogKey,$profileCatalogs)){
+            $rules=yw_account_profile_rules($person);
+            $allowed=$rules===null?null:array_fill_keys(array_map('intval',array_keys($rules)),true);
+            $products=[];
+            foreach($baseProducts as $product){
+                $productId=(int)$product['id'];
+                if($allowed!==null&&!isset($allowed[$productId]))continue;
+                $price=product_price_breakdown($product,$company);
+                $products[]=['id'=>$productId,'name'=>company_product_display_name($product),'price'=>money((int)$price['gross']),'sizes'=>array_values(array_filter(json_decode((string)$product['sizes'],true)?:[],'is_string'))];
+            }
+            $profileCatalogs[$catalogKey]=$products;
+        }
+        $accountCatalog[(string)$id]=$catalogKey;
+    }
+    $catalog=['accounts'=>$accountCatalog,'profiles'=>$profileCatalogs];
+    $catalogJson=json_encode($catalog,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT);
+    echo '<section class="cp-team-page"><div class="cp-section-head"><div><span class="cp-team-eyebrow">'.e(t('nav.team_order')).'</span><h1>'.e(t('team.title')).'</h1><p>'.e(t('team.intro')).'</p><p class="cp-team-count">'.e(t('team.people_count',['n'=>count($people)])).'</p></div></div>';
+    if(!$people){
+        echo '<div class="cp-card cp-team-empty"><p>'.e(t('team.no_people')).'</p><a class="cp-btn" href="/'.e($company['slug']).'/mitarbeiter">'.e(t('team.go_people')).'</a></div></section>';
+        return;
+    }
+    $employeeOptions='<option value="">'.e(t('team.choose_person')).'</option>';
+    foreach($people as $person){
+        $label=(string)$person['name'];
+        $meta=trim((string)($person['department']??''));
+        if($meta==='')$meta=trim((string)($person['employee_number']??''));
+        if($meta!=='')$label.=' · '.$meta;
+        $employeeOptions.='<option value="'.(int)$person['id'].'">'.e($label).'</option>';
+    }
+    $tokenField=yw_team_checkout_fields($company,$account);
+    echo '<div class="cp-team-layout"><form method="post" class="cp-team-form" data-team-order data-catalog="'.e(base64_encode($catalogJson)).'" data-price-unit="'.e(t('team.price_each')).'" data-max-people="20" data-limit-message="'.e(t('team.limit_notice')).'" data-empty-message="'.e(t('err.no_items')).'" data-duplicate-message="'.e(t('team.choose_person')).'" data-size-message="'.e(t('team.choose_size')).'">'.csrf_field().'<input type="hidden" name="action" value="team_order">'.$tokenField;
+    echo '<div class="cp-team-toolbar"><div><strong>'.e(t('team.people_count',['n'=>count($people)])).'</strong><span>'.e(t('team.limit_notice')).'</span></div><div class="cp-team-toolbar-actions"><button class="cp-btn cp-btn-light" type="button" data-team-add-all>'.e(t('team.add_all')).'</button><button class="cp-btn" type="button" data-team-add-person>'.e(t('team.add_person')).'</button></div></div>';
+    echo '<div class="cp-team-people" data-team-people></div><p class="cp-team-feedback" data-team-feedback role="status" aria-live="polite"></p>';
+    echo '<label class="cp-team-note">'.e(t('team.note')).'<small>'.e(t('team.note_hint')).'</small><textarea name="team_note" maxlength="350"></textarea></label>';
+    echo '<div class="cp-team-submit"><div><strong>'.e(t('team.rules_title')).'</strong><p>'.e(t('team.rules_text')).'</p></div><button class="cp-btn" type="submit">'.e(t('team.submit')).'</button></div></form>';
+    echo '<aside class="cp-team-aside"><div class="cp-team-aside-icon" aria-hidden="true">'.yw_shop_icon('users').'</div><h2>'.e(t('team.preview_title')).'</h2><ol><li><span>1</span>'.e(t('team.person')).'</li><li><span>2</span>'.e(t('team.item')).'</li><li><span>3</span>'.e(t('team.step_orders')).'</li></ol><div class="cp-team-policy"><strong>'.e(t('team.costs')).'</strong><ul><li>'.e(financing_label($company)).'</li><li>'.e(shipping_rule_label($company)).'</li><li>'.e(((int)($company['approval_required']??1)===1)?t('rules.internal_approval'):t('rules.no_approval')).'</li></ul></div><p>'.e(t('team.rules_text')).'</p></aside></div>';
+    echo '<template data-team-person-template><section class="cp-card cp-team-person" data-team-person><div class="cp-team-person-head"><span class="cp-team-person-index" data-team-number>1</span><button type="button" class="cp-team-remove" data-team-remove>'.e(t('team.remove_person')).'</button></div><label class="cp-team-select">'.e(t('team.person')).'<select data-team-account>'.$employeeOptions.'</select></label><div class="cp-team-items" data-team-items></div><button type="button" class="cp-team-add-item" data-team-add-item>+ '.e(t('team.add_item')).'</button><template data-team-item-template><div class="cp-team-item" data-team-item><label>'.e(t('team.product')).'<select data-team-product><option value="">'.e(t('team.choose_product')).'</option></select></label><label>'.e(t('team.size')).'<select data-team-size disabled><option value="">'.e(t('team.choose_size')).'</option></select></label><label>'.e(t('team.quantity')).'<input type="number" min="1" max="10" value="1" inputmode="numeric" data-team-quantity></label><button type="button" class="cp-team-item-remove" data-team-remove-item aria-label="'.e(t('common.close')).'">×</button></div></template></section></template>';
+    echo '</section>';
 }
 
 
@@ -1011,6 +1064,9 @@ function company_portal_overview(array $company,array $account): void {
     $last=$stmt->fetch();
 
     echo '<div class="cp-dash">';
+    if($manager){
+        echo '<section class="cp-card cp-team-shortcut"><div><span>'.e(t('nav.team_order')).'</span><h2>'.e(t('team.shortcut')).'</h2><p>'.e(t('team.shortcut_text')).'</p></div><a class="cp-btn" href="'.e($slug).'/sammelbestellung">'.e(t('team.add_person')).'</a></section>';
+    }
     if(!$last){
         $hasStarter=false;
         foreach((yw_account_profile_rules($account)??[]) as $rule)if((int)$rule['starter_qty']>0){$hasStarter=true;break;}

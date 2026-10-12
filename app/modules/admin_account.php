@@ -118,7 +118,7 @@ function admin_2fa_page(): void {
     render_head('Bestätigung – Verwaltung');
     echo site_brand_style();
     echo '<div class="login-brandbar"><div class="wrap">'.site_brand_html().'</div></div>';
-    echo '<main class="login-shell" style="--primary:#101b2d;--accent:#ff6b00"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">ZWEITER SCHRITT</div><h1>Code bestätigen</h1><p>Öffne deine Authenticator-App und gib den 6-stelligen Code für <strong>WorkwearCenter</strong> ein.</p>';
+    echo '<main class="login-shell" style="--primary:#fc6904;--accent:#fc6904"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">ZWEITER SCHRITT</div><h1>Code bestätigen</h1><p>Öffne deine Authenticator-App und gib den 6-stelligen Code für <strong>WorkwearCenter</strong> ein.</p>';
     if($error)echo '<div class="flash error">'.e($error).'</div>';
     echo '<form method="post" class="form-stack">'.csrf_field().'<label>Code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="11" required autofocus class="code-input" placeholder="123 456"></label><button class="btn primary" type="submit">Anmelden</button></form>';
     echo '<details class="details space-top"><summary>Kein Zugriff auf die App?</summary><div class="details-inner"><p class="muted">Gib stattdessen einen deiner Wiederherstellungscodes ein (Format XXXXX-XXXXX). Jeder Code funktioniert nur einmal.</p></div></details>';

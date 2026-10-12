@@ -5,24 +5,83 @@ declare(strict_types=1);
 ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 error_reporting(E_ALL);
-// Schwere PHP-Fehler für die Systemprüfung auf update.php festhalten (ohne Besucherdaten).
+/** Unerwartete Fehler mit einer Referenz protokollieren, ohne Zugangstokens im Pfad mitzuschreiben. */
+function yw_capture_runtime_error(string $type,string $message,string $file,int $line): string {
+    try{$id='WWC-'.date('Ymd-His').'-'.strtoupper(bin2hex(random_bytes(3)));}
+    catch(Throwable $e){$id='WWC-'.date('Ymd-His').'-'.strtoupper(substr(sha1(uniqid('',true)),0,6));}
+    $route=(string)(parse_url((string)($_SERVER['REQUEST_URI']??'/'),PHP_URL_PATH)?:'/');
+    $route=(string)preg_replace('#/(passwort-neu|anmeldelink|mail-freigabe)/[^/]+#','/$1/[redigiert]',$route);
+    $safeMessage=str_replace(["\r","\n","\t"],' ',strip_tags($message));
+    $safeMessage=(string)preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu','[E-Mail]',$safeMessage);
+    $safeMessage=(string)preg_replace('/(?i)\b(password|passwort|token|secret|api[_-]?key)\s*[=:]\s*[^\s,;]+/','$1=[redigiert]',$safeMessage);
+    $safeMessage=(string)preg_replace('/(?<![A-Za-z0-9])[a-f0-9]{40,}(?![A-Za-z0-9])/i','[Token]',$safeMessage);
+    if(function_exists('mb_substr'))$safeMessage=mb_substr($safeMessage,0,500);else $safeMessage=substr($safeMessage,0,500);
+    $entry=[
+        'at'=>date(DATE_ATOM),
+        'id'=>$id,
+        'route'=>$route,
+        'type'=>$type,
+        'message'=>$safeMessage,
+        'file'=>basename($file),
+        'line'=>max(0,$line),
+    ];
+    $json=json_encode($entry,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
+    $stored=false;
+    if(is_string($json)&&function_exists('yw_private_dir')){
+        try{
+            $log=yw_private_dir().'/runtime-errors.jsonl';
+            $lock=@fopen($log.'.lock','c');
+            if($lock&&@flock($lock,LOCK_EX)){
+                @chmod($log.'.lock',0640);
+                if(is_file($log)&&(int)@filesize($log)>=1048576){
+                    @unlink($log.'.2');
+                    if(is_file($log.'.1'))@rename($log.'.1',$log.'.2');
+                    @rename($log,$log.'.1');
+                }
+                $fh=@fopen($log,'ab');
+                if($fh){
+                    $record=$json."\n";
+                    $stored=@fwrite($fh,$record)===strlen($record);
+                    @fflush($fh);
+                    @fclose($fh);
+                }
+                @flock($lock,LOCK_UN);
+                @fclose($lock);
+                if($stored)@chmod($log,0640);
+            }
+        }catch(Throwable $ignored){}
+    }
+    // Der Serverlog bleibt Rückfallebene, falls private_dir fehlt oder nicht beschreibbar ist.
+    error_log('WorkwearCenter['.$id.'] '.($json?:$type.' · '.basename($file).':'.$line).($stored?'':' · privates Protokoll nicht verfügbar'));
+    return $id;
+}
+
+// Schwere PHP-Fehler werden in den privaten Datenordner statt in den Webroot geschrieben.
 register_shutdown_function(static function(): void {
     $err=error_get_last();
     if($err && in_array($err['type'],[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR],true)){
-        @file_put_contents(__DIR__.'/app/letzter-fehler.txt',date('d.m.Y H:i:s').' · '.(string)parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH)."\n".$err['message'].' ('.basename((string)$err['file']).':'.$err['line'].')');
+        yw_capture_runtime_error('fatal',(string)$err['message'],(string)$err['file'],(int)$err['line']);
     }
 });
 // Unerwartete Fehler (z. B. Datenbank bricht mitten in der Seite ab): protokollieren und statt einer leeren Seite einen Hinweis zeigen.
 set_exception_handler(static function(Throwable $e): void {
-    $msg=get_class($e).': '.$e->getMessage().' ('.basename($e->getFile()).':'.$e->getLine().')';
-    error_log('WorkwearCenter: '.$msg."\n".$e->getTraceAsString());
-    @file_put_contents(__DIR__.'/app/letzter-fehler.txt',date('d.m.Y H:i:s').' · '.(string)parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH)."\n".$msg);
+    $incident=yw_capture_runtime_error(get_class($e),$e->getMessage(),$e->getFile(),$e->getLine());
     // Tabelle oder Spalte fehlt (SQLSTATE 42S02/42S22): Schema-Marke verwerfen, der nächste Aufruf prüft vollständig und zeigt „Update erforderlich“.
     if($e instanceof PDOException && in_array((string)$e->getCode(),['42S02','42S22'],true) && function_exists('yw_schema_forget'))try{if(db()->inTransaction())db()->rollBack();yw_schema_forget();}catch(Throwable $ignored){}
     if(!headers_sent())http_response_code(500);
-    if(preg_grep('#^Content-Type:#i',headers_list()) && !preg_grep('#^Content-Type:\s*text/html#i',headers_list()))return; // CSV/ZIP: nichts anhängen
+    $headers=headers_list();
+    $requestPath=(string)(parse_url((string)($_SERVER['REQUEST_URI']??'/'),PHP_URL_PATH)?:'/');
+    $jsonResponse=str_starts_with($requestPath,'/api/')||preg_grep('#^Content-Type:\s*application/json#i',$headers);
+    if($jsonResponse){
+        if(!headers_sent()){
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['error'=>'internal_error','reference'=>$incident],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+        return;
+    }
+    if(preg_grep('#^Content-Type:#i',$headers) && !preg_grep('#^Content-Type:\s*text/html#i',$headers))return; // CSV/ZIP: nichts anhängen
     if(!headers_sent())header('Content-Type: text/html; charset=UTF-8');
-    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fehler</title><body style="font-family:system-ui;max-width:640px;margin:60px auto;padding:0 20px;line-height:1.6"><h1>Das hat gerade nicht geklappt</h1><p>Bitte die Seite in einem Moment neu laden. Der Fehler wurde protokolliert.</p><p><a href="/">Zur Startseite</a></p></body>';
+    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fehler</title><body style="font-family:system-ui;max-width:640px;margin:60px auto;padding:0 20px;line-height:1.6"><h1>Das hat gerade nicht geklappt</h1><p>Bitte die Seite in einem Moment neu laden. Die Fehlerreferenz hilft dem Support bei der Suche.</p><p>Referenz: <code>'.htmlspecialchars($incident,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</code></p><p><a href="/">Zur Startseite</a></p></body>';
 });
 require __DIR__ . '/app/bootstrap.php';
 require_once __DIR__.'/app/modules/corporate.php';
@@ -137,6 +196,10 @@ if (preg_match('#^/([a-z0-9-]+)/lohnabzug\.csv$#', $path, $match)) { yw_payroll_
 /* alter Freigabe-Link bleibt nur als Weiterleitung bestehen */
 if (preg_match('#^/([a-z0-9-]+)/freigabe$#', $path, $match)) { redirect('/'.$match[1].'/freigaben'); }
 
+if (preg_match('#^/([a-z0-9-]+)/sammelbestellung$#', $path, $match)) {
+    company_portal_page($match[1],'team-order');
+    exit;
+}
 if (preg_match('#^/([a-z0-9-]+)/(produkte|bestellungen|freigaben|mitarbeiter|profil)$#', $path, $match)) {
     company_portal_page($match[1],$match[2]);
     exit;

@@ -29,6 +29,10 @@ return [
     // Leer = app/private (durch .htaccess gesperrt; nur unter Apache wirksam).
     'private_dir' => '',
 
+    // Nur IPs/CIDRs eines Reverse-Proxys eintragen, der X-Forwarded-Proto selbst setzt.
+    // Nie den Proxy-Header ohne diese Vertrauensliste akzeptieren.
+    'trusted_proxies' => [],
+
     // Zusätzlicher Geheimschlüssel für die Freigabe-Links in E-Mails (mind. 32 Zeichen, zufällig).
     // Damit reicht eine gestohlene Datenbanksicherung allein nicht, um Freigabe-Links zu fälschen.
     // Nach dem Setzen werden bereits verschickte Freigabe-Links ungültig.

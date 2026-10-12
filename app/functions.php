@@ -295,7 +295,7 @@ function yw_mail_html(string $subject,string $message): string {
         if($line===''){
             if($details){
                 $content.='<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;border-collapse:separate;border-spacing:0;border:1px solid #e7e9ee;border-radius:10px;background:#f7f8fa">';
-                foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#172033;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
+                foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#292d2f;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
                 $content.='</table>';$details=[];
             }
             continue;
@@ -303,51 +303,50 @@ function yw_mail_html(string $subject,string $message): string {
         $actionUrl=yw_mail_action_url($line);
         if($actionUrl!==null){
             $url=htmlspecialchars($actionUrl,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-            $content.='<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0"><tr><td bgcolor="#f36c21" style="border-radius:8px"><a href="'.$url.'" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">'.htmlspecialchars(t('mail.open_button'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</a></td></tr></table>';
+            $content.='<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0"><tr><td bgcolor="#fc6904" style="border-radius:8px"><a href="'.$url.'" style="display:inline-block;padding:14px 22px;color:#17191a;text-decoration:none;font-size:15px;font-weight:700">'.htmlspecialchars(t('mail.open_button'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</a></td></tr></table>';
             continue;
         }
         if(preg_match('/^([^:]{2,32}):\s*(https?:\/\/\S+)$/u',$line,$match) && ($actionUrl=yw_mail_action_url($match[2]))!==null){
             if($details){
                 $content.='<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;border-collapse:separate;border-spacing:0;border:1px solid #e7e9ee;border-radius:10px;background:#f7f8fa">';
-                foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#172033;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
+                foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#292d2f;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
                 $content.='</table>';$details=[];
             }
             $url=htmlspecialchars($actionUrl,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
             $label=htmlspecialchars($match[1],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-            $content.='<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0"><tr><td bgcolor="#f36c21" style="border-radius:8px"><a href="'.$url.'" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">'.$label.'</a></td></tr></table>';
+            $content.='<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0"><tr><td bgcolor="#fc6904" style="border-radius:8px"><a href="'.$url.'" style="display:inline-block;padding:14px 22px;color:#17191a;text-decoration:none;font-size:15px;font-weight:700">'.$label.'</a></td></tr></table>';
             continue;
         }
         if(preg_match('/^([^:]{2,32}):\s*(.+)$/u',$line,$match)){
             $value=htmlspecialchars($match[2],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
             // Nur Sendungsverfolgung bekannter Paketdienste wird verlinkt (kein Phishing über Freitexte).
-            if(preg_match('#^https://(?:www\.)?(?:dhl\.de|tracking\.dpd\.de|ups\.com|gls-group\.com|myhermes\.de)/\S*$#i',trim($match[2])))$value='<a href="'.$value.'" style="color:#d95a0c">'.htmlspecialchars(t('mail.track'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</a>';
+            if(preg_match('#^https://(?:www\.)?(?:dhl\.de|tracking\.dpd\.de|ups\.com|gls-group\.com|myhermes\.de)/\S*$#i',trim($match[2])))$value='<a href="'.$value.'" style="color:#292d2f;text-decoration:underline;text-decoration-color:#fc6904">'.htmlspecialchars(t('mail.track'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</a>';
             $details[]=[htmlspecialchars($match[1],ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'),$value];
             continue;
         }
         if($details){
             $content.='<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;border-collapse:separate;border-spacing:0;border:1px solid #e7e9ee;border-radius:10px;background:#f7f8fa">';
-            foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#172033;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
+            foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#292d2f;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
             $content.='</table>';$details=[];
         }
-        $content.='<p style="margin:0 0 14px;color:#3c4658;font-size:15px;line-height:1.65">'.htmlspecialchars($line,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</p>';
+        $content.='<p style="margin:0 0 14px;color:#565957;font-size:15px;line-height:1.65">'.htmlspecialchars($line,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'</p>';
     }
     if($details){
         $content.='<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;border-collapse:separate;border-spacing:0;border:1px solid #e7e9ee;border-radius:10px;background:#f7f8fa">';
-        foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#172033;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
+        foreach($details as [$label,$value])$content.='<tr><td style="padding:10px 14px;color:#697386;font-size:13px;border-bottom:1px solid #e7e9ee">'.$label.'</td><td style="padding:10px 14px;color:#292d2f;font-size:14px;font-weight:700;text-align:right;border-bottom:1px solid #e7e9ee">'.$value.'</td></tr>';
         $content.='</table>';
     }
     $logo='';
     try {
-        $logoPath=yw_site_logo_path();
-        if($logoPath==='assets/media/workwearcenter-logo.png')$logoPath='assets/media/workwearcenter-logo-dunkel.png'; // weiße Schrift wäre auf weißem Mailhintergrund unsichtbar
+        $logoPath=yw_site_logo_path(true);
         if(preg_match('#^(?:uploads/branding|assets/media)/[a-zA-Z0-9._-]+\.(?:png|jpe?g|webp)$#',$logoPath)){
             $logoUrl='https://'.workwearcenter_domain().'/'.$logoPath;
             $logo='<img src="'.htmlspecialchars($logoUrl,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'" width="190" alt="WorkwearCenter by Yanik Textildruck" style="display:block;width:190px;max-width:100%;height:auto;border:0">';
         }
     } catch(Throwable $ignored) {}
-    if($logo==='') $logo='<table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="width:42px;height:42px;background:#f36c21;color:#ffffff;font-size:16px;font-weight:900;text-align:center">YW</td><td style="padding-left:13px"><div style="font-size:13px;letter-spacing:1.6px;font-weight:800;color:#ffffff">YANIK WORKWEAR</div><div style="margin-top:4px;font-size:12px;color:#b9c0cc">by Yanik Textildruck</div></td></tr></table>';
+    if($logo==='') $logo='<table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="width:42px;height:42px;background:#292d2f;color:#fc6904;font-size:16px;font-weight:900;text-align:center">W</td><td style="padding-left:13px"><div style="font-size:13px;letter-spacing:1.6px;font-weight:800;color:#ffffff">WORKWEARCENTER</div><div style="margin-top:4px;font-size:12px;color:#c7c0b6">by Yanik Textildruck</div></td></tr></table>';
     $h=static fn(string $key): string => htmlspecialchars(t($key),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-    return '<!doctype html><html lang="'.yw_lang().'"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.$safeSubject.'</title></head><body style="margin:0;padding:0;background:#ece9e3;font-family:Arial,Helvetica,sans-serif"><div style="display:none;max-height:0;overflow:hidden;color:transparent">'.$safeSubject.'</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ece9e3"><tr><td align="center" style="padding:34px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #ddd9d1"><tr><td bgcolor="#172033" style="padding:26px 34px;background:#172033;border-top:7px solid #f36c21;border-bottom:1px solid #27364d">'.$logo.'</td></tr><tr><td style="padding:34px 34px 36px"><div style="margin-bottom:13px;font-size:11px;letter-spacing:1.7px;font-weight:800;color:#f36c21">'.$h('mail.kicker').'</div><h1 style="margin:0 0 24px;color:#172033;font-size:27px;line-height:1.22">'.$safeSubject.'</h1>'.$content.'<p style="margin:30px 0 0;padding-top:22px;border-top:1px solid #e7e3dc;color:#3c4658;font-size:15px;line-height:1.6">'.$h('mail.regards').'<br><strong>'.$h('mail.team').'</strong></p></td></tr><tr><td style="padding:21px 34px;background:#172033;color:#b9c0cc;font-size:12px;line-height:1.65"><strong style="color:#ffffff">WorkwearCenter.de</strong><br>'.$h('mail.footer_line').'<br><a href="https://workwearcenter.de" style="color:#f7955f;text-decoration:none">workwearcenter.de</a> · <a href="mailto:info@yanik-textildruck.de" style="color:#f7955f;text-decoration:none">info@yanik-textildruck.de</a></td></tr></table><div style="max-width:620px;padding:13px 4px 0;text-align:center;color:#7a7f87;font-size:11px;line-height:1.45">'.$h('mail.auto_note').'</div></td></tr></table></body></html>';
+    return '<!doctype html><html lang="'.yw_lang().'"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.$safeSubject.'</title></head><body style="margin:0;padding:0;background:#ece9e3;font-family:Arial,Helvetica,sans-serif"><div style="display:none;max-height:0;overflow:hidden;color:transparent">'.$safeSubject.'</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ece9e3"><tr><td align="center" style="padding:34px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #ddd9d1"><tr><td bgcolor="#292d2f" style="padding:26px 34px;background:#292d2f;border-top:5px solid #fc6904;border-bottom:1px solid #444547">'.$logo.'</td></tr><tr><td style="padding:34px 34px 36px"><div style="margin-bottom:13px;padding-left:10px;border-left:3px solid #fc6904;font-size:11px;letter-spacing:1.7px;font-weight:800;color:#292d2f">'.$h('mail.kicker').'</div><h1 style="margin:0 0 24px;color:#292d2f;font-size:27px;line-height:1.22">'.$safeSubject.'</h1>'.$content.'<p style="margin:30px 0 0;padding-top:22px;border-top:1px solid #e7e2da;color:#565957;font-size:15px;line-height:1.6">'.$h('mail.regards').'<br><strong>'.$h('mail.team').'</strong></p></td></tr><tr><td style="padding:21px 34px;background:#292d2f;color:#c7c0b6;font-size:12px;line-height:1.65"><strong style="color:#ffffff">WorkwearCenter.de</strong><br>'.$h('mail.footer_line').'<br><a href="https://workwearcenter.de" style="color:#f0cdb4;text-decoration:none">workwearcenter.de</a> · <a href="mailto:info@yanik-textildruck.de" style="color:#f0cdb4;text-decoration:none">info@yanik-textildruck.de</a></td></tr></table><div style="max-width:620px;padding:13px 4px 0;text-align:center;color:#7a7f87;font-size:11px;line-height:1.45">'.$h('mail.auto_note').'</div></td></tr></table></body></html>';
 }
 
 function yw_mail_multipart(string $subject,string $message,string $boundary): string {
@@ -636,24 +635,36 @@ function yw_schema_notice(): string {
     return '<div class="flash error"><strong>Datenbank-Update fehlt.</strong> Die neuen Programmdateien sind hochgeladen, die Datenbank aber noch nicht angepasst. Bitte jetzt den <a href="/update.php">Update-Assistenten</a> ausführen, sonst funktionieren einzelne Bereiche nicht.</div>';
 }
 
-function yw_site_logo_path(): string {
-    $fallback='assets/media/workwearcenter-logo.png';
+function yw_site_logo_path(bool $darkSurface=false): string {
+    $lightLogo='assets/media/workwearcenter-logo-anthrazit.png';
+    $darkLogo='assets/media/workwearcenter-logo.png';
+    $fallback=$darkSurface?$darkLogo:$lightLogo;
     if(!function_exists('current_site_setting')) return $fallback;
     try{$path=trim((string)current_site_setting('site_logo',''));}
     catch(Throwable $e){return $fallback;}
-    return $path!=='' && yw_upload_path_ok($path,'branding') ? $path : $fallback;
+    $defaultLogos=['assets/media/workwearcenter-logo.png','assets/media/workwearcenter-logo-dunkel.png','assets/media/workwearcenter-logo-ice.svg','assets/media/workwearcenter-logo-warm.svg'];
+    if($path===''||in_array($path,$defaultLogos,true))return $fallback;
+    return yw_upload_path_ok($path,'branding') ? $path : $fallback;
 }
 
 function render_head(string $title, ?array $brand = null): void {
-    $primary = $brand && color_ok((string)($brand['primary_color']??'')) ? (string)$brand['primary_color'] : '#101b2d';
-    $accent = $brand && color_ok((string)($brand['accent_color']??'')) ? (string)$brand['accent_color'] : '#ff6b00';
+    $primary = $brand && color_ok((string)($brand['primary_color']??'')) ? (string)$brand['primary_color'] : '#fc6904';
+    $accent = $brand && color_ok((string)($brand['accent_color']??'')) ? (string)$brand['accent_color'] : '#fc6904';
+    $buttonInk='#17191a';
+    if($brand){
+        $rgb=[hexdec(substr($primary,1,2))/255,hexdec(substr($primary,3,2))/255,hexdec(substr($primary,5,2))/255];
+        $linear=array_map(static fn(float $v): float=>$v<=.04045?$v/12.92:(($v+.055)/1.055)**2.4,$rgb);
+        $luminance=$linear[0]*.2126+$linear[1]*.7152+$linear[2]*.0722;
+        $buttonInk=$luminance>.179?'#17191a':'#ffffff';
+    }
+    $brandTokens=$brand?';--wc-accent:'.e($primary).';--wc-orange:'.e($accent).';--wc-button-ink:'.$buttonInk:'';
     $path=path_only();
     $public=in_array($path,['/','/leistungen','/ueber-uns','/so-funktionierts','/mustershop','/kontakt','/anfrage','/impressum','/datenschutz','/zugang'],true);
     $robots=$public&&$path!=='/zugang'?'index,follow,max-image-preview:large':($path==='/zugang'?'noindex,follow':'noindex,nofollow');
     $url='https://'.yw_public_host().$path;
     $canonical=$public?'<link rel="canonical" href="'.e($url).'">':'';
     $descriptions=[
-        '/'=>'Firmenkleidung mit eigenem Online-Shop: Ihr Team bestellt selbst, Sie geben frei, wir besticken und bedrucken in Salzkotten. Yanik Textildruck – für Betriebe in Paderborn und OWL.',
+        '/'=>'WorkwearCenter ist der digitale Firmenshop für Arbeitskleidung: Mitarbeitende bestellen selbst oder Verantwortliche erfassen Teamaufträge. Bestellungen laufen in die Auftragsverwaltung.',
         '/leistungen'=>'Arbeitskleidung und Teamkleidung mit Logo: Stick, Textildruck und Transferdruck aus eigener Produktion in Salzkotten – inklusive Firmenshop mit Budgets und Freigaben.',
         '/ueber-uns'=>'Yanik Textildruck aus Salzkotten: Textilveredelung aus eigener Hand, persönliche Beratung und ein Online-Shop für die Firmenkleidung Ihres Teams.',
         '/so-funktionierts'=>'In vier Schritten zum eigenen Firmenshop: Kollektion abstimmen, Regeln festlegen, Team bestellen lassen, fertig veredelte Kleidung erhalten.',
@@ -665,9 +676,11 @@ function render_head(string $title, ?array $brand = null): void {
         '/zugang'=>'Kunden-Login: Über den Kurznamen direkt zum eigenen Firmenshop im WorkwearCenter.',
     ];
     $description=$descriptions[$path]??(yw_lang_shop_active()?t('meta.description'):'Geschützter Unternehmensshop für Firmenkleidung von WorkwearCenter.');
-    $social=$public?'<meta property="og:type" content="website"><meta property="og:locale" content="de_DE"><meta property="og:site_name" content="WorkwearCenter"><meta property="og:title" content="'.e($title).'"><meta property="og:description" content="'.e($description).'"><meta property="og:url" content="'.e($url).'"><meta property="og:image" content="'.e('https://'.yw_public_host().'/assets/media/screens/shop-desktop.webp').'"><meta name="twitter:card" content="summary_large_image">':'';
+    $shareImage='https://'.yw_public_host().'/'.yw_site_logo_path();
+    $imageAlt=$path==='/'?'WorkwearCenter – digitaler Firmenshop für Arbeitskleidung':'WorkwearCenter';
+    $social=$public?'<meta property="og:type" content="website"><meta property="og:locale" content="de_DE"><meta property="og:site_name" content="WorkwearCenter"><meta property="og:title" content="'.e($title).'"><meta property="og:description" content="'.e($description).'"><meta property="og:url" content="'.e($url).'"><meta property="og:image" content="'.e($shareImage).'"><meta property="og:image:alt" content="'.e($imageAlt).'"><meta name="twitter:card" content="summary"><meta name="twitter:image" content="'.e($shareImage).'"><meta name="twitter:image:alt" content="'.e($imageAlt).'">':'';
     // Symbol auf allen Seiten (sonst fragt der Browser /favicon.ico an und erhält eine 404-Seite).
-    $favicon='<link rel="icon" type="image/png" href="/assets/media/workwearcenter-icon.png"><link rel="apple-touch-icon" href="/assets/media/workwearcenter-icon.png">';
+    $favicon='<link rel="icon" type="image/svg+xml" href="/assets/media/workwearcenter-mark-warm.svg"><link rel="apple-touch-icon" href="/assets/media/workwearcenter-icon.png">';
     $structured='';
     if($public){
         $logo=yw_site_logo_path();
@@ -683,13 +696,13 @@ function render_head(string $title, ?array $brand = null): void {
             'email'=>current_site_setting('imprint_email','info@yanik-textildruck.de'),
         ];
         $organization['logo']='https://'.yw_public_host().'/'.$logo;
-        $organization['image']='https://'.yw_public_host().'/assets/media/screens/shop-desktop.webp';
+        $organization['image']=$shareImage;
         $street=trim((string)current_site_setting('imprint_street',''));$city=trim((string)current_site_setting('imprint_city',''));
         if($street!=='' && preg_match('/^(\d{5})\s+(.+)$/u',$city,$cm))$organization['address']=['@type'=>'PostalAddress','streetAddress'=>$street,'postalCode'=>$cm[1],'addressLocality'=>$cm[2],'addressCountry'=>'DE'];
         $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
     }
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
-    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . '}</style>'.$structured.'</head><body>';
+    echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title><link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<link rel="stylesheet" href="'.e(asset_url('assets/workwear-ui.css')).'"><style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . $brandTokens.'}</style>'.$structured.'</head><body>';
 }
 // 10.15: data-flash – assets/app.js setzt die Rückmeldung nach dem Speichern an das Sprungziel (z. B. #person-12).
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '" data-flash>' . e($f[1]) . '</div>'; }

@@ -1,4 +1,4 @@
-WORKWEARCENTER (Yanik Textildruck) – VERSION 10.12.3
+WORKWEARCENTER (Yanik Textildruck) – VERSION 10.16.4
 ================================================
 
 Dieses Paket ist beides:

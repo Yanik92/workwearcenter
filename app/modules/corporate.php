@@ -292,3 +292,185 @@ function place_account_order(array $company,array $account): never {
     flash('success',t('flash.order_saved',['id'=>$orderId]).' '.($status==='pending'?t('flash.order_saved_pending'):t('flash.order_saved_approved')));
     redirect('/'.$company['slug'].'/bestellungen');
 }
+
+/** Formular-Token für eine gebündelte Bestellung durch Verantwortliche. */
+function yw_team_checkout_fields(array $company,array $manager): string {
+    $token=bin2hex(random_bytes(32));
+    $tokens=$_SESSION['yw_team_order_tokens']??[];
+    foreach($tokens as $key=>$entry)if(($entry['time']??0)<time()-7200)unset($tokens[$key]);
+    if(count($tokens)>20)$tokens=array_slice($tokens,-20,null,true);
+    $tokens[$token]=['time'=>time(),'manager'=>(int)$manager['id'],'company'=>(int)$company['id']];
+    $_SESSION['yw_team_order_tokens']=$tokens;
+    return '<input type="hidden" name="team_submission_token" value="'.e($token).'">';
+}
+
+/**
+ * Eine Team-Eingabe wird transaktional in reguläre Mitarbeiteraufträge zerlegt.
+ * Dadurch bleiben bestehende Budgets, Freigaben, Benachrichtigungen und die Übergabe
+ * an die Auftragsverwaltung vollständig erhalten.
+ */
+function place_team_order(array $company,array $manager): never {
+    $slug=(string)($company['slug']??'');
+    $token=is_string($_POST['team_submission_token']??null)?$_POST['team_submission_token']:'';
+    $binding=$_SESSION['yw_team_order_tokens'][$token]??[];
+    if(!preg_match('/^[a-f0-9]{64}$/D',$token)||($binding['manager']??0)!==(int)$manager['id']||($binding['company']??0)!==(int)$company['id']||($binding['time']??0)<time()-7200){
+        flash('error',t('err.form_expired'));redirect('/'.$slug.'/sammelbestellung');
+    }
+    try{
+        $rawTeam=$_POST['team']??null;
+        if(!is_array($rawTeam)||count($rawTeam)>20)throw new DomainException(t('team.limit_notice'));
+        $groups=[];$seen=[];$rowCount=0;
+        foreach($rawTeam as $entry){
+            if(!is_array($entry))throw new DomainException(t('err.item_invalid'));
+            $rawItems=$entry['items']??[];
+            if(!is_array($rawItems))throw new DomainException(t('err.item_invalid'));
+            $hasProduct=false;
+            foreach($rawItems as $probe)if(is_array($probe)&&isset($probe['product_id'])&&$probe['product_id']!==''){$hasProduct=true;break;}
+            $rawId=$entry['employee_id']??'';
+            if((!is_scalar($rawId)||trim((string)$rawId)==='')&&!$hasProduct)continue;
+            if(!is_scalar($rawId)||!preg_match('/^[1-9]\d*$/D',(string)$rawId)||(string)(int)$rawId!==(string)$rawId)throw new DomainException(t('team.choose_person'));
+            $employeeId=(int)$rawId;
+            if(isset($seen[$employeeId]))throw new DomainException(t('team.choose_person'));
+            $seen[$employeeId]=true;$items=[];
+            foreach($rawItems as $rawItem){
+                $rowCount++;
+                if($rowCount>200)throw new DomainException(t('team.limit_notice'));
+                if(!is_array($rawItem))throw new DomainException(t('err.item_invalid'));
+                $rawProduct=$rawItem['product_id']??'';
+                if($rawProduct===''||$rawProduct===null)continue;
+                if(!is_scalar($rawProduct)||!preg_match('/^[1-9]\d*$/D',(string)$rawProduct)||(string)(int)$rawProduct!==(string)$rawProduct)throw new DomainException(t('err.item_invalid'));
+                $rawQty=$rawItem['quantity']??'';
+                if(!is_scalar($rawQty)||!preg_match('/^\d{1,2}$/D',(string)$rawQty))throw new DomainException(t('err.qty_invalid'));
+                $qty=(int)$rawQty;
+                if($qty<1||$qty>10)throw new DomainException(t('err.qty_max'));
+                $size=$rawItem['size']??null;
+                if(!is_string($size)||trim($size)==='')throw new DomainException(t('err.size_invalid'));
+                $items[]=['product_id'=>(int)$rawProduct,'size'=>trim($size),'quantity'=>$qty];
+            }
+            if($items)$groups[$employeeId]=['items'=>$items];
+        }
+        if(!$groups)throw new DomainException(t('err.no_items'));
+        if(count($groups)>20)throw new DomainException(t('team.limit_notice'));
+        ksort($groups);
+        $note=is_string($_POST['team_note']??null)?mb_substr(trim($_POST['team_note']),0,350):'';
+        $childTokens=[];
+        foreach(array_keys($groups) as $employeeId)$childTokens[$employeeId]=hash('sha256',$token.'|'.$employeeId);
+
+        db()->beginTransaction();
+        // Sperre auf Firmenebene serialisiert Team- und Einzelbestellungen mit Änderungen an Regeln.
+        $q=db()->prepare('SELECT * FROM companies WHERE id=? AND active=1 FOR UPDATE');
+        $q->execute([(int)$company['id']]);$company=$q->fetch();
+        if(!$company)throw new DomainException(t('err.shop_unavailable'));
+        $q=db()->prepare("SELECT * FROM employee_accounts WHERE id=? AND company_id=? AND active=1 AND registration_status='approved' AND role IN ('manager','employee') AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) FOR UPDATE");
+        $q->execute([(int)$manager['id'],(int)$company['id']]);$manager=$q->fetch();
+        if(!$manager||!account_is_manager($manager))throw new DomainException(t('err.no_access_text'));
+
+        $existing=[];$existingCount=0;
+        $q=db()->prepare('SELECT id FROM orders WHERE submission_token=? AND company_id=? AND employee_account_id=? LIMIT 1');
+        foreach($childTokens as $employeeId=>$childToken){
+            $q->execute([$childToken,(int)$company['id'],$employeeId]);$id=$q->fetchColumn();
+            if($id!==false){$existing[$employeeId]=(int)$id;$existingCount++;}
+        }
+        if($existingCount===count($groups)){
+            db()->rollBack();flash('success',t('team.saved',['n'=>count($groups)]));redirect('/'.$slug.'/bestellungen');
+        }
+        if($existingCount>0)throw new DomainException(t('err.order_failed'));
+
+        $ids=array_keys($groups);$marks=implode(',',array_fill(0,count($ids),'?'));
+        $q=db()->prepare("SELECT * FROM employee_accounts WHERE company_id=? AND id IN ($marks) AND active=1 AND registration_status='approved' AND role IN ('manager','employee') AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) ORDER BY id FOR UPDATE");
+        $q->execute(array_merge([(int)$company['id']],$ids));$accounts=[];
+        foreach($q->fetchAll() as $row)$accounts[(int)$row['id']]=$row;
+        if(count($accounts)!==count($groups))throw new DomainException(t('err.access_not_approved'));
+
+        $q=db()->prepare('SELECT p.*,cp.custom_name,cp.custom_description,cp.price_override_cents,cp.preview_front_path,cp.preview_back_path,cp.decorations_json,cp.yearly_limit_qty FROM products p JOIN company_products cp ON cp.product_id=p.id WHERE cp.company_id=? AND p.active=1 FOR UPDATE');
+        $q->execute([(int)$company['id']]);$products=[];
+        foreach($q->fetchAll() as $product)$products[(int)$product['id']]=$product;
+
+        $orders=[];$batchGross=0;$batchNetByRate=[];
+        foreach($groups as $employeeId=>$selection){
+            $employee=$accounts[$employeeId];$profileRules=yw_account_profile_rules($employee);
+            $groupItems=[];$calcLines=[];$requestedByProduct=[];
+            foreach($selection['items'] as $line){
+                $productId=$line['product_id'];
+                if(!isset($products[$productId])||($profileRules!==null&&!isset($profileRules[$productId])))throw new DomainException(t('err.item_not_allowed'));
+                $product=$products[$productId];$sizes=json_decode((string)$product['sizes'],true)?:[];
+                if(!in_array($line['size'],$sizes,true))throw new DomainException(t('err.size_not_allowed'));
+                $qty=$line['quantity'];$requestedByProduct[$productId]=($requestedByProduct[$productId]??0)+$qty;
+                $price=product_price_breakdown($product,$company);
+                $snapshot=['version'=>1,'name'=>company_product_display_name($product),'description'=>company_product_display_description($product),'color'=>$product['color'],'sku'=>$product['sku']??null,'decorations'=>company_product_decorations($product),'base_decoration_type'=>$product['decoration_type']??'','base_decoration_details'=>$product['decoration_details']??''];
+                $groupItems[]=[$product,$line['size'],$qty,$price,json_encode($snapshot,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE)];
+                $calcLines[]=['net_unit'=>$price['net'],'qty'=>$qty,'vat'=>$price['vat']];
+            }
+            foreach($requestedByProduct as $productId=>$qty){
+                $product=$products[$productId];$rule=$profileRules[$productId]??null;
+                yw_check_limits(null,0,0,yw_effective_product_limit($product,$rule),yw_quantity_used($company,$employee,$productId),$qty);
+            }
+            $calc=yw_calc_items($calcLines,company_employee_share_percent($company));
+            $orders[$employeeId]=['account'=>$employee,'items'=>$groupItems,'calc'=>$calc];
+            $batchGross+=$calc['gross'];
+            foreach($calc['net_by_rate'] as $rate=>$amount)$batchNetByRate[$rate]=($batchNetByRate[$rate]??0)+(int)$amount;
+        }
+
+        // Versand wird einmal für die ganze Erfassung berechnet und anteilig auf die Einzelaufträge verteilt.
+        $batchShipping=shipping_breakdown($company,$batchGross,$batchNetByRate);
+        if(($company['delivery_mode']??'company')==='pickup')$batchShipping=['net'=>0,'vat'=>null,'gross'=>0,'employee'=>0,'company'=>0,'free'=>true];
+        $weightTotal=0;$remainders=[];
+        foreach($orders as $employeeId=>$order){$weight=max(1,(int)$order['calc']['net']);$orders[$employeeId]['shipping_weight']=$weight;$weightTotal+=$weight;}
+        $allocated=0;
+        foreach($orders as $employeeId=>$order){
+            $numerator=(int)$batchShipping['net']*(int)$order['shipping_weight'];
+            $share=intdiv($numerator,$weightTotal);$allocated+=$share;
+            $orders[$employeeId]['shipping_net']=$share;$remainders[$employeeId]=$numerator%$weightTotal;
+        }
+        $ranked=array_keys($remainders);
+        usort($ranked,static fn(int $a,int $b):int=>($remainders[$b]<=>$remainders[$a])?:($a<=>$b));
+        for($i=0;$allocated<(int)$batchShipping['net'];$i++,$allocated++){
+            $employeeId=$ranked[$i%count($ranked)];$orders[$employeeId]['shipping_net']++;
+        }
+
+        $status=(int)$company['approval_required']===1?'pending':'approved';$orderIds=[];
+        $insertOrder=db()->prepare('INSERT INTO orders(company_id,invite_id,employee_account_id,total_cents,net_total_cents,gross_total_cents,employee_total_cents,company_total_cents,shipping_net_cents,shipping_gross_cents,shipping_employee_cents,shipping_company_cents,status,note,submission_token,delivery_snapshot_json,shipping_vat_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+        $insertItem=db()->prepare('INSERT INTO order_items(order_id,product_id,product_name,size,quantity,unit_price_cents,unit_net_cents,vat_rate,unit_gross_cents,employee_share_cents,company_share_cents,decoration_snapshot_json,line_net_cents,line_gross_cents,line_employee_cents,line_company_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+        $batchRef='Team '.strtoupper(substr($token,0,8));
+        foreach($orders as $employeeId=>&$order){
+            $employee=$order['account'];$calc=$order['calc'];$shippingNet=(int)$order['shipping_net'];
+            $shippingVat=$shippingNet>0?(float)$batchShipping['vat']:null;
+            $shippingTax=$shippingNet>0?yw_shipping_tax_cents($calc['net_by_rate'],$shippingNet,(float)$batchShipping['vat']):0;
+            $shippingGross=$shippingNet+$shippingTax;
+            $shippingEmployee=(string)($company['shipping_payer']??'company')==='employee'?$shippingGross:0;
+            $shippingCompany=$shippingGross-$shippingEmployee;
+            $net=$calc['net']+$shippingNet;$gross=$calc['gross']+$shippingGross;
+            $employeeTotal=$calc['employee']+$shippingEmployee;$companyTotal=$calc['company']+$shippingCompany;
+            yw_check_limits(yw_budget_limit($company,$employee),yw_budget_used($company,$employee),$companyTotal);
+            $delivery=['mode'=>$company['delivery_mode'],'address'=>trim((string)$company['delivery_address']),'company'=>$company['legal_name'],'employee'=>$employee['name'],'department'=>$employee['department'],'cost_center'=>$employee['cost_center']];
+            if($delivery['mode']==='company'&&$delivery['address']==='')throw new DomainException(t('err.no_delivery_address'));
+            $inviteId=ensure_account_invite($company,$employee);
+            $orderNote=$batchRef.($note!==''?' · '.$note:'');
+            $insertOrder->execute([(int)$company['id'],$inviteId,$employeeId,$net,$net,$gross,$employeeTotal,$companyTotal,$shippingNet,$shippingGross,$shippingEmployee,$shippingCompany,$status,mb_substr($orderNote,0,500),$childTokens[$employeeId],json_encode($delivery,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE),$shippingVat]);
+            $orderId=(int)db()->lastInsertId();$order['id']=$orderId;$orderIds[]=$orderId;
+            foreach($order['items'] as $index=>[$product,$size,$qty,$price,$snapshot]){
+                $line=$calc['lines'][$index];
+                $insertItem->execute([$orderId,(int)$product['id'],company_product_display_name($product),$size,$qty,$price['net'],$price['net'],$price['vat'],$price['gross'],$price['employee'],$price['employer'],$snapshot,$line['net'],$line['gross'],$line['employee'],$line['company']]);
+            }
+        }
+        unset($order);
+        db()->commit();
+    }catch(Throwable $e){
+        if(db()->inTransaction())db()->rollBack();
+        if(!$e instanceof DomainException)error_log('Yanik team checkout: '.$e->getMessage());
+        flash('error',$e instanceof DomainException?$e->getMessage():t('err.order_failed'));
+        redirect('/'.$slug.'/sammelbestellung');
+    }
+
+    foreach($orders as $employeeId=>$order){
+        $orderId=(int)$order['id'];$employee=$order['account'];
+        audit_log('order.created','order',$orderId,['company_id'=>(int)$company['id'],'status'=>$status,'source'=>'team-order','batch_reference'=>$batchRef,'manager_account_id'=>(int)$manager['id']]);
+        if($status==='approved')yw_handover_enqueue($orderId);
+        yw_notify_managers_new_order($company,$orderId,(int)$employee['id'],'',$status);
+        $statusUrl=workwearcenter_url((string)$company['slug'].'/bestellungen');
+        notify_order_employee($orderId,fn(array $p)=>[t('mail.confirm.subject',['id'=>$orderId]),t('mail.hello',['name'=>$p['name']])."\n\n".t('mail.confirm.body')."\n\n".yw_order_mail_summary($orderId)."\n\n".t('mail.view_status').': '.$statusUrl]);
+    }
+    unset($_SESSION['yw_team_order_tokens'][$token]);
+    flash('success',t('team.saved',['n'=>count($orderIds)]));
+    redirect('/'.$slug.'/bestellungen');
+}

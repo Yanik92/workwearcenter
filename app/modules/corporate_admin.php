@@ -301,7 +301,7 @@ function yw_private_exposure_check(bool $force=false): array {
             $token=bin2hex(random_bytes(16));
             $probe=yw_private_dir().'/sperrtest.txt';
             file_put_contents($probe,$token);
-            $secure=(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https');
+            $secure=function_exists('yw_request_is_https')?yw_request_is_https():(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off');
             $host=(string)($_SERVER['HTTP_HOST']??yw_public_host());
             $base=($secure?'https://':'http://').$host;
             // Zusätzlich: Sperre in uploads/ (Datenlisten) und Schutz-Header für SVG-Logos, die direkt aufgerufen werden können
@@ -333,6 +333,7 @@ function yw_private_exposure_check(bool $force=false): array {
 
 function yw_system(): void {
     $age=yw_backup_age_days();
+    $runtimeErrors=yw_runtime_recent_errors(24,20);
     echo '<section class="card"><div class="title-row"><div><h2>Datensicherung</h2><p class="muted">Lädt Datenbank und hochgeladene Dateien als ZIP herunter. Bitte wöchentlich und vor jedem Update, und die Datei außerhalb des Webspace aufbewahren.</p></div><a class="btn primary" href="/admin/sicherung">Sicherung herunterladen</a></div><p>'.($age===null?'Noch keine Sicherung heruntergeladen.':'Letzte Sicherung: vor '.$age.' Tag'.($age===1?'':'en').' ('.e(current_site_setting('last_backup_at','')).').').'</p></section>';
     echo yw_retention_card(); // 10.15: Aufbewahrungsfristen und letzte automatische Bereinigung
     $mail=['pending'=>0,'failed'=>0];$failedMails=[];
@@ -359,6 +360,7 @@ function yw_system(): void {
     $integrity=yw_file_integrity();
     $outdated=$integrity?array_merge($integrity['stale'],$integrity['missing']):[];
     $integrityHint=$integrity===null?'Dateiliste app/data/dateien.json fehlt – Paket vollständig hochladen':'Nicht aktuell oder fehlend: '.implode(', ',array_slice($outdated,0,10)).(count($outdated)>10?' … (+'.(count($outdated)-10).')':'').' – per FTP erneut hochladen, vorhandene Dateien immer überschreiben';
+    $runtime=yw_runtime_health();
     $checks=[
         ['Interne Dateien gesperrt',$exposureOk===true,$exposureHint.' (Erneut prüfen: Systemstatus mit ?pruefen=1 aufrufen)'],
         ['Cronjob läuft',$cronOk,$cronLast===''?'cron.php ist noch nie gelaufen – beim Hoster alle 5 Minuten einrichten':'Letzter Lauf '.date('d.m.Y H:i',(int)strtotime($cronLast)).' – Cronjob beim Hoster prüfen'],
@@ -366,20 +368,33 @@ function yw_system(): void {
         ['Zwei-Faktor für alle Admins',$adminsWithout2fa===0,$adminsWithout2fa===null?'Datenbankschema aktualisieren':$adminsWithout2fa.' aktive Administrator(en) ohne Zwei-Faktor-Anmeldung'],
         ['Impressum vollständig',$imprintMissing===[],'Unter Website → Inhalte ergänzen: '.implode(', ',$imprintMissing)],
         ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint],
-        ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen'],
+        ['Datenbankschema '.YW_SCHEMA_REQUIRED,yw_schema_ready(true),'Update-Assistent ausführen'],
+        ['PHP-Erweiterungen',$runtime['missing_extensions']===[],count($runtime['missing_extensions'])?'Fehlend: '.implode(', ',$runtime['missing_extensions']):'Alle benötigten Erweiterungen sind geladen'],
+        ['PHP-Laufzeitwerte',$runtime['php_settings_ok'],$runtime['php_settings_hint'].' · empfohlen: 256M, 20M, 25M, 300 Sekunden'],
+        ['Upload-Ordner beschreibbar',$runtime['uploads_writable'],'Ordner uploads/ und Unterordner beim Hoster beschreibbar machen'],
+        ['Privater Datenordner geschützt',$runtime['private_writable']&&$runtime['private_outside_webroot'],$runtime['private_writable']?($runtime['private_outside_webroot']?'Beschreibbar und außerhalb des Webroots':'private_dir in config.php außerhalb des Webroots festlegen'):'private_dir anlegen und für PHP beschreibbar machen'],
+        ['App-Schlüssel gesetzt',$runtime['app_secret_ok'],'In config.php app_secret mit mindestens 32 zufälligen Zeichen setzen'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren'],
-        ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren'],
+        ['HTTPS-Verbindung',function_exists('yw_request_is_https')?yw_request_is_https():(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off'),'SSL/HTTPS beim Hoster aktivieren; bei Proxy trusted_proxies konfigurieren'],
         ['Mailtransport',$mailConfigured && $mail['failed']===0,$mailIssues?implode(' · ',$mailIssues):'Fehlgeschlagene E-Mails prüfen'],
         ['Datenschutztext',mb_strlen(strip_tags(current_site_setting('privacy_body','')))>250,'Geprüften Datenschutztext unter Inhalte hinterlegen'],
         ['Wartungsmodus aus',!maintenance_enabled(),'Wartungsmodus unter Design deaktivieren'],
         ['Beschaffungsdaten',$missingSupplierData===0,$missingSupplierData===null?'Datenbankschema aktualisieren':$missingSupplierData.' aktive Produkte ohne Lieferant oder Artikelnummer ergänzen'],
         ['Übergabe an Auftragsverwaltung',yw_handover_config()['mode']!=='off' && !yw_handover_config_issues(),yw_handover_config()['mode']==='off'?'Noch nicht verbunden – Aufträge werden gesammelt (siehe „Übergabe“)':implode(' · ',yw_handover_config_issues())],
         ['Eindeutige Artikelnummern',$duplicateSkus===0,$duplicateSkus===null?'Datenbankschema aktualisieren':$duplicateSkus.' mehrfach vergebene Artikelnummern im Produktstamm bereinigen'],
+        ['Unbehandelte Fehler (24 Stunden)',$runtimeErrors!==null&&$runtimeErrors===[],$runtimeErrors===null?'Privates Fehlerprotokoll nicht lesbar – private_dir und Schreibrechte prüfen':(count($runtimeErrors)?count($runtimeErrors).' Fehlerreferenz(en) im Protokoll prüfen':'Keine unbehandelten Fehler im letzten Tag')],
     ];
     $ready=count(array_filter($checks,fn($c)=>$c[1]));
     echo '<section class="card"><div class="title-row"><div><h2>Betriebsprüfung · Version '.e(app_version()).'</h2><p class="muted">'.$ready.' von '.count($checks).' Betriebsprüfungen bestanden.</p></div><span class="badge '.($ready===count($checks)?'approved':'pending').'">'.($ready===count($checks)?'Betriebsbereit':'Prüfung nötig').'</span></div><div class="release-checks">';
     foreach($checks as [$label,$ok,$hint]) echo '<div class="release-check '.($ok?'ok':'warn').'"><strong>'.($ok?'✓':'!').' '.e($label).'</strong><span>'.e($ok?'Erfüllt':$hint).'</span></div>';
-    echo '</div><hr><p><strong>Domain:</strong> workwearcenter.de · <strong>PHP:</strong> '.e(PHP_VERSION).' · <strong>Abrechnung:</strong> Lexware Office '.(yw_lexware_enabled()?'per API (Rechnungsentwürfe)':'derzeit manuell').'</p><p><strong>Mailtransport:</strong> '.e(strtoupper($transport)).' · <strong>Warteschlange:</strong> '.$mail['pending'].' wartend · '.$mail['failed'].' fehlgeschlagen</p><p class="muted">Für einen zuverlässigen Versand kann der Hoster <code>cron.php</code> alle fünf Minuten per PHP-CLI ausführen. Der normale Seitenaufruf verarbeitet weiterhin kleine Mengen als Rückfallebene.</p><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="yw_mail_test"><button class="btn primary">Testmail senden</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="yw_mail_process"><button class="btn">Fehlgeschlagene E-Mails erneut senden</button></form><a class="btn" href="/update.php">Update-Assistent</a></div>';
+    echo '</div>';
+    if($runtimeErrors===null)echo '<p class="flash info">Das Fehlerprotokoll ist nicht lesbar. Prüfe den privaten Datenordner und die Schreibrechte.</p>';
+    elseif($runtimeErrors){
+        echo '<details class="details space-top"><summary>Fehlerreferenzen der letzten 24 Stunden ('.count($runtimeErrors).')</summary><div class="details-inner"><p class="muted">Aus Datenschutzgründen werden hier keine Fehlermeldungen oder personenbezogenen Inhalte angezeigt. Die vollständigen, bereinigten Diagnosedaten liegen im privaten Datenordner.</p><div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Referenz</th><th>Route</th><th>Fehlerstelle</th></tr></thead><tbody>';
+        foreach($runtimeErrors as $incident){$time=strtotime((string)$incident['at']);echo '<tr><td>'.e($time?date('d.m.Y H:i',$time):'–').'</td><td><code>'.e((string)$incident['id']).'</code></td><td>'.e((string)$incident['route']).'</td><td>'.e((string)$incident['type']).' · '.e((string)$incident['file']).':'.(int)$incident['line'].'</td></tr>';}
+        echo '</tbody></table></div></div></details>';
+    }else echo '<p class="muted">Keine unbehandelten PHP-Fehler in den letzten 24 Stunden.</p>';
+    echo '<hr><p><strong>Domain:</strong> workwearcenter.de · <strong>PHP:</strong> '.e(PHP_VERSION).' · <strong>Abrechnung:</strong> Lexware Office '.(yw_lexware_enabled()?'per API (Rechnungsentwürfe)':'derzeit manuell').'</p><p><strong>Mailtransport:</strong> '.e(strtoupper($transport)).' · <strong>Warteschlange:</strong> '.$mail['pending'].' wartend · '.$mail['failed'].' fehlgeschlagen</p><p class="muted">Für einen zuverlässigen Versand kann der Hoster <code>cron.php</code> alle fünf Minuten per PHP-CLI ausführen. Der normale Seitenaufruf verarbeitet weiterhin kleine Mengen als Rückfallebene.</p><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="yw_mail_test"><button class="btn primary">Testmail senden</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="yw_mail_process"><button class="btn">Fehlgeschlagene E-Mails erneut senden</button></form><a class="btn" href="/update.php">Update-Assistent</a></div>';
     if($failedMails){
         echo '<hr><h3>Letzte fehlgeschlagene E-Mails</h3><div class="table-wrap"><table class="table"><thead><tr><th>Empfänger</th><th>Betreff</th><th>Versuche</th><th>Fehler</th></tr></thead><tbody>';
         foreach($failedMails as $failed) echo '<tr><td>'.e($failed['to_email']).'</td><td>'.e($failed['subject']).'</td><td>'.(int)$failed['attempts'].'</td><td>'.e($failed['last_error']?:'Keine Angabe').'</td></tr>';

@@ -1,6 +1,154 @@
-# WorkwearCenter 10.0.0 – Änderungen
+# WorkwearCenter 10 – Änderungen
 
-Stand: 26. September 2026 · enthält alle Korrekturen aus 9.1.0
+Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+
+## 10.16.23 – Öffentliche Website: klare B2B-Texte und neues Farbsystem
+Kein Datenbank-Update nötig.
+
+- Die Startseite erklärt in fünf konkreten Schritten den Weg von der Anfrage bis zu Produktion, Lieferung und Auftragsverwaltung.
+- Die Texte richten sich direkt an Unternehmen und sprechen Kundinnen und Kunden mit „du“ an. Preis-, Mengen-, Einrichtungs-, Liefer- und Antwortzeiten bleiben sichtbar als Platzhalter, bis sie bestätigt sind.
+- Der Startseiten-Hero zeigt den Ablauf als Text statt einer ungeprüften Produktbild-Collage. Navy, Orange und Weiß ersetzen die warmen Beige- und Anthrazitflächen; Navigation und Abschnittsreihenfolge bleiben bestehen.
+- Anfrageformular und Impressumsanzeige enthalten keine Telefonnummer. Shop-, Login- und Bestellfunktionen bleiben unverändert.
+
+## 10.16.22 – Anthrazitfarbene Wortmarke auf hellen Flächen
+Kein Datenbank-Update nötig.
+
+- Die helle Wortmarke des Original-Logos wird auf Website, Verwaltung und Anmeldeseiten anthrazitfarben dargestellt; das leuchtende Orange und die transparenten Bereiche bleiben erhalten.
+- Helle Logo-Flächen kommen ohne dunkle Plakette aus. Auf dunklen Fußzeilen und Wartungsseiten bleibt die weiße Originalvariante im Einsatz.
+- E-Mails verwenden ebenfalls die weiße Variante auf Anthrazit.
+
+## 10.16.21 – Markenorange aus dem Original-Logo
+Kein Datenbank-Update nötig.
+
+- Die Plattform verwendet jetzt das leuchtende Orange aus dem WorkwearCenter-Logo zusammen mit Anthrazit und warmen hellen Flächen.
+- Aktionsflächen zeigen dunkle, gut lesbare Beschriftungen; kleine Textlinks bleiben anthrazit und nutzen Orange als Akzent.
+- Helle Bereiche wie der Footer zeigen die weiße Wortmarke auf einer passenden Anthrazitfläche.
+- Gespeicherte Standardfarben der vorherigen Palette werden auf das Markenorange umgestellt; individuelle Firmen-Shop-Farben bleiben erhalten.
+
+## 10.16.20 – Originales WorkwearCenter-Logo
+Kein Datenbank-Update nötig.
+
+- Das bereitgestellte WorkwearCenter-Logo ersetzt das generierte Standard-Wortzeichen auf Website, Verwaltung und Anmeldeseiten.
+- Die weiße Wortmarke erhält auf hellen Flächen eine Anthrazitfläche; auf dunklen Fußzeilen bleibt das Logo direkt lesbar.
+- Alte gespeicherte Standard-Logos werden auf das Original abgebildet. Hochgeladene Kundenlogos bleiben unverändert.
+
+## 10.16.19 – Warmweiß, Anthrazit und Workwear-Orange
+Kein Datenbank-Update nötig.
+
+- Das Plattformdesign wechselt von kühlen Blautönen zu warmen hellen Flächen, Anthrazit und einem klaren Orange für Aktionen.
+- Wortmarke und Seitensymbol passen nun zur neuen Farbwelt. Alte Standard-Farbeinstellungen werden auf die neue Plattformpalette abgebildet; hochgeladene Firmenlogos und individuelle Firmenshop-Farben bleiben erhalten.
+- Anmeldungen, Verwaltung, öffentliche Website und System-E-Mails verwenden dieselbe Markenpalette.
+
+## 10.16.18 – Firmenportal ausführlicher erklärt
+Kein Datenbank-Update nötig.
+
+- Die Startseite erklärt nun konkreter, warum das Portal für wiederkehrende Firmenkleidung gedacht ist und wie es Beschäftigte, Teamverantwortliche und Auftragsbearbeitung verbindet.
+- Die Vorteile beschreiben den praktischen Nutzen einer abgestimmten Kollektion, zugeordneter Bestellangaben und persönlicher Bestellregeln.
+- Das FAQ gibt ausführlichere Antworten zum Anlass des Portals, zu Einzel- und Team-Bestellungen sowie zu Regeln, Auftragsverwaltung und Einrichtung.
+- Die Fußnavigation verlinkt direkt auf Vorteile und FAQ.
+
+## 10.16.17 – Erklärbereich, Vorteile und FAQ für Firmenkunden
+Kein Datenbank-Update nötig.
+
+- Die Startseite erklärt ausführlicher, was das WorkwearCenter als geschützter Firmen-Bestellshop leistet und warum es für wiederkehrende Bestellungen eingerichtet wurde.
+- Ein eigener Vorteilebereich beschreibt abgestimmte Kollektionen, nachvollziehbare Einzel- und Teamaufträge sowie Regeln je Mitarbeiterkonto.
+- Eine neue FAQ beantwortet Fragen zu Mitarbeiter- und Sammelbestellungen, Budgets, Freigaben, Firmenlogo und Farben, Auftragsübergabe, Abrechnung, Lieferscheinen, Zugang und Einrichtung.
+- Die Navigation führt direkt zu Vorteilen und FAQ. Das Akkordeon ist tastaturbedienbar und auf schmalen Bildschirmen einspaltig angeordnet.
+
+## 10.16.16 – Eisblau, Anthrazit und neues WorkwearCenter-Wortzeichen
+Kein Datenbank-Update nötig.
+
+- Das Plattformdesign verwendet jetzt Eisblau für helle Flächen, Anthrazit für Text und Navigation, klares Blau für Aktionen und Rot nur als kleinen Markenakzent.
+- Das WorkwearCenter-Standardlogo wurde als skalierbares Vektor-Wortzeichen neu gestaltet und auf der Website sowie in Anmeldeseiten eingebunden.
+- Verwaltungsfarben, Fokuszustände, Statushinweise und globale Seiten folgen derselben Palette. Individuelle Farben und Logos der Firmen-Shops bleiben erhalten.
+- Die Website verwendet das passende neue Markensymbol als SVG-Favicon.
+
+## 10.16.15 – WorkwearCenter als eigenständiger Firmen-Bestellshop
+Kein Datenbank-Update nötig.
+
+- Die Startseite erklärt WorkwearCenter als digitalen Bestellshop für Firmenkleidung. Sichtbare Unternehmens- und Werkstattwerbung für Yanik Textildruck wurde aus der Startseite entfernt; Impressum und Datenschutz bleiben erreichbar.
+- Der Einstieg zeigt eine echte Beispielkollektion und führt zu zwei Bestellwegen: Mitarbeitende bestellen selbst oder eine verantwortliche Person erfasst Aufträge für das Team.
+- Der Übergang in die Auftragsverwaltung, einschließlich Abrechnung und Lieferscheinen, ist als eigener Ablauf erklärt.
+- Die Seite führt ohne doppelte FAQ-Erklärungen vom Produktzweck über Bestellmodell und Auftragsweg direkt zu Kontakt und Anfrage.
+- Der Aufbau nutzt eigene Produkt- und Informationsbereiche statt wiederholter Kartenabschnitte. Kundenlogos erscheinen weiterhin nur, wenn sie im Inhalt gepflegt und freigegeben sind.
+
+## 10.16.14 – Markengerechte Blaugestaltung für Website und Verwaltung
+Kein Datenbank-Update nötig.
+
+- Das plattformweite Farbsystem greift das Dunkelblau des WorkwearCenter-Logos auf, ergänzt es mit hellblauen Flächen und setzt Orange sparsam als Logo-Akzent ein.
+- Startseite, Bestellwege, Ablauf, Kontakt- und Zugangsseiten folgen jetzt derselben Typografie, Oberflächen- und Abstandslogik.
+- Die Navigation der öffentlichen Seiten bleibt sichtbar und im Dokumentfluss; damit verschwindet sie nicht mehr beim Einstieg auf die Startseite.
+- Verwaltungsoberfläche, Kennzahlen, Tabellen und Formulare verwenden dieselben kühlen, hellblauen Neutralflächen, feinere Rahmen und klare Statusfarben.
+- Individuelle Kundenfarben, Firmenlogos sowie die bestehenden Shop- und Auftragsfunktionen bleiben erhalten.
+- Die HTTPS- und Proxyprüfung liegt jetzt als eigenständige, datenbankfreie Funktion vor; der Regressionstest startet auf Windows seine Prüfprozesse ohne fehleranfällige Shell-Quotierung.
+
+## 10.16.13 – Ruhigeres Markendesign und mobile Bestellführung
+Kein Datenbank-Update nötig.
+
+- Die WorkwearCenter-Seiten nutzen eine helle, redaktionelle Bildsprache mit klarer Typografie, warmen neutralen Flächen und gezielten Navy-/Orange-Akzenten statt großer dunkler Vollflächen.
+- Der KANTENWERK-Mustershop hat ein eigenes, zurückhaltendes Waldgrün-/Messing-Farbsystem mit passendem Wortlogo und dezenter Kleidungsmarkierung.
+- Produktkarten, Auswahl und Budget sind flacher und besser gegliedert. Auf schmalen Displays stehen Produktbild und Bestellfelder gut lesbar untereinander statt in gedrängten Mini-Spalten.
+- Die Verwaltung verwendet eine reduzierte Flächen- und Kartenhierarchie; die Kopfleiste bleibt beim Bearbeiten langer Listen erreichbar.
+
+## 10.16.12 – Markenbild und Arbeitsnavigation
+Kein Datenbank-Update nötig.
+
+- Die Startseite nutzt die echten Werkstattfotos in einer klaren WorkwearCenter-Farbwelt aus Navy, Orange und warmem Weiß. Kopfzeile, Bild und Handlungswege sind auf Desktop und Mobilansicht abgestimmt.
+- Der öffentliche Mustershop zeigt jetzt die KANTENWERK-Beispielmarke durchgängig: Wortlogo im Shop, KANTENWERK-Markierung auf den Kleidungsstücken und dazu passende Waldgrün-/Limetten-Farben.
+- Die Verwaltung gruppiert Navigation und Seitenkopf nach den täglichen Abläufen. Eine direkte Suche ist auch in der Seitenleiste erreichbar.
+- Widersprüchliche Plattform-Overrides entfernt, die das Kundenfarbschema des Mustershops zuvor auf WorkwearCenter-Blau-Orange zurückgesetzt haben.
+
+## 10.16.11 – Arbeitsübersicht und Vertrauen
+Kein Datenbank-Update nötig.
+
+- Die Verwaltungsstartseite bündelt Kennzahlen, dringende Aufgaben, Produktionsstatus und Firmenkonten in einer flachen Arbeitsoberfläche. Kennzahlen führen direkt in den zugehörigen Bereich.
+- Die Hauptnavigation wechselt bereits bei mittleren Bildschirmbreiten in ein vollständiges Menü, bevor Links und Kontaktaktion umbrechen.
+- Der Vertrauensbereich der Startseite bleibt sichtbar. Kundenlogos und Stimmen laufen nach redaktioneller Freigabe durch; solange noch keine Referenzen gepflegt sind, führt der Bereich transparent zur persönlichen Anfrage.
+- Mustershop-Farben folgen dem WorkwearCenter-Auftritt; echte Firmenvorschauen behalten weiterhin ihre eigene Marke.
+
+## 10.16.4 – Verwaltung nach Arbeitsabläufen
+Kein Datenbank-Update nötig.
+
+- Die Navigation ist in Kunden & Anfragen, Auftragsabwicklung, Sortiment, Marke & Website sowie System & Sicherheit gegliedert. Aktive Bereiche bleiben aufgeklappt; die zugehörigen Unterseiten stehen direkt beieinander.
+- Mitarbeiterregistrierungen haben jetzt einen zentralen, durchsuchbaren Freigabeeingang mit Firmennamen, Registrierungszeitpunkt und Seitennavigation.
+- Zähler und Dashboard führen direkt zum Freigabeeingang statt zur allgemeinen Kundenliste.
+- Freigabe und Ablehnung prüfen den offenen Status beim Speichern erneut. Ein bereits bearbeiteter oder zwischenzeitlich veränderter Eintrag kann nicht stillschweigend ein zweites Mal verarbeitet werden.
+- Freigabeentscheidungen bleiben im Aktivitätsprotokoll dokumentiert und lösen weiterhin die vorhandene Benachrichtigung aus.
+
+## 10.16.3 – Mustershop mit eigener Firmenmarke
+Kein Datenbank-Update nötig.
+
+- Der Mustershop zeigt mit KANTENWERK eine klar als Beispiel gekennzeichnete Firmenmarke mit eigenem Logo und einer vom WorkwearCenter abweichenden Waldgrün-/Limetten-Farbwelt.
+- Firmenlogo erscheint als Brustplatzierung auf den Produktfotos; Hero-Bereich, Guthabenkarte, Filter und Produktkarten folgen derselben Markenwelt.
+- Größe und Menge lassen sich pro Produkt mehrfach zusammenstellen; gleiche Größen werden zusammengefasst und das Beispielbudget mitgeführt.
+- Produktfilter melden ihren gewählten Zustand barrierearm; der Mustershop bleibt eine Vorschau ohne echte Bestellung.
+
+## 10.16.2 – B2B-Website und Mustershop überarbeitet
+Kein Datenbank-Update nötig.
+
+**Öffentliche Website**
+- Startseite und Unterseiten nutzen jetzt eine zusammenhängende Gestaltung: helle Seitenköpfe, lesbare Typografie, ruhigere Karten und besser erkennbare Kontaktwege.
+- Die Startseite hebt Produktion, Firmenshop, Budgets und persönliche Betreuung klar hervor.
+- Die enge, eingebettete Shop-Seite wurde durch eine native Produktkollektion-Vorschau mit echten Katalogbildern ersetzt. Der vollständige Mustershop bleibt über einen klaren Link erreichbar.
+- Die mobile Shop-Darstellung nutzt denselben visuellen Aufbau statt einer eingebetteten Browserseite.
+
+**Mustershop**
+- Fiktive Firma, Person, Kostenstelle und nicht nutzbare Demo-Menüs entfernt. Preise, Budget und Auswahl sind ausdrücklich als Beispiele gekennzeichnet.
+- Größe und Menge lassen sich wählen; die Vorschau berechnet Auswahl, Restbudget und Entfernen/Leeren ohne echte Bestellung.
+- Auf Produktkarten erscheinen Katalogbild, Kategorie, Farbe, Größenbereich und Beispielpreis; das Layout passt sich an Smartphone und Desktop an.
+
+**Betrieb**
+- Keine Schemaänderung. Release-Prüfsummen und Abnahme-Checkliste aktualisieren.
+
+## 10.16.1 – Vertrauenswürdige Vorschau und sichererer Betrieb
+Kein Datenbank-Update nötig: Programmdateien vollständig hochladen und vorhandene Dateien überschreiben.
+
+- Startseite und Leistungsseite zeigen jetzt eine aktuelle Kollektion-Vorschau; Beispielinhalte sind klar gekennzeichnet.
+- Social-Media-Vorschau und LocalBusiness-Daten verwenden das eingestellte Firmenlogo statt eines alten Firmenshop-Bildes.
+- Die Betriebsprüfung erkennt jetzt auch fehlende `fileinfo`, `dom` und `xmlreader`, die sichere Datei-Uploads, SVG-Prüfung und den Excel-Katalogimport benötigen.
+- Fehlerdetails gelangen nicht mehr in eine öffentlich erreichbare Datei. Unerwartete Fehler erhalten eine Support-Referenz und werden gekürzt und bereinigt im privaten Datenordner protokolliert; Systemstatus und Update-Assistent zeigen sichere Fehlerhinweise. API-Aufrufer erhalten bei einem internen Fehler strukturiertes JSON mit Referenz statt einer leeren HTML-Fehlerseite.
+- `X-Forwarded-Proto` gilt nur noch von ausdrücklich eingetragenen Reverse-Proxys als vertrauenswürdig. Direkte HTTPS-Werte werden eng geprüft.
+- Zwei ungenutzte Hilfsfunktionen ohne Wirkung entfernt.
 
 ## Neu in Version 10
 
@@ -136,7 +284,7 @@ Stand: 26. September 2026 · enthält alle Korrekturen aus 9.1.0
 ## Nachtrag 10.3.1 – Systemprüfung auf der Update-Seite
 
 - `update.php` zeigt unten eine **Systemprüfung**: Programmversion, PHP-Version, ob alle Programmteile laden, ob die Datenbank vollständig ist (mit technischem Grund), Datenbankstände, Wartungsmodus und den letzten schweren PHP-Fehler.
-- Schwere PHP-Fehler der Website werden in `app/letzter-fehler.txt` festgehalten. Die Datei ist von außen gesperrt.
+- Schwere PHP-Fehler der Website wurden in `app/letzter-fehler.txt` festgehalten. Ab Version 10.16.1 wird dieses veraltete Protokoll durch das private, rotierte Laufzeitprotokoll ersetzt.
 - Geänderte Dateien: `index.php`, `update.php`, `app/modules/corporate.php`, `VERSION`.
 
 ## Nachtrag 10.3.2 – Reparatur bei abweichenden Tabellen

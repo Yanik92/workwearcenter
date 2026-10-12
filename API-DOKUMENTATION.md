@@ -67,7 +67,7 @@ Empfohlene Rechte je System:
 
 ## 3. Fehler
 
-Jede Fehlerantwort hat die Form `{"error": "<code>", "message": "<Erklärung auf Deutsch>"}`.
+Fachliche Fehlerantworten haben die Form `{"error": "<code>", "message": "<Erklärung auf Deutsch>"}`. Bei einem unerwarteten internen Fehler kommt HTTP 500 mit `{"error":"internal_error","reference":"WWC-…"}` zurück. Die Referenz kann der Support im privaten Fehlerprotokoll nachschlagen; technische Details werden nicht an den API-Aufrufer ausgegeben.
 
 | HTTP | `error` | Bedeutung |
 |---|---|---|
@@ -82,6 +82,7 @@ Jede Fehlerantwort hat die Form `{"error": "<code>", "message": "<Erklärung auf
 | 404 | `not_found` | Datensatz oder Endpunkt existiert nicht |
 | 429 | `too_many_requests` | zu viele fehlgeschlagene Anmeldungen von dieser IP (15 Minuten warten) |
 | 429 | `rate_limited` | 600 Anfragen je 10 Minuten überschritten |
+| 500 | `internal_error` | unerwarteter Serverfehler; Support-Referenz aus der Antwort angeben |
 
 ---
 
