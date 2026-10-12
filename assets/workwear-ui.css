@@ -794,3 +794,13 @@ html body .sp-detail-status:not(:empty){color:#a22820;font-weight:700}
 html body .cp-subhead{margin:34px 0 12px;font-size:1.25rem}
 /* 10.19: Sechs Punkte für Verantwortliche – Kurzbezeichnungen vollständig lesbar */
 html body .cp-app.is-manager .cp-tab{font-size:.6rem;padding-left:0;padding-right:0;letter-spacing:-.01em}
+/* 10.19.1: Zweiter Knopf im dunklen Seitenkopf der Unterseiten war dunkel auf dunkel (unsichtbar) */
+html body .s-pagehead .s-btn-outline-light{color:#fff;border-color:rgba(255,255,255,.6);background:transparent}
+html body .s-pagehead .s-btn-outline-light:hover,html body .s-pagehead .s-btn-outline-light:focus-visible{background:#fff;color:var(--s-navy,#12263f);border-color:#fff}
+/* 10.19.1: Mustershop und Probeshop hatten eine dunkle Fußzeile mit dunklem Logo (unleserlich) – gleiche helle Fußzeile wie auf allen Seiten */
+html body .s-footer{border-top:1px solid #d7e0e8;background:#fff;color:#354b60}
+html body .s-footer h2{color:#10283f}
+html body .s-footer a{color:#354b60}
+html body .s-footer a:hover{color:#f36d21}
+html body .s-footer-brand p,html body .s-footer-bottom{color:#607387}
+html body .s-footer-bottom{border-top-color:#d7e0e8}

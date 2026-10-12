@@ -2,6 +2,15 @@
 
 Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.19.1 – Fehler auf der Live-Website behoben
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+Gefunden beim Durchklicken von workwearcenter.de (Stand 10.19.0, alle Dateien aktuell):
+- Leistungen und So funktioniert’s: Der zweite Knopf im dunklen Seitenkopf („Mustershop ansehen“ bzw. „Mustershop testen“) war dunkel auf dunkel und damit unsichtbar. Jetzt weiß umrandet mit weißer Schrift.
+- So funktioniert’s und Über uns: Zwei in der Verwaltung hinterlegte Bilder fehlen auf dem Server (uploads/branding/section2-… und section3-…). Statt eines kaputten Bildes erscheint jetzt das Standardbild. Eigene Bilder kannst du unter Verwaltung → Design neu hochladen.
+- Mustershop und Probeshop: Die Fußzeile war dunkel und das Logo darauf kaum lesbar. Sie ist jetzt hell wie auf allen anderen Seiten.
+- Startseite: Leistungen, So funktioniert’s und Über uns waren von der Startseite aus nicht verlinkt. Sie stehen jetzt in der Fußzeile und im Handy-Menü.
+
 ## 10.19.0 – Alltag im Firmenshop: Größen, Status, Texte
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach im Browser Strg+F5.
 

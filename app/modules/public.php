@@ -68,8 +68,10 @@ function yw_public_link(mixed $value,string $fallback=''): string {
 
 function yw_site_image_url(string $key,string $fallback): string {
     $value=trim(current_site_setting($key,''));
-    if($value!=='' && yw_upload_path_ok($value,'branding')) return '/'.$value;
-    if($value!=='' && preg_match('#^assets/media/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:png|jpe?g|webp)$#D',$value)) return '/'.$value;
+    // 10.19.1: Fehlt die hinterlegte Datei auf dem Server (z. B. nicht per FTP übertragen), Standardbild statt kaputtem Bild.
+    $exists=static fn(string $rel): bool => is_file(dirname(__DIR__,2).'/'.$rel);
+    if($value!=='' && yw_upload_path_ok($value,'branding') && $exists($value)) return '/'.$value;
+    if($value!=='' && preg_match('#^assets/media/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:png|jpe?g|webp)$#D',$value) && $exists($value)) return '/'.$value;
     return '/'.ltrim($fallback,'/');
 }
 

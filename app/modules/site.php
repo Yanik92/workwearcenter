@@ -29,7 +29,7 @@ function public_header(): void {
     echo '<header class="s-header"><div class="s-wrap s-header-row">'.s_public_brand_html(false);
     echo '<nav class="s-nav" aria-label="Hauptnavigation">'.$nav.'</nav>';
     echo '<div class="s-header-end"><a class="s-header-login" href="/zugang"'.($path==='/zugang'?' aria-current="page"':'').'>Kundenportal</a><a class="s-btn s-btn-orange s-btn-sm" href="/anfrage">Shop anfragen</a></div>';
-    echo '<details class="s-menu"><summary aria-label="Menü"><span></span><span></span><span></span></summary><nav aria-label="Mobile Navigation"><a href="/">Startseite</a>'.$nav.'<a href="/zugang">Kundenportal</a><a class="s-btn s-btn-orange" href="/anfrage">Shop anfragen</a></nav></details>';
+    echo '<details class="s-menu"><summary aria-label="Menü"><span></span><span></span><span></span></summary><nav aria-label="Mobile Navigation"><a href="/">Startseite</a>'.$nav.($path==='/'?'<a href="/leistungen">Kleidung & Veredelung</a><a href="/so-funktionierts">So funktioniert’s</a><a href="/ueber-uns">Über uns</a>':'').'<a href="/zugang">Kundenportal</a><a class="s-btn s-btn-orange" href="/anfrage">Shop anfragen</a></nav></details>';
     echo '</div></header>';
 }
 
@@ -45,7 +45,8 @@ function global_footer(): void {
         echo '<div class="wcm-footer-brand">'.s_public_brand_html(false).'<p>Der digitale Bestellshop für Firmenkleidung und Teamwear.</p></div>';
         echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/#was-ist">Was ist das WorkwearCenter?</a><a href="/#vorteile">Vorteile für dein Unternehmen</a><a href="/#bestellwege">Bestellwege</a><a href="/#ablauf">Auftragsweg</a><a href="/#faq">Häufige Fragen</a><a href="/mustershop">Mustershop</a></nav></div>';
         echo '<div><h2>Kontakt & Zugang</h2><nav aria-label="Kontakt und Zugang"><a href="/anfrage">Shop anfragen</a><a href="/kontakt">Kontakt</a><a href="/zugang">Kundenportal</a></nav></div>';
-        echo '<div><h2>Informationen</h2><nav aria-label="Rechtliche Informationen"><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></nav></div>';
+        // 10.19.1: Von der Startseite waren Leistungen, Ablauf und Über uns nicht erreichbar (Impressum/Datenschutz stehen unten).
+        echo '<div><h2>Yanik Textildruck</h2><nav aria-label="Unternehmen"><a href="/leistungen">Kleidung & Veredelung</a><a href="/so-funktionierts">So funktioniert’s</a><a href="/ueber-uns">Über uns</a></nav></div>';
         echo '</div><div class="s-footer-bottom"><span>© '.date('Y').' WorkwearCenter</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
         return;
     }
