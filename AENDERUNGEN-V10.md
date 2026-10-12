@@ -2,6 +2,28 @@
 
 Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.19.0 – Alltag im Firmenshop: Größen, Status, Texte
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach im Browser Strg+F5.
+
+**Mitarbeitende**
+- Größe: Steht noch keine Größe fest, zeigt das Feld „Größe wählen“. Ohne Auswahl kommt nichts in die Auswahl und die Bestellung lässt sich nicht absenden; der Artikel öffnet sich mit Hinweis am Größenfeld. Früher stand still die erste Größe (z. B. S oder XS) drin.
+- Größenvorschlag: Für Artikel, die die Person noch nie bestellt hat, schlägt der Shop die Größe aus der letzten Bestellung in derselben Größenreihe vor (sonst die zuletzt bestellte Größe, wenn es sie beim Artikel gibt). Darunter steht „Vorschlag aus deiner letzten Bestellung – bitte prüfen.“
+- Startseite: Die zweite Karte „Kollektion“ heißt jetzt „Neue Bestellung“, der Link über den Artikeln „Alle Artikel“. Der Eigenanteil steht nicht mehr doppelt.
+- Bestellungen: Neben der Uhrzeit stand „· Neu“ (interner Fertigungsstatus), obwohl der Fortschritt darunter angezeigt wird – entfernt. Offene Bestellungen erklären, dass sie auf die Freigabe warten. Team-Bestellungen zeigen „Team-Bestellung von …“.
+- Umtausch & Rückgabe: Ist ein Auftrag nachweislich in Arbeit (Status aus Produktion bzw. Auftragszentrale), beginnt die Frist erst mit dem Versand. Vorher lief sie ab Freigabe und konnte bei langer Produktion vor der Lieferung ablaufen. Zurückgeben geht erst nach Versand, Größe tauschen schon vorher (auch serverseitig geprüft).
+- Warenkorb: interner Hinweis „Rechnungen … in Lexware Office“ entfernt.
+- Handy: Im Bereich 1061–1100 px Breite waren die Artikel 0 px breit (aus 10.16.23) – behoben. Die untere Leiste zeigt Kurzbezeichnungen (Start, Produkte, Bestellungen, Team, Freigaben, Personen), damit nichts abgeschnitten wird.
+
+**Verantwortliche**
+- Seite „Mitarbeiter“ (hieß „Firmenkunden-Cockpit“): Personenliste mit Suche steht jetzt oben, danach Anlegen und CSV-Import, Auswertungen und Lohnabzug unten unter „Auswertungen“.
+- Freigaben: Ist nichts offen, steht das oben. Team-Bestellungen zeigen, wer sie aufgegeben hat.
+
+**Website und Verwaltung**
+- Leistungen, So funktioniert’s, Über uns, Kunden-Login, Mustershop, Probeshop, Anfrage-Bestätigung per Mail und die Suchmaschinen-Beschreibungen sprechen jetzt wie die Startseite mit „du“. Impressum und Datenschutz bleiben unverändert (rechtliche Prüfung offen).
+- Admin → Inhalte: Die Felder für Startseite und Unterseiten hatten seit 10.16.23 keine Wirkung mehr (Texte sind fest im Seitendesign). Sie sind entfernt, ein Hinweis erklärt das. Footer, Impressum, Datenschutz und Ansprechpartner bleiben bearbeitbar. Früher gespeicherte Texte bleiben in der Datenbank erhalten.
+
+**Getestet** in der Testinstallation, Computer und Handy (360/390 px): Bestellung ohne Vorgeschichte (Größe wählen, Hinweis, Sperre beim Absenden), Größenvorschlag nach erster Bestellung, Bestellung und Freigabe, Team-Bestellung mit Vier-Augen-Prüfung, Umtausch während Produktion inkl. direkt gesendeter Rückgabe (abgelehnt), Mitarbeiter-Seite, Freigaben, alle Shop-Seiten in allen sechs Sprachen ohne fehlende Texte, Layoutprüfung 360–1440 px ohne seitliches Scrollen, öffentliche Website, Anfrage mit Probeshop, Verwaltungsseiten, Admin → Inhalte speichern, Sicherheits-Regressionstests grün.
+
 ## 10.18.0 – Deine Weiterentwicklung (10.16.23) und 10.17.0 zusammengeführt
 **Datenbank-Update nötig:** Dateien hochladen (immer überschreiben), danach als Administrator https://workwearcenter.de/update.php aufrufen. Bis dahin zeigt der Shop „Update erforderlich“.
 

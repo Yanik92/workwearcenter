@@ -489,7 +489,7 @@ test_ok(substr_count($shopSrc,"yw_pending_decision_count((int)\$company['id'],(i
 test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/migrations.php'),"schema_add_column(\$pdo,'companies','managers_can_appoint','TINYINT(1) NOT NULL DEFAULT 0',\$changes);"),'Firmen-Einstellung „Verantwortliche dürfen ernennen“ ist standardmäßig aus');
 if(!function_exists('current_site_setting')){function current_site_setting(string $key,string $default=''): string {return $default;}}
 [$confirmSubject,$confirmText]=yw_inquiry_confirmation_text(null);[$confirmSubjectProbe,$confirmTextProbe]=yw_inquiry_confirmation_text(str_repeat('ab',32));
-test_ok((new ReflectionFunction('yw_inquiry_confirmation_text'))->getNumberOfParameters()===1 && str_starts_with($confirmText,"Guten Tag,\n") && $confirmSubject==='Ihre Anfrage beim WorkwearCenter' && str_contains($confirmTextProbe,'/probeshop/'.str_repeat('ab',32)),'Anfrage: Eingangsbestätigung ist fester Text ohne Name, Firma oder Nachricht der eingebenden Person');
+test_ok((new ReflectionFunction('yw_inquiry_confirmation_text'))->getNumberOfParameters()===1 && str_starts_with($confirmText,"Hallo,\n") && $confirmSubject==='Deine Anfrage beim WorkwearCenter' && str_contains($confirmTextProbe,'/probeshop/'.str_repeat('ab',32)),'Anfrage: Eingangsbestätigung ist fester Text ohne Name, Firma oder Nachricht der eingebenden Person');
 test_ok(yw_inquiry_recipient_key('Opfer+Spam@Example.org')===yw_inquiry_recipient_key('opfer@example.org') && yw_inquiry_recipient_key('o.p.f.e.r@googlemail.com')===yw_inquiry_recipient_key('opfer@gmail.com') && yw_inquiry_recipient_key('opfer@example.org')!==yw_inquiry_recipient_key('opfer@example.com'),'Anfrage: Empfängerlimit erkennt dieselbe Mailbox trotz +Zusatz, Großschreibung und Gmail-Punkten');
 $probeSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/probeshop.php');$publicSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
 test_ok(YW_INQUIRY_CONFIRM_PER_HOUR===30 && str_contains($probeSrc,'confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 24 HOUR)') && str_contains($probeSrc,"confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 1 HOUR)')->fetchColumn()>=YW_INQUIRY_CONFIRM_PER_HOUR") && str_contains($publicSrc,"if(\$confirmation==='ok')yw_inquiry_confirmation_mail(\$email,\$probeshopToken);") && strpos($publicSrc,'send_inquiry_mail([')<strpos($publicSrc,"if(\$confirmation==='ok')yw_inquiry_confirmation_mail("),'Anfrage: höchstens 1 Bestätigung je Adresse in 24 h und 30 je Stunde; Anfrage und interne Mail an Yanik bleiben');
@@ -599,5 +599,13 @@ test_ok(str_contains($adminCustomerSrc,"collection-savebar'.(\$editorOpen?' is-s
 test_ok(str_contains($corpAdminSrc,"' von '.\$companyProductCount.' Firmenprodukten freigegeben.")&&!str_contains($corpAdminSrc,"\$limits['counts']['alle'].' Firmenprodukten"),'Regeln: Profilzusammenfassung zählt alle Firmenprodukte, nicht nur die Treffer der Stückzahl-Suche');
 test_ok(str_contains($adminSrc,"'yw_profile_bulk'=>'Profilsortiment per Sammelaktion geändert'"),'Aktivitätsprotokoll: Sammelaktion im Profil hat eine lesbare Bezeichnung');
 test_ok(str_contains($toolsSrc,"yw_customer_state_url((int)\$o['company_id'],'kollektion',['produkt'=>(string)\$itemProduct])"),'Auftrag: Artikelname öffnet den Artikel in der Kollektion (Korrekturabzug)');
+
+// 10.19
+$xSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/exchange.php');
+test_ok(str_contains($xSrc,"if(\$type==='return' && yw_exchange_in_production(\$order))throw new DomainException(t('x.err.not_delivered'));"),'Umtausch: Rückgabe vor Lieferung wird serverseitig abgelehnt');
+$shopSrc19=(string)file_get_contents(dirname(__DIR__).'/app/modules/shop.php');
+test_ok(str_contains($shopSrc19,"if(!\$sizeKnown)\$html.='<option value=\"\" selected>'")&&str_contains((string)file_get_contents(dirname(__DIR__).'/assets/shop.js'),"if (size && size.value === '') { sizeMissing("),'Shop: ohne bekannte Größe keine stille Vorbelegung, Hinzufügen ohne Größe gesperrt');
+test_ok(str_contains($shopSrc19,"SELECT id,name FROM employee_accounts WHERE company_id=? AND id IN ("),'Bestellungen: Name der bestellenden Person nur aus derselben Firma');
+test_ok(!str_contains($adminSrc,"'hero_title'=>trim("),'Admin Inhalte: wirkungslose Startseitenfelder werden nicht mehr überschrieben');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

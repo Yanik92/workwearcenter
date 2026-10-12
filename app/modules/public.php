@@ -572,56 +572,12 @@ function render_content_settings(): void {
     $v=fn(string $k,string $d='')=>e(array_key_exists($k,yw_content_defaults())?yw_text($k):current_site_setting($k,$d));
     $raw=fn(string $k,string $d='')=>array_key_exists($k,yw_content_defaults())?yw_text($k):current_site_setting($k,$d);
 
-    $backup=json_decode(current_site_setting('content_backup_json',''),true);
-    echo '<section class="card content-defaults"><div class="title-row"><div><h2>Texte der neuen Website</h2><p class="muted">Mit einem Klick alle Texte von Startseite und Unterseiten auf die überarbeitete Fassung 10.3 setzen. Die bisherigen Texte werden vorher gesichert. Impressum und Datenschutz bleiben unverändert.</p></div><div class="actions"><form method="post" data-confirm="Alle Website-Texte auf die neue Fassung setzen? Die bisherigen Texte werden gesichert.">'.csrf_field().'<input type="hidden" name="action" value="content_apply_defaults"><input type="hidden" name="return_tab" value="content"><button class="btn primary">Neue Texte übernehmen</button></form>';
-    if(is_array($backup)&&!empty($backup['saved_at']))echo '<form method="post" data-confirm="Die gesicherten Texte vom '.e(date('d.m.Y H:i',strtotime((string)$backup['saved_at']))).' wiederherstellen?">'.csrf_field().'<input type="hidden" name="action" value="content_restore_backup"><input type="hidden" name="return_tab" value="content"><button class="btn">Sicherung vom '.e(date('d.m.Y H:i',strtotime((string)$backup['saved_at']))).' zurückholen</button></form>';
-    echo '</div></div></section>';
+    // 10.19: Startseite und Unterseiten sind seit 10.16.23 fest im Seitendesign hinterlegt. Die früheren Eingabefelder hatten
+    // keine Wirkung mehr und wurden entfernt; gespeicherte Altwerte bleiben unverändert in der Datenbank.
+    echo '<section class="card"><h2>Texte der Website</h2><p class="muted">Die Texte von Startseite, Leistungen, So funktioniert’s, Über uns, Kontakt und Anfrage sind fest auf das Seitendesign abgestimmt und kommen mit jedem Update. Hier pflegst du Footer, Impressum, Datenschutz und den Ansprechpartner auf der Startseite.</p></section>';
     echo '<form method="post" class="settings-form">'.csrf_field().'<input type="hidden" name="action" value="save_content_settings">';
 
-    echo '<details class="settings-group" open><summary>Startseite – Einstieg</summary><div class="settings-group-inner">';
-    echo '<label>Kleine Überschrift<input name="hero_eyebrow" value="'.$v('hero_eyebrow','UNTERNEHMENSSHOPS VON YANIK WORKWEAR').'"></label>';
-    echo '<label>Hauptüberschrift<input name="hero_title" value="'.$v('hero_title','Firmenkleidung, die nicht in Excel endet.').'"></label>';
-    echo rich_editor_field('hero_text','Text',$raw('hero_text','Eine feste Kollektion für Ihr Team. Mitarbeitende bestellen selbst. Sie behalten Budgets und Freigaben im Blick. Wir beschaffen, veredeln und liefern.'),150);
-    echo '<div class="grid2"><label>Hauptbutton<input name="hero_button_text" value="'.$v('hero_button_text','Unternehmensshop anfragen').'"></label><label>Hauptbutton-Ziel<input name="hero_button_link" value="'.$v('hero_button_link','/anfrage').'"></label></div>';
-    echo '<div class="grid2"><label>Zweiter Button<input name="hero_secondary_text" value="'.$v('hero_secondary_text','Mustershop ansehen').'"></label><label>Zweiter Button-Ziel<input name="hero_secondary_link" value="'.$v('hero_secondary_link','/mustershop').'"></label></div>';
-    echo '</div></details>';
-
-    echo '<details class="settings-group"><summary>Startseite – Veredelung und Bausteine</summary><div class="settings-group-inner"><label>Überschrift<input name="intro_title" value="'.$v('intro_title','Corporate Wear, die im Alltag wirklich funktioniert.').'"></label>';
-    echo rich_editor_field('intro_text','Text',$raw('intro_text','Wir verbinden Beratung, passende Arbeitskleidung, professionelle Veredelung und einen geschützten Unternehmensshop zu einem klaren Prozess für Ihr gesamtes Team.'),150);
-
-    $defaults=[1=>['Ihre Firmenkollektion','Nur ausgewählte Artikel, Farben und Veredelungen sind bestellbar.'],2=>['Mitarbeiter & Rollen','Persönliche Zugänge mit klaren Rollen, Kostenstellen und Freigaben.'],3=>['Budgets & Mengenlimits','Jahresbudgets und Stücklimits werden direkt bei der Bestellung geprüft.']];
-    foreach([1,2,3] as $n){
-        echo '<div class="editor-block"><h3>Nutzen '.$n.'</h3><label>Überschrift<input name="section'.$n.'_title" value="'.$v('section'.$n.'_title',$defaults[$n][0]).'"></label>';
-        echo rich_editor_field('section'.$n.'_text','Text',$raw('section'.$n.'_text',$defaults[$n][1]),110).'</div>';
-    }
-    echo '</div></details>';
-
-    echo '<details class="settings-group"><summary>Startseite – Ablauf</summary><div class="settings-group-inner"><label>Überschrift<input name="process_title" value="'.$v('process_title','So funktioniert der Unternehmensshop').'"></label>';
-    $steps=[1=>['Kollektion festlegen','Gemeinsam definieren wir Artikel, Farben, Logos und Veredelungspositionen.'],2=>['Shop einrichten','Wir hinterlegen Nutzerregeln, Budgets, Limits und Ihre Corporate-Design-Farben.'],3=>['Team bestellt','Mitarbeitende wählen selbstständig aus dem verbindlich freigegebenen Sortiment.'],4=>['Wir produzieren','Yanik Textildruck veredelt, prüft und übergibt oder versendet die Bestellung.']];
-    for($n=1;$n<=4;$n++){
-        echo '<div class="grid2"><label>Schritt '.$n.' Titel<input name="process_step'.$n.'_title" value="'.$v('process_step'.$n.'_title',$steps[$n][0]).'"></label>';
-        echo rich_editor_field('process_step'.$n.'_text','Schritt '.$n.' Text',$raw('process_step'.$n.'_text',$steps[$n][1]),120).'</div>';
-    }
-    echo '</div></details>';
-
-    $faqs=[1=>['Für welche Unternehmen eignet sich ein Shop?','Für Teams, die regelmäßig einheitliche Arbeits- oder Firmenbekleidung benötigen.'],2=>['Können Budgets und Stückzahlen begrenzt werden?','Ja. Jahresbudgets, individuelle Budgets und Mengenlimits je Produkt werden bei Bestellungen geprüft.'],3=>['Bestellen Mitarbeitende aus dem gesamten Sortiment?','Nein. Im Shop erscheint ausschließlich die mit Ihnen abgestimmte Firmenkollektion.'],4=>['Wer übernimmt Veredelung und Lieferung?','Yanik Textildruck übernimmt Veredelung, Produktionskontrolle und die abgestimmte Übergabe oder Lieferung.']];
-    echo '<details class="settings-group"><summary>Startseite – Häufige Fragen</summary><div class="settings-group-inner"><p class="muted">Kurze, klare Antworten helfen Interessenten bei der Entscheidung.</p>';
-    for($n=1;$n<=4;$n++) echo '<div class="grid2"><label>Frage '.$n.'<input name="faq'.$n.'_question" value="'.$v('faq'.$n.'_question',$faqs[$n][0]).'"></label>'.rich_editor_field('faq'.$n.'_answer','Antwort '.$n,$raw('faq'.$n.'_answer',$faqs[$n][1]),100).'</div>';
-    echo '</div></details>';
-
-    echo '<details class="settings-group"><summary>Startseite – Abschluss</summary><div class="settings-group-inner"><label>Überschrift<input name="final_cta_title" value="'.$v('final_cta_title','Lassen Sie uns Ihre Firmenkollektion einfacher organisieren.').'"></label>';
-    echo rich_editor_field('final_cta_text','Text',$raw('final_cta_text','Wir klären Sortiment, Veredelung und Abläufe persönlich – und zeigen Ihnen, wie Ihr eigener Unternehmensshop aussehen kann.'),120);
-    echo '<div class="grid2"><label>Buttontext<input name="final_cta_button" value="'.$v('final_cta_button','Unverbindlich anfragen').'"></label><label>Button-Ziel<input name="final_cta_link" value="'.$v('final_cta_link','/anfrage').'"></label></div></div></details>';
-
-    $pages=[
-        ['services','Leistungen','Workwear, Corporate Fashion und Textilveredelung aus einer Hand.','Wir statten Unternehmen mit passender Firmenbekleidung aus und veredeln Textilien professionell.'],
-        ['about','Was uns ausmacht','Persönliche Betreuung, klare Prozesse und praxisnahe Lösungen.','Wir verbinden Beratung, Textilveredelung und digitale Unternehmensshops zu einem durchgängigen System.'],
-        ['how','So funktioniert’s','Vom ersten Gespräch bis zum Mitarbeiterzugang.','Nach Einrichtung des Unternehmensshops erhält die Firma einen eigenen Registrierungslink. Mitarbeiter erstellen ihren Zugang selbst.'],
-        ['contact','Kontakt','Sie möchten einen Unternehmensshop einrichten?','Schreiben Sie uns: info@yanik-textildruck.de']
-    ];
-    echo '<details class="settings-group"><summary>Unterseiten</summary><div class="settings-group-inner"><p class="muted">Die Texte von Leistungen, So funktioniert’s, Über uns, Kontakt und Anfrage sind ab Version 10.5 fest auf das Seitendesign abgestimmt und werden hier nicht mehr bearbeitet. Änderungswünsche bitte an den Support geben. Impressum und Datenschutz bearbeiten Sie weiterhin unten.</p></div></details>';
-
-    echo '<details class="settings-group"><summary>Footer und Impressum</summary><div class="settings-group-inner"><label>Footer-Text<input name="footer_text" value="'.$v('footer_text','WorkwearCenter – ein Service von Yanik Textildruck').'"></label>';
+    echo '<details class="settings-group" open><summary>Footer und Impressum</summary><div class="settings-group-inner"><label>Footer-Text<input name="footer_text" value="'.$v('footer_text','WorkwearCenter – ein Service von Yanik Textildruck').'"></label>';
     echo '<div class="grid2"><label>Unternehmen<input name="imprint_company" value="'.$v('imprint_company','Yanik Textildruck').'"></label><label>Inhaber<input name="imprint_owner" value="'.$v('imprint_owner','Jens Yanik').'"></label></div>';
     echo '<div class="grid2"><label>Straße<input name="imprint_street" value="'.$v('imprint_street','Geseker Straße 19').'"></label><label>PLZ / Ort<input name="imprint_city" value="'.$v('imprint_city','33154 Salzkotten').'"></label></div>';
     echo '<div class="grid2"><label>Telefon<input name="imprint_phone" value="'.$v('imprint_phone','05258 / 2090004').'"></label><label>E-Mail<input name="imprint_email" value="'.$v('imprint_email','info@yanik-textildruck.de').'"></label></div>';
@@ -718,7 +674,7 @@ function inquiry_page(): void {
             elseif(mb_strlen($email)>190 || mb_strlen($phone)>80) $error='Eine Eingabe ist zu lang. Bitte prüfe deine Angaben.';
             elseif($employees>100000) $error='Die angegebene Mitarbeiterzahl ist ungültig.';
             elseif(!$message || mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
-            elseif(!$privacy) $error='Bitte bestätigen Sie die Datenschutzhinweise.';
+            elseif(!$privacy) $error='Bitte bestätige die Datenschutzhinweise.';
             else {
                 $logo='';
                 try{
@@ -745,7 +701,7 @@ function inquiry_page(): void {
                     if($logo!=='')yw_probeshop_delete_logo($logo);
                     $probeshopToken=null;
                     if($e instanceof RuntimeException && !$e instanceof PDOException){
-                        $error=$e->getMessage().' Sie können die Anfrage auch ohne Logo absenden.';
+                        $error=$e->getMessage().' Du kannst die Anfrage auch ohne Logo absenden.';
                     }else{
                         error_log('Public inquiry: '.$e->getMessage());
                         $error='Deine Anfrage konnte gerade nicht gespeichert werden. Bitte versuche es später erneut oder schreibe uns per E-Mail.';

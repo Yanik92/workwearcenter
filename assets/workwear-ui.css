@@ -344,7 +344,6 @@ html body .demo:not(.demo-probe) .demo-product:hover{transform:translateY(-2px);
  html body .admin-shell{grid-template-columns:218px minmax(0,1fr)}
  html body .admin-content{padding-inline:22px}
  html body .admin-topbar .admin-search{width:min(300px,26vw)}
- html body .sp-layout{grid-template-columns:minmax(0,1fr) 330px;gap:20px}
 }
 @media(max-width:900px){
  html body .admin-shell{display:block;background:var(--wc-canvas)}
@@ -786,3 +785,12 @@ html body .admin-topbar .admin-search input{color:var(--wc-ink)}
 html body .admin-topbar .admin-search input::placeholder{color:var(--wc-muted)}
 html body .admin-footer a{color:var(--wc-ink)}
 html body .admin-footer a:hover{color:var(--wc-ink);text-decoration:underline}
+/* 10.19: Zweispaltiges Bestelllayout nur, solange die Seitenleiste neben die Artikel passt (sonst Artikel am Handy 0 px breit). */
+@media(min-width:1061px) and (max-width:1100px){html body .sp-layout{grid-template-columns:minmax(0,1fr) 330px;gap:20px}}
+/* 10.19: Größenwahl – Vorschlag und fehlende Auswahl sichtbar machen */
+html body .sp-size-hint{display:block;margin-top:4px;font-size:.78rem;font-weight:600;color:var(--cp-muted,#667085)}
+html body .sp-field select[aria-invalid="true"]{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.18)}
+html body .sp-detail-status:not(:empty){color:#a22820;font-weight:700}
+html body .cp-subhead{margin:34px 0 12px;font-size:1.25rem}
+/* 10.19: Sechs Punkte für Verantwortliche – Kurzbezeichnungen vollständig lesbar */
+html body .cp-app.is-manager .cp-tab{font-size:.6rem;padding-left:0;padding-right:0;letter-spacing:-.01em}

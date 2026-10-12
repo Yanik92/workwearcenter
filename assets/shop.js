@@ -524,15 +524,33 @@
       update();
     });
   });
+  var sizeMissing = function (dialog, size, input) {
+    var msg = tr('size_missing', { name: input.dataset.lineName || tr('item') });
+    var status = dialog ? dialog.querySelector('[data-detail-status]') : null;
+    if (status) status.textContent = msg;
+    size.setAttribute('aria-invalid', 'true');
+    window.setTimeout(function () { size.focus(); }, 60);
+    toast(msg);
+  };
+  form.querySelectorAll('select[data-size-select]').forEach(function (s) {
+    s.addEventListener('change', function () {
+      s.removeAttribute('aria-invalid');
+      var dialog = s.closest('[data-detail]');
+      var status = dialog ? dialog.querySelector('[data-detail-status]') : null;
+      if (status) status.textContent = '';
+    });
+  });
   document.querySelectorAll('[data-add-detail]').forEach(function (button) {
     button.addEventListener('click', function () {
       var dialog = button.closest('[data-detail]');
       var id = activeVariant(dialog);
       var input = document.getElementById('qty-' + id);
       if (!input || input.disabled) { toast(tr('limit_reached')); return; }
+      var size = document.getElementById(input.dataset.sizeTarget || '');
+      // 10.19: Ohne gewählte Größe nichts übernehmen (kein stilles „erste Größe“ mehr).
+      if (size && size.value === '') { sizeMissing(dialog, size, input); return; }
       if (int(input.value) === 0) input.value = '1';
       update();
-      var size = document.getElementById(input.dataset.sizeTarget || '');
       var msg = tr(size ? 'added_size' : 'added', { qty: input.value, name: input.dataset.lineName || tr('item'), size: size ? size.value : '' });
       // Karte zeigt danach die zuletzt gewählte Farbe
       var card = document.querySelector('.sp-card[data-group="' + dialog.id + '"] .sp-card-visual .mockup-view');
@@ -547,7 +565,19 @@
       if (panel) { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); panel.focus({ preventScroll: true }); }
     });
   });
-  form.addEventListener('submit', function () {
+  form.addEventListener('submit', function (event) {
+    var missing = null;
+    qtyInputs.forEach(function (input) {
+      var size = document.getElementById(input.dataset.sizeTarget || '');
+      if (!missing && int(input.value) > 0 && size && size.value === '') missing = { input: input, size: size };
+    });
+    if (missing) {
+      event.preventDefault();
+      var dialog = document.getElementById(missing.input.dataset.group || '');
+      if (dialog) { selectVariant(dialog, missing.input.id.replace('qty-', ''), false); openDetail(dialog, null); }
+      sizeMissing(dialog, missing.size, missing.input);
+      return;
+    }
     var submit = form.querySelector('.shop-submit');
     if (submit) { window.setTimeout(function () { submit.disabled = true; submit.textContent = tr('sending'); }, 0); }
   });

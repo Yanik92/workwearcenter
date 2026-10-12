@@ -43,7 +43,7 @@ function global_footer(): void {
     if($path==='/'){
         echo '<footer class="s-footer wcm-footer"><div class="s-wrap"><div class="wcm-footer-grid">';
         echo '<div class="wcm-footer-brand">'.s_public_brand_html(false).'<p>Der digitale Bestellshop für Firmenkleidung und Teamwear.</p></div>';
-        echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/#was-ist">Was ist das WorkwearCenter?</a><a href="/#vorteile">Vorteile für Ihr Unternehmen</a><a href="/#bestellwege">Bestellwege</a><a href="/#ablauf">Auftragsweg</a><a href="/#faq">Häufige Fragen</a><a href="/mustershop">Mustershop</a></nav></div>';
+        echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/#was-ist">Was ist das WorkwearCenter?</a><a href="/#vorteile">Vorteile für dein Unternehmen</a><a href="/#bestellwege">Bestellwege</a><a href="/#ablauf">Auftragsweg</a><a href="/#faq">Häufige Fragen</a><a href="/mustershop">Mustershop</a></nav></div>';
         echo '<div><h2>Kontakt & Zugang</h2><nav aria-label="Kontakt und Zugang"><a href="/anfrage">Shop anfragen</a><a href="/kontakt">Kontakt</a><a href="/zugang">Kundenportal</a></nav></div>';
         echo '<div><h2>Informationen</h2><nav aria-label="Rechtliche Informationen"><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></nav></div>';
         echo '</div><div class="s-footer-bottom"><span>© '.date('Y').' WorkwearCenter</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
@@ -56,7 +56,7 @@ function global_footer(): void {
     echo '<div class="s-footer-brand">'.s_public_brand_html(false).'<p>Firmenkleidung und Textilveredelung – persönlich aus Salzkotten.</p></div>';
     echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/leistungen">Leistungen</a><a href="/so-funktionierts">Firmenshop & Ablauf</a><a href="/mustershop">Mustershop ansehen</a><a href="/anfrage">Firmenshop anfragen</a></nav></div>';
     echo '<div><h2>Yanik Textildruck</h2><nav aria-label="Unternehmen"><a href="/ueber-uns">Über uns</a><a href="/kontakt">Kontakt</a><a href="/zugang">Kundenportal</a></nav></div>';
-    echo '<div><h2>Besuchen Sie uns</h2><p>'.e($company).'<br>'.e($street).'<br>'.e($city).'</p><p><a href="mailto:'.e($mail).'">'.e($mail).'</a></p></div>';
+    echo '<div><h2>Besuch uns</h2><p>'.e($company).'<br>'.e($street).'<br>'.e($city).'</p><p><a href="mailto:'.e($mail).'">'.e($mail).'</a></p></div>';
     echo '</div><div class="s-footer-bottom"><span>© '.date('Y').' '.e(yw_text('footer_text')).'</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
 }
 
@@ -90,7 +90,7 @@ function s_head(string $title,string $text='',string $link='',string $linkText='
 }
 
 /** Abschluss jeder Seite. */
-function hp_cta_band(string $title='Lassen Sie uns über Ihre Firmenkleidung sprechen.',string $text='Unverbindlich und persönlich – schreiben Sie uns, wir melden uns zeitnah bei Ihnen.'): void {
+function hp_cta_band(string $title='Lass uns über deine Firmenkleidung sprechen.',string $text='Unverbindlich und persönlich – schreib uns, wir melden uns so schnell wie möglich bei dir.'): void {
     $mail=s_mail();
     echo '<section class="s-section s-cta-section"><div class="s-wrap"><div class="s-cta"><div class="s-cta-copy"><h2>'.e($title).'</h2><p>'.e($text).'</p></div><div class="s-cta-actions"><a class="s-btn s-btn-orange" href="/anfrage">Firmenshop anfragen</a><a class="s-cta-mail" href="mailto:'.e($mail).'">'.e($mail).'</a></div></div></div></section>';
 }
@@ -157,7 +157,7 @@ function s_trust_section(): void {
         }
         if($c['has_contact']){
             $p=$c['contact'];$mail=s_mail();
-            echo '<div class="s-person">'.($p['photo']!==''?'<img src="/'.e($p['photo']).'" alt="'.e($p['name']).'" width="104" height="104" decoding="async">':'<span class="s-person-initial" aria-hidden="true">'.e(mb_strtoupper(mb_substr($p['name'],0,1))).'</span>').'<div><p class="s-person-kicker">Ihr Ansprechpartner</p><strong>'.e($p['name']).'</strong>'.($p['role']!==''?'<span class="s-person-role">'.e($p['role']).'</span>':'').($p['text']!==''?'<p>'.e($p['text']).'</p>':'').'<a class="s-more" href="mailto:'.e($mail).'">'.e($mail).s_arrow().'</a></div></div>';
+            echo '<div class="s-person">'.($p['photo']!==''?'<img src="/'.e($p['photo']).'" alt="'.e($p['name']).'" width="104" height="104" decoding="async">':'<span class="s-person-initial" aria-hidden="true">'.e(mb_strtoupper(mb_substr($p['name'],0,1))).'</span>').'<div><p class="s-person-kicker">Dein Ansprechpartner</p><strong>'.e($p['name']).'</strong>'.($p['role']!==''?'<span class="s-person-role">'.e($p['role']).'</span>':'').($p['text']!==''?'<p>'.e($p['text']).'</p>':'').'<a class="s-more" href="mailto:'.e($mail).'">'.e($mail).s_arrow().'</a></div></div>';
         }
         echo '</div>';
     }
@@ -234,13 +234,13 @@ function landing_page(): void {
 /* ---------- Leistungen ---------- */
 function services_page(): void {
     hp_page_start('Leistungen: Firmenkleidung mit Logo, Stick & Druck – WorkwearCenter');
-    hp_page_hero('Leistungen','Firmenkleidung mit Ihrem Logo – aus einer Hand.','<p>Wir beraten Sie bei der Auswahl, veredeln in unserer Werkstatt in Salzkotten und organisieren die Bestellungen Ihres Teams über einen eigenen Firmenshop.</p>',[['Firmenshop anfragen','/anfrage',true],['Mustershop ansehen','/mustershop',false]]);
+    hp_page_hero('Leistungen','Firmenkleidung mit deinem Logo – aus einer Hand.','<p>Wir beraten dich bei der Auswahl, veredeln in unserer Werkstatt in Salzkotten und organisieren die Bestellungen deines Teams über einen eigenen Firmenshop.</p>',[['Firmenshop anfragen','/anfrage',true],['Mustershop ansehen','/mustershop',false]]);
 
     echo '<section class="s-section"><div class="s-wrap"><div class="s-rows">';
     $rows=[
-        ['/assets/media/products/workwear-hoodie.webp','s-row-img-product','Arbeits- & Firmenkleidung','Wir stellen Ihre Kollektion aus Markenware namhafter Workwear-Hersteller zusammen – passend zu Tätigkeit, Einsatzbereich und Budget.',['T-Shirts, Polos und Hemden','Sweater, Hoodies und Fleece','Softshell- und Arbeitsjacken','Hosen, Caps und Zubehör']],
-        [s_img('services_image','assets/media/work/jacke-gesamt.jpg'),'','Textilveredelung','Ihr Logo wird in unserer eigenen Werkstatt aufgebracht. Welches Verfahren passt, entscheiden wir gemeinsam nach Stoff, Motiv und Menge.',['Stick – wertig und sehr langlebig','DTF-Transfer – vollfarbig, auch in kleinen Mengen','Textildruck – für Rückenmotive und größere Stückzahlen','Flex – für Namen und Nummern']],
-        ['live-demo','s-row-img-live','Ihr Firmenshop','Ein geschützter Online-Shop nur für Ihr Unternehmen. Mitarbeitende bestellen selbst oder eine verantwortliche Person erfasst die Ausstattung für mehrere Beschäftigte.',['Persönliche Zugänge für jede Person','Team-Bestellung durch Verantwortliche','Jahresbudgets und Stücklimits','Freigaben und Auftragsstatus']],
+        ['/assets/media/products/workwear-hoodie.webp','s-row-img-product','Arbeits- & Firmenkleidung','Wir stellen deine Kollektion aus Markenware namhafter Workwear-Hersteller zusammen – passend zu Tätigkeit, Einsatzbereich und Budget.',['T-Shirts, Polos und Hemden','Sweater, Hoodies und Fleece','Softshell- und Arbeitsjacken','Hosen, Caps und Zubehör']],
+        [s_img('services_image','assets/media/work/jacke-gesamt.jpg'),'','Textilveredelung','Dein Logo wird in unserer eigenen Werkstatt aufgebracht. Welches Verfahren passt, entscheiden wir gemeinsam nach Stoff, Motiv und Menge.',['Stick – wertig und sehr langlebig','DTF-Transfer – vollfarbig, auch in kleinen Mengen','Textildruck – für Rückenmotive und größere Stückzahlen','Flex – für Namen und Nummern']],
+        ['live-demo','s-row-img-live','Dein Firmenshop','Ein geschützter Online-Shop nur für dein Unternehmen. Mitarbeitende bestellen selbst oder eine verantwortliche Person erfasst die Ausstattung für mehrere Beschäftigte.',['Persönliche Zugänge für jede Person','Team-Bestellung durch Verantwortliche','Jahresbudgets und Stücklimits','Freigaben und Auftragsstatus']],
     ];
     foreach($rows as $i=>[$img,$imgClass,$title,$text,$items]){
         echo '<article class="s-row'.($i%2?' s-row-reverse':'').'"><div class="s-row-img '.e($imgClass).'">';
@@ -252,28 +252,28 @@ function services_page(): void {
     echo '</div></div></section>';
 
     echo '<section class="s-section s-section-grey"><div class="s-wrap">';
-    s_head('Welches Verfahren passt zu Ihrem Logo?','Das hängt von Stoff, Motiv und Stückzahl ab. Wir beraten Sie ehrlich – auf Wunsch mit Muster vorab.');
+    s_head('Welches Verfahren passt zu deinem Logo?','Das hängt von Stoff, Motiv und Stückzahl ab. Wir beraten dich ehrlich – auf Wunsch mit Muster vorab.');
     echo '<div class="s-methods">';
     foreach([['Stick','Polos, Jacken, Softshells, Caps','Hochwertige Optik, extrem waschbeständig'],['DTF-Transfer','Farbige Logos mit feinen Details','Alle Farben und Verläufe, auch kleine Mengen'],['Textildruck','Rückendrucke und größere Serien','Große Flächen, kräftige Farben'],['Flex','Namen, Nummern, Schriftzüge','Einzeln personalisierbar, sehr präzise']] as [$a,$b,$c])echo '<article class="s-method"><h3>'.e($a).'</h3><dl><dt>Geeignet für</dt><dd>'.e($b).'</dd><dt>Stärken</dt><dd>'.e($c).'</dd></dl></article>';
     echo '</div></div></section>';
 
-    hp_cta_band('Welche Kleidung braucht Ihr Team?','Schreiben Sie uns kurz, wofür die Kleidung gedacht ist. Wir stellen Ihnen eine passende Auswahl zusammen.');
+    hp_cta_band('Welche Kleidung braucht dein Team?','Schreib uns kurz, wofür die Kleidung gedacht ist. Wir stellen dir eine passende Auswahl zusammen.');
     hp_page_end();
 }
 
 /* ---------- So funktioniert’s ---------- */
 function how_it_works_page(): void {
     hp_page_start('So funktioniert der Unternehmensshop für Firmenkleidung – WorkwearCenter');
-    hp_page_hero('So funktioniert’s','In vier Schritten zu Ihrem Firmenshop.','<p>Sie legen Kollektion, Regeln und Zuständigkeiten fest. Mitarbeitende können selbst bestellen – oder eine verantwortliche Person bündelt die Ausstattung für das Team.</p>',[['Firmenshop anfragen','/anfrage',true],['Mustershop testen','/mustershop',false]]);
+    hp_page_hero('So funktioniert’s','In vier Schritten zu deinem Firmenshop.','<p>Du legst Kollektion, Regeln und Zuständigkeiten fest. Mitarbeitende können selbst bestellen – oder eine verantwortliche Person bündelt die Ausstattung für das Team.</p>',[['Firmenshop anfragen','/anfrage',true],['Mustershop testen','/mustershop',false]]);
     $steps=[
-        ['Kollektion abstimmen','Gemeinsam legen wir fest, welche Kleidung Ihr Team bekommt und wie Ihr Logo darauf aussieht.','Sie nennen Einsatzbereich, Wunschartikel und schicken uns Ihr Logo.','Wir schlagen passende Artikel vor, beraten zu Verfahren und Position und fertigen auf Wunsch ein Muster.'],
-        ['Shop einrichten','Ihr Firmenshop bekommt Ihr Logo, Ihre Kollektion und Ihre Regeln.','Sie bestimmen Budget, Lieferadresse und wer Bestellungen freigibt.','Wir richten den Shop vollständig ein und laden Ihr Team per E-Mail ein.'],
-        ['Team bestellt','Jede Person bestellt selbst – oder eine verantwortliche Person erfasst mehrere Mitarbeiteraufträge gesammelt.','Sie bestimmen, ob Mitarbeitende selbst bestellen oder wer Teamaufträge erfasst. Budgets, Stücklimits und Freigaben bleiben je Person zugeordnet.','Das Portal prüft jeden Auftrag einzeln und übergibt freigegebene Bestellungen an die Auftragsverwaltung.'],
-        ['Veredeln & liefern','Wir besorgen die Ware, veredeln jedes Teil und liefern an Ihre Adresse.','Sie erhalten die Kleidung nach Personen sortiert – und eine Rechnung wie gewohnt.','Wir prüfen jedes Teil vor dem Versand und zeigen den Versandstatus im Shop an.'],
+        ['Kollektion abstimmen','Gemeinsam legen wir fest, welche Kleidung dein Team bekommt und wie dein Logo darauf aussieht.','Du nennst Einsatzbereich und Wunschartikel und schickst uns dein Logo.','Wir schlagen passende Artikel vor, beraten zu Verfahren und Position und fertigen auf Wunsch ein Muster.'],
+        ['Shop einrichten','Dein Firmenshop bekommt dein Logo, deine Kollektion und deine Regeln.','Du bestimmst Budget, Lieferadresse und wer Bestellungen freigibt.','Wir richten den Shop vollständig ein und laden dein Team per E-Mail ein.'],
+        ['Team bestellt','Jede Person bestellt selbst – oder eine verantwortliche Person erfasst mehrere Mitarbeiteraufträge gesammelt.','Du bestimmst, ob Mitarbeitende selbst bestellen oder wer Teamaufträge erfasst. Budgets, Stücklimits und Freigaben bleiben je Person zugeordnet.','Das Portal prüft jeden Auftrag einzeln und übergibt freigegebene Bestellungen an die Auftragsverwaltung.'],
+        ['Veredeln & liefern','Wir besorgen die Ware, veredeln jedes Teil und liefern an deine Adresse.','Du erhältst die Kleidung nach Personen sortiert – und eine Rechnung wie gewohnt.','Wir prüfen jedes Teil vor dem Versand und zeigen den Versandstatus im Shop an.'],
     ];
     echo '<section class="s-section"><div class="s-wrap"><ol class="s-timeline">';
     foreach($steps as $i=>[$title,$text,$you,$we]){
-        echo '<li class="s-timeline-item"><span class="s-timeline-num">'.($i+1).'</span><div class="s-timeline-card"><h2>'.e($title).'</h2><p class="s-timeline-text">'.e($text).'</p><div class="s-who"><div><h3>Ihr Teil</h3><p>'.e($you).'</p></div><div><h3>Unser Teil</h3><p>'.e($we).'</p></div></div></div></li>';
+        echo '<li class="s-timeline-item"><span class="s-timeline-num">'.($i+1).'</span><div class="s-timeline-card"><h2>'.e($title).'</h2><p class="s-timeline-text">'.e($text).'</p><div class="s-who"><div><h3>Dein Teil</h3><p>'.e($you).'</p></div><div><h3>Unser Teil</h3><p>'.e($we).'</p></div></div></div></li>';
     }
     echo '</ol></div></section>';
 
@@ -282,9 +282,9 @@ function how_it_works_page(): void {
     echo '</div></div><figure class="s-how-photo"><img src="'.e(s_img('section2_image','assets/media/work/polo-wappen.jpg')).'" loading="lazy" alt="Firmenpoloshirt mit gesticktem Wappen"><figcaption>Veredelt und geprüft in Salzkotten</figcaption></figure></div></section>';
 
     echo '<section class="s-section"><div class="s-wrap s-faq-grid"><div class="s-faq-intro"><h2>Häufige Fragen</h2><p>Weitere Fragen? <a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p></div>';
-    s_faq([['Müssen wir etwas installieren?','Nein. Der Shop läuft im Browser – am Computer, Tablet und Smartphone. Ihre Mitarbeitenden erhalten eine Einladung per E-Mail und legen ihr Passwort selbst fest.'],['Was passiert, wenn jemand das Unternehmen verlässt?','Das Konto wird mit einem Klick deaktiviert. Auf Wunsch werden die persönlichen Daten gelöscht – die Bestellungen bleiben für Ihre Buchhaltung erhalten.']]);
+    s_faq([['Müssen wir etwas installieren?','Nein. Der Shop läuft im Browser – am Computer, Tablet und Smartphone. Deine Mitarbeitenden erhalten eine Einladung per E-Mail und legen ihr Passwort selbst fest.'],['Was passiert, wenn jemand das Unternehmen verlässt?','Das Konto wird mit einem Klick deaktiviert. Auf Wunsch werden die persönlichen Daten gelöscht – die Bestellungen bleiben für deine Buchhaltung erhalten.']]);
     echo '</div></section>';
-    hp_cta_band('Bereit für Ihren eigenen Firmenshop?','Wir richten alles für Sie ein – Sie sagen uns nur, was Ihr Team tragen soll.');
+    hp_cta_band('Bereit für deinen eigenen Firmenshop?','Wir richten alles für dich ein – du sagst uns nur, was dein Team tragen soll.');
     hp_page_end();
 }
 
@@ -299,12 +299,12 @@ function about_page(): void {
     echo '<div class="s-mosaic"><figure class="s-mosaic-a"><img src="/assets/media/work/jacke-gesamt.jpg" loading="lazy" alt="Arbeitsjacke mit gesticktem Firmenlogo"></figure><figure class="s-mosaic-b"><img src="'.e(s_img('about_image','assets/media/work/polo-wappen.jpg')).'" loading="lazy" alt="Poloshirt mit Wappen und Namensstick"></figure><figure class="s-mosaic-c"><img src="'.e(s_img('section3_image','assets/media/work/stick-detail.jpg')).'" loading="lazy" alt="Gesticktes Logo im Detail"></figure></div></div></section>';
 
     echo '<section class="s-section s-section-grey"><div class="s-wrap">';
-    s_head('Worauf Sie sich verlassen können');
+    s_head('Worauf du dich verlassen kannst');
     echo '<div class="s-values">';
-    foreach([['Ein Ansprechpartner','Vom ersten Muster bis zur Lieferung sprechen Sie mit uns – nicht mit einer Hotline.'],['Ehrliche Beratung','Wir beurteilen Ihr Logo an Stickmaschine und Presse und sagen offen, was auf welchem Stoff gut aussieht.'],['Geprüfte Qualität','Jedes Teil geht vor der Auslieferung durch unsere Hände. Absprachen und Termine halten wir ein.']] as [$t,$x])echo '<article class="s-value"><h3>'.e($t).'</h3><p>'.e($x).'</p></article>';
+    foreach([['Ein Ansprechpartner','Vom ersten Muster bis zur Lieferung sprichst du mit uns – nicht mit einer Hotline.'],['Ehrliche Beratung','Wir beurteilen dein Logo an Stickmaschine und Presse und sagen offen, was auf welchem Stoff gut aussieht.'],['Geprüfte Qualität','Jedes Teil geht vor der Auslieferung durch unsere Hände. Absprachen und Termine halten wir ein.']] as [$t,$x])echo '<article class="s-value"><h3>'.e($t).'</h3><p>'.e($x).'</p></article>';
     echo '</div></div></section>';
 
-    echo '<section class="s-section"><div class="s-wrap s-visit"><div><h2>Besuchen Sie uns</h2><p>Sie möchten Stoffe anfassen, Muster ansehen oder Ihr Logo direkt mit uns besprechen? Kommen Sie gern vorbei – nach kurzer Terminabsprache per E-Mail.</p></div><address class="s-address-card"><strong>'.e($company).'</strong><span>'.e($street).'</span><span>'.e($city).'</span><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></address></div></section>';
+    echo '<section class="s-section"><div class="s-wrap s-visit"><div><h2>Besuch uns</h2><p>Du möchtest Stoffe anfassen, Muster ansehen oder dein Logo direkt mit uns besprechen? Komm gern vorbei – nach kurzer Terminabsprache per E-Mail.</p></div><address class="s-address-card"><strong>'.e($company).'</strong><span>'.e($street).'</span><span>'.e($city).'</span><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></address></div></section>';
     hp_cta_band();
     hp_page_end();
 }
@@ -379,16 +379,16 @@ function customer_access_page(): void {
         $value=(string)preg_replace('#^(?:https?://)?(?:www\.)?workwearcenter\.de/#','',$value);
         $value=trim($value,'/ ');
         if(login_throttled('customer-access',30))$error='Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.';
-        elseif(!slug_ok($value))$error='Bitte den Kurznamen Ihres Firmenshops eingeben, z. B. „musterbau“.';
+        elseif(!slug_ok($value))$error='Bitte gib den Kurznamen deines Firmenshops ein, z. B. „musterbau“.';
         else{
             $q=db()->prepare('SELECT slug FROM companies WHERE slug=? AND active=1 LIMIT 1');$q->execute([$value]);
             if($slug=$q->fetchColumn())redirect('/'.$slug.'/login');
             record_login_failure('customer-access');
-            $error='Zu diesem Kurznamen haben wir keinen aktiven Firmenshop gefunden. Den Link finden Sie in Ihrer Einladungs-E-Mail – oder fragen Sie Ihre verantwortliche Person.';
+            $error='Zu diesem Kurznamen haben wir keinen aktiven Firmenshop gefunden. Den Link findest du in deiner Einladungs-E-Mail – oder frag deine verantwortliche Person.';
         }
     }
     hp_page_start('Kunden-Login – '.current_site_setting('site_title','WorkwearCenter'));
-    echo '<section class="s-access"><div class="s-wrap"><div class="s-access-card"><h1>Kunden-Login</h1><p>Jedes Unternehmen hat seinen eigenen, geschützten Shop. Geben Sie den Kurznamen Ihres Shops ein – er steht in Ihrer Einladungs-E-Mail.</p>';
+    echo '<section class="s-access"><div class="s-wrap"><div class="s-access-card"><h1>Kunden-Login</h1><p>Jedes Unternehmen hat seinen eigenen, geschützten Shop. Gib den Kurznamen deines Shops ein – er steht in deiner Einladungs-E-Mail.</p>';
     echo '<form method="post" class="s-form">'.csrf_field();
     if($error)echo '<div class="flash error">'.e($error).'</div>';
     echo '<label>Kurzname oder Shop-Adresse<input name="shop" value="'.e($value).'" placeholder="z. B. musterbau" autocomplete="organization" required autofocus></label><button class="s-btn s-btn-orange" type="submit">Weiter zur Anmeldung</button></form><p class="s-access-foot">Noch kein Firmenshop? <a href="/anfrage">Jetzt anfragen</a></p></div></div></section>';

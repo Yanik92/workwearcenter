@@ -664,13 +664,13 @@ function render_head(string $title, ?array $brand = null): void {
     $url='https://'.yw_public_host().$path;
     $canonical=$public?'<link rel="canonical" href="'.e($url).'">':'';
     $descriptions=[
-        '/'=>'WorkwearCenter ist der digitale Firmenshop für Arbeitskleidung: Mitarbeitende bestellen selbst oder Verantwortliche erfassen Teamaufträge. Bestellungen laufen in die Auftragsverwaltung.',
+        '/'=>'WorkwearCenter ist der digitale Firmenshop für Arbeitskleidung: Mitarbeitende bestellen selbst oder Verantwortliche erfassen Teamaufträge – mit Logo-Veredelung aus Salzkotten.',
         '/leistungen'=>'Arbeitskleidung und Teamkleidung mit Logo: Stick, Textildruck und Transferdruck aus eigener Produktion in Salzkotten – inklusive Firmenshop mit Budgets und Freigaben.',
-        '/ueber-uns'=>'Yanik Textildruck aus Salzkotten: Textilveredelung aus eigener Hand, persönliche Beratung und ein Online-Shop für die Firmenkleidung Ihres Teams.',
+        '/ueber-uns'=>'Yanik Textildruck aus Salzkotten: Textilveredelung aus eigener Hand, persönliche Beratung und ein Online-Shop für die Firmenkleidung deines Teams.',
         '/so-funktionierts'=>'In vier Schritten zum eigenen Firmenshop: Kollektion abstimmen, Regeln festlegen, Team bestellen lassen, fertig veredelte Kleidung erhalten.',
-        '/mustershop'=>'Probieren Sie einen Beispiel-Firmenshop aus – mit echten Artikeln, Budget, Größenwahl und Freigabe durch den Verantwortlichen.',
+        '/mustershop'=>'Probier einen Beispiel-Firmenshop aus – mit echten Artikeln, Budget, Größenwahl und Freigabe durch den Verantwortlichen.',
         '/kontakt'=>'Kontakt zu Yanik Textildruck in Salzkotten: Beratung zu Firmenkleidung, Veredelung und eigenem Unternehmensshop.',
-        '/anfrage'=>'Unverbindlich anfragen: eigener Online-Shop für die Firmenkleidung Ihres Teams, mit Logo-Veredelung von Yanik Textildruck.',
+        '/anfrage'=>'Unverbindlich anfragen: eigener Online-Shop für die Firmenkleidung deines Teams, mit Logo-Veredelung von Yanik Textildruck.',
         '/impressum'=>'Impressum von Yanik Textildruck, Salzkotten – Betreiber des WorkwearCenters.',
         '/datenschutz'=>'Datenschutzhinweise für das WorkwearCenter von Yanik Textildruck.',
         '/zugang'=>'Kunden-Login: Über den Kurznamen direkt zum eigenen Firmenshop im WorkwearCenter.',

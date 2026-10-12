@@ -121,7 +121,7 @@ function yw_month_label(string $ym): string {
 
 /** Angaben für shop.js (Zahlenformat und Texte), als JSON im data-Attribut des Seitenkopfs. */
 function yw_js_i18n(): string {
-    $keys = ['js.item','js.size','js.each_net','js.line_total','js.your_share','js.change','js.change_label','js.remove','js.remove_label','js.removed','js.limit_reached','js.added','js.added_size','js.selected','js.sending'];
+    $keys = ['js.item','js.size','js.each_net','js.line_total','js.your_share','js.change','js.change_label','js.remove','js.remove_label','js.removed','js.limit_reached','js.added','js.added_size','js.selected','js.sending','js.size_missing'];
     $texts = [];
     foreach ($keys as $key) $texts[substr($key, 3)] = yw_lang_raw($key);
     return (string)json_encode([
