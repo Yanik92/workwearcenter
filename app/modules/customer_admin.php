@@ -366,18 +366,23 @@ function yw_customer_people_page(array $company,array $account): void {
     $previous=($_GET['jahr']??'')==='vorjahr';
     [$periodStart,$periodEnd]=yw_report_period($company,$previous);
     $q=db()->prepare("SELECT NULLIF(ea.department,'') department,NULLIF(ea.cost_center,'') cost_center,NULLIF(ea.location,'') location,COUNT(DISTINCT ea.id) employees,COALESCE(SUM(os.company_spend),0) company_spend FROM employee_accounts ea LEFT JOIN (SELECT employee_account_id,SUM(company_total_cents) company_spend FROM orders WHERE company_id=? AND status IN ('pending','approved') AND created_at>=? AND created_at<? GROUP BY employee_account_id) os ON os.employee_account_id=ea.id WHERE ea.company_id=? AND ea.active=1 GROUP BY ea.department,ea.cost_center,ea.location ORDER BY department,cost_center,location");$q->execute([$company['id'],$periodStart,$periodEnd,$company['id']]);$groups=$q->fetchAll();
-    echo '<div class="cp-section-head"><div><h1>'.e(t('people.title')).'</h1><p>'.e(t('people.intro')).'</p></div><strong>'.e(t('people.head_counts',['active'=>$active,'pending'=>$pending])).'</strong></div>';
+    echo '<div class="cp-section-head"><div><h1>'.e(t('nav.people')).'</h1><p>'.e(t('people.intro')).'</p></div><strong>'.e(t('people.head_counts',['active'=>$active,'pending'=>$pending])).'</strong></div>';
     echo '<section class="cp-kpis"><article class="cp-kpi"><div class="icon">'.wc_public_icon('user').'</div><strong>'.$active.'</strong><span>'.e(t('people.kpi_active')).'</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('check').'</div><strong>'.$openOrders.'</strong><span>'.e(t('people.kpi_orders')).'</span></article><article class="cp-kpi"><div class="icon">'.wc_public_icon('lock').'</div><strong>'.$pending.'</strong><span>'.e(t('people.kpi_registrations')).'</span></article></section>';
     // 10.15: Großkunden – viele Gruppen zugeklappt, damit die Personenliste nicht weit unten verschwindet.
     $collapse=count($groups)>20;
+    // 10.19: Personenliste zuerst (häufigste Aufgabe), danach Anlegen/Import, Auswertungen zuletzt.
+    ob_start();
     echo '<section class="cp-card"><h2>'.e(t('people.usage_title')).'</h2><p>'.e($previous?t('people.usage_previous'):t('people.usage_current')).'</p>'.($collapse?'<details><summary>'.e(t('people.usage_show',['count'=>count($groups)])).'</summary>':'').'<div style="overflow:auto"><table><thead><tr><th>'.e(t('people.department')).'</th><th>'.e(t('people.cost_center')).'</th><th>'.e(t('people.location')).'</th><th>'.e(t('people.employees')).'</th><th>'.e(t('report.company_share')).'</th></tr></thead><tbody>';
     foreach($groups as $group)echo '<tr><td>'.e($group['department']??t('people.no_department')).'</td><td>'.e($group['cost_center']??t('people.no_cost_center')).'</td><td>'.e($group['location']??t('people.no_location')).'</td><td>'.(int)$group['employees'].'</td><td>'.money((int)$group['company_spend']).'</td></tr>';
     echo '</tbody></table></div>'.($collapse?'</details>':'').'</section>';
     yw_customer_report_card($company);
     yw_payroll_manager_card($company);
+    $reportsHtml=(string)ob_get_clean();
+    ob_start();
     $fields=fn(array $p=[],string $lock=''): string => '<label>'.e(t('people.department')).'<input name="department" maxlength="120" value="'.e($p['department']??'').'"></label><label>'.e(t('people.cost_center')).'<input name="cost_center" maxlength="120" value="'.e($p['cost_center']??'').'"></label><label>'.e(t('people.location')).'<input name="location" maxlength="120" value="'.e($p['location']??'').'"></label><label>'.e(t('people.employee_number')).'<input name="employee_number" maxlength="80" value="'.e($p['employee_number']??'').'"></label><label>'.e(t('people.start')).'<input type="date" name="employment_start" value="'.e($p['employment_start']??'').'"'.$lock.'></label><label>'.e(t('people.end')).'<input type="date" name="employment_end" value="'.e($p['employment_end']??'').'"'.$lock.'></label>';
     echo '<section class="cp-card"><h2>'.e(t('people.add_title')).'</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_add"><div class="grid2"><label>'.e(t('common.name')).'<input name="name" maxlength="160" required></label><label>'.e(t('common.email')).'<input type="email" name="email" maxlength="190" required></label>'.$fields().yw_equipment_profile_select($profiles,null).'</div><button class="btn primary">'.e(t('people.add_button')).'</button></form></section>';
     echo '<section class="cp-card"><h2>'.e(t('people.csv_title')).'</h2><p>'.e(t('people.csv_text')).'</p><form method="post" enctype="multipart/form-data" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_import"><label>'.e(t('people.csv_file')).'<input type="file" name="employees_csv" accept=".csv,text/csv" required></label><button class="btn">'.e(t('people.csv_import')).'</button></form><p><a href="/'.e($company['slug']).'/mitarbeiter.csv">'.e(t('people.csv_export')).'</a></p></section>';
+    $addHtml=(string)ob_get_clean();
     $statusLabels=['pending'=>t('people.status_pending'),'approved'=>t('status.approved'),'rejected'=>t('status.rejected')];
     $nav=fn(bool $withSearch): string => yw_people_list_nav($list,'/'.$company['slug'].'/mitarbeiter',$previous?['jahr'=>'vorjahr']:[],yw_people_list_texts_shop($list),$withSearch);
     $canAppoint=yw_managers_can_appoint($company);
@@ -397,4 +402,6 @@ function yw_customer_people_page(array $company,array $account): void {
             .(!$self&&!$protected?'<form method="post" class="space-top" data-confirm="'.e(t('people.anonymize_confirm',['name'=>$person['name']])).'">'.csrf_field().'<input type="hidden" name="action" value="customer_employee_anonymize"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><button class="btn small danger">'.e(t('people.anonymize')).'</button> <small class="muted">'.e(t('people.anonymize_hint')).'</small></form>':'').'</details>';
     }
     if($list['pages']>1)echo $nav(false);
+    echo $addHtml;
+    echo '<h2 class="cp-subhead">'.e(t('people.reports_title')).'</h2>'.$reportsHtml;
 }

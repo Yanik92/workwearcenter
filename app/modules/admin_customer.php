@@ -490,7 +490,7 @@ function yw_admin_poster_page(int $companyId): void {
     echo '<h1>Deine Arbeitskleidung bestellen</h1><p class="poster-lead">'.($target==='login'?'Einfach im Firmenshop anmelden – am Handy oder am Computer.':'Einmal registrieren, dann selbst bestellen – am Handy oder am Computer.').'</p>';
     echo '<div class="poster-main"><div><div class="poster-qr"><div data-qr="'.e($url).'" role="img" aria-label="QR-Code zu '.e($url).'"></div></div><div class="poster-url">'.e(preg_replace('#^https://#','',$url)).'</div></div>';
     echo '<ol class="poster-steps">';foreach(yw_poster_steps($c,$target) as $step)echo '<li><span>'.e($step).'</span></li>';echo '</ol></div>';
-    echo '<div class="poster-foot"><span>Fragen zur Bestellung? Wende dich an deine verantwortliche Person.</span><img src="/assets/media/workwearcenter-logo-dunkel.png" alt="WorkwearCenter"></div>';
+    echo '<div class="poster-foot"><span>Fragen zur Bestellung? Wende dich an deine verantwortliche Person.</span><img src="/assets/media/workwearcenter-logo-anthrazit.png" alt="WorkwearCenter"></div>';
     echo '</div></main>';
     echo '<script src="/assets/vendor/qrcode.js" defer></script>';
     render_foot();

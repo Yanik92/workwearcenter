@@ -7,18 +7,26 @@ if (!is_file($configFile)) {
     exit('Konfiguration fehlt. Bitte config.php aus der bestehenden Installation wiederherstellen.');
 }
 $config = require $configFile;
-$config['base_domain'] = 'workwearcenter.de';
+require_once __DIR__.'/request_security.php';
+
+$localTestRequest = ($config['local_test_mode'] ?? false) === true
+    && in_array((string)($_SERVER['REMOTE_ADDR'] ?? ''), ['127.0.0.1', '::1'], true);
+if ($localTestRequest) {
+    $config['base_domain'] = (string)($config['test_base_domain'] ?? '127.0.0.1:8080');
+} else {
+    $config['base_domain'] = 'workwearcenter.de';
+}
 $config['app_name'] = 'WorkwearCenter by Yanik Textildruck';
 date_default_timezone_set('Europe/Berlin');
 ini_set('session.use_strict_mode', '1');
 
-$secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+$secure = yw_request_is_https($config);
 $requestHost = strtolower((string)preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
 $productionHosts = [strtolower((string)$config['base_domain']), 'www.'.strtolower((string)$config['base_domain'])];
 
 // Never create an authenticated production session over an unencrypted request.
 // The web-server redirect remains the first line of defence; this is the fallback.
-if (!$secure && in_array($requestHost, $productionHosts, true)) {
+if (!$secure && in_array($requestHost, $productionHosts, true) && !yw_untrusted_proxy_https()) {
     $requestUri = (string)($_SERVER['REQUEST_URI'] ?? '/');
     if ($requestUri === '' || $requestUri[0] !== '/') $requestUri = '/';
     header('Location: https://'.$requestHost.$requestUri, true, 308);

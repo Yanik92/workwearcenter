@@ -57,8 +57,7 @@ function yw_api_require_scope(string $scope): array {
 }
 
 function yw_api_https_ok(): bool {
-    if(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')return true;
-    if(strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO']??''))==='https')return true;
+    if(function_exists('yw_request_is_https')&&yw_request_is_https())return true;
     return in_array((string)($_SERVER['REMOTE_ADDR']??''),['127.0.0.1','::1'],true); // lokale Tests
 }
 

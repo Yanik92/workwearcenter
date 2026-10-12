@@ -27,9 +27,10 @@ function yw_order_decide(array $company,array $account,int $orderId,string $deci
 
     // Vier-Augen-Prinzip: Eigene Bestellungen gibt eine andere verantwortliche Person frei.
     // Nur wenn es keine weitere aktuell zugangsberechtigte verantwortliche Person gibt, ist das erlaubt (eigener Protokolleintrag).
-    $ownerQuery=db()->prepare('SELECT employee_account_id FROM orders WHERE id=? AND company_id=? LIMIT 1');
-    $ownerQuery->execute([$orderId,(int)$company['id']]);
-    $selfDecision=(int)$ownerQuery->fetchColumn()===(int)$account['id'];
+    // Als eigene Bestellung gilt auch ein Auftrag, den die Person per Team-Bestellung für andere angelegt hat.
+    $ownerQuery=db()->prepare('SELECT employee_account_id,placed_by_account_id FROM orders WHERE id=? AND company_id=? LIMIT 1');
+    $ownerQuery->execute([$orderId,(int)$company['id']]);$owner=$ownerQuery->fetch()?:[];
+    $selfDecision=(int)($owner['employee_account_id']??0)===(int)$account['id']||(int)($owner['placed_by_account_id']??0)===(int)$account['id'];
     $selfApproval=$selfDecision && $decision==='approved';
     if($selfApproval && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0)
         return ['error',t('err.four_eyes_order')];
@@ -72,8 +73,8 @@ function yw_other_manager_count(int $companyId,int $accountId): int {
 /** 10.15: Bestellungen, die auf die Entscheidung dieser Person warten (eigene nicht, solange eine andere Person freigeben kann). */
 function yw_pending_decision_count(int $companyId,int $accountId): int {
     $others=yw_other_manager_count($companyId,$accountId)>0;
-    $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'".($others?' AND NOT (employee_account_id<=>?)':''));
-    $q->execute($others?[$companyId,$accountId]:[$companyId]);
+    $q=db()->prepare("SELECT COUNT(*) FROM orders WHERE company_id=? AND status='pending'".($others?' AND NOT (employee_account_id<=>? OR placed_by_account_id<=>?)':''));
+    $q->execute($others?[$companyId,$accountId,$accountId]:[$companyId]);
     return (int)$q->fetchColumn();
 }
 
@@ -153,8 +154,10 @@ function yw_notify_managers_new_order(array $company,int $orderId,int $ownerAcco
     try{
         $q=db()->prepare("SELECT ea.id,ea.name,ea.email,ea.language,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.company_id=? AND ea.role='manager' AND ea.active=1 AND ea.registration_status='approved' AND ea.anonymized_at IS NULL AND (ea.employment_start IS NULL OR ea.employment_start<=CURDATE()) AND (ea.employment_end IS NULL OR ea.employment_end>=CURDATE())");
         $q->execute([(int)$company['id']]);
+        // 10.18: Wer per Team-Bestellung für andere bestellt hat, gilt wie bei der eigenen Bestellung.
+        $placedBy=0;try{$pq=db()->prepare('SELECT placed_by_account_id FROM orders WHERE id=? LIMIT 1');$pq->execute([$orderId]);$placedBy=(int)$pq->fetchColumn();}catch(Throwable $ignored){}
         foreach($q->fetchAll() as $manager){
-            $own=(int)$manager['id']===$ownerAccountId;
+            $own=(int)$manager['id']===$ownerAccountId||((int)$manager['id']===$placedBy&&$placedBy>0);
             if($own && yw_other_manager_count((int)$company['id'],(int)$manager['id'])>0){
                 yw_mail_to_person($manager,fn(array $m)=>[t('mail.own_order.subject',['id'=>$orderId]),t('mail.hello',['name'=>$m['name']])."\n\n".t('mail.own_order.body')."\n\n".yw_order_mail_summary($orderId)]);
                 continue;
@@ -216,7 +219,7 @@ function yw_mail_decision_page(string $slug,string $token): void {
     $preset=(string)($_GET['aktion']??'')==='ablehnen'?'ablehnen':'freigeben';
     $q=db()->prepare("SELECT o.*,COALESCE(ea.name,i.employee_name,'') employee_name FROM orders o LEFT JOIN employee_accounts ea ON ea.id=o.employee_account_id LEFT JOIN invites i ON i.id=o.invite_id WHERE o.id=? AND o.company_id=? LIMIT 1");
     $q->execute([$orderId,(int)$company['id']]);$order=$q->fetch();
-    $own=(int)$order['employee_account_id']===(int)$account['id'];
+    $own=(int)$order['employee_account_id']===(int)$account['id']||(int)($order['placed_by_account_id']??0)===(int)$account['id'];
     $selfBlocked=$own && yw_other_manager_count((int)$company['id'],(int)$account['id'])>0;
 
     render_head(t('decide.page_title',['id'=>$orderId,'shop'=>$company['shop_name']]),$company);

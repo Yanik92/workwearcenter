@@ -205,7 +205,7 @@ function yw_probeshop_route(string $token): void {
     header('X-Robots-Tag: noindex, nofollow, noarchive');
     header('Referrer-Policy: no-referrer');
     $shop=null;
-    if(login_throttled('probeshop',40)){http_response_code(429);simple_message('Zu viele Aufrufe','Bitte versuchen Sie es in einigen Minuten erneut.');return;}
+    if(login_throttled('probeshop',40)){http_response_code(429);simple_message('Zu viele Aufrufe','Bitte versuch es in einigen Minuten erneut.');return;}
     if(yw_probeshop_token_ok($token)){
         try{$q=db()->prepare('SELECT * FROM yw_probeshops WHERE token=? LIMIT 1');$q->execute([$token]);$shop=$q->fetch()?:null;}
         catch(Throwable $e){$shop=null;}
@@ -213,12 +213,12 @@ function yw_probeshop_route(string $token): void {
     if(!$shop){
         record_login_failure('probeshop');
         http_response_code(404);
-        simple_message('Probeshop nicht gefunden','Dieser Link ist nicht (mehr) gültig. Gern erstellen wir Ihnen einen neuen Probeshop – schreiben Sie uns einfach.');
+        simple_message('Probeshop nicht gefunden','Dieser Link ist nicht (mehr) gültig. Gern erstellen wir dir einen neuen Probeshop – schreib uns einfach.');
         return;
     }
     if(strtotime((string)$shop['expires_at'])<time()){
         http_response_code(410);
-        simple_message('Probeshop abgelaufen','Ihr persönlicher Probeshop war 30 Tage lang verfügbar und ist jetzt abgelaufen. Ihre Daten werden automatisch gelöscht. Gern richten wir Ihnen einen neuen ein.');
+        simple_message('Probeshop abgelaufen','Dein persönlicher Probeshop war 30 Tage lang verfügbar und ist jetzt abgelaufen. Deine Daten werden automatisch gelöscht. Gern richten wir dir einen neuen ein.');
         return;
     }
     try{db()->prepare('UPDATE yw_probeshops SET view_count=view_count+1,last_viewed_at=NOW() WHERE id=?')->execute([(int)$shop['id']]);}catch(Throwable $e){}
@@ -234,7 +234,7 @@ function yw_probeshop_page(array $shop): void {
     foreach(yw_probeshop_products() as $p){
         $products[]=[
             'name'=>$p['name'],'category'=>$p['category'],
-            'detail'=>decoration_position_label('chest_left').' · '.decoration_method_label($p['method']).' · Ihr Logo',
+            'detail'=>decoration_position_label('chest_left').' · '.decoration_method_label($p['method']).' · dein Logo',
             'cents'=>$p['price'],'sku'=>$p['sku'],'color'=>$p['color'],'color_light'=>$p['color_light'],'sizes'=>$p['sizes'],
             'visual'=>yw_mockup_html(yw_probeshop_views($p,$logo),$p['name'].' mit Logo von '.$name,false,'demo-mockup'),
         ];
@@ -246,14 +246,14 @@ function yw_probeshop_page(array $shop): void {
     yw_demo_shop_render([
         'company'=>$name,
         'mark'=>$mark,
-        'notice'=>'<span><strong>Ihr persönlicher Probeshop</strong> · So könnte der Firmenshop für '.e($name).' aussehen. Nur zur Ansicht – gültig bis '.e($until).'.</span><a href="mailto:'.e(s_mail()).'?subject='.rawurlencode('Probeshop '.$name).'">Fragen? Schreiben Sie uns →</a>',
+        'notice'=>'<span><strong>Dein persönlicher Probeshop</strong> · So könnte der Firmenshop für '.e($name).' aussehen. Nur zur Ansicht – gültig bis '.e($until).'.</span><a href="mailto:'.e(s_mail()).'?subject='.rawurlencode('Probeshop '.$name).'">Fragen? Schreib uns →</a>',
         'products'=>$products,
         'tone'=>$tone,
         'primary'=>color_ok((string)($shop['primary_color']??''))?(string)$shop['primary_color']:'',
         'probe'=>true,
         'logo_dark'=>$logo!==''&&yw_probeshop_suggest_tone($logo)==='light',
     ]);
-    echo '<section class="demo-probe-next"><div class="demo-shell demo-probe-next-inner"><div><h2>Gefällt Ihnen, was Sie sehen?</h2><p>Im echten Firmenshop legen wir gemeinsam Ihre Kollektion, Logo-Positionen, Budgets und Freigaben fest. Ihr Team bestellt danach selbst – am Computer oder Smartphone.</p></div><div class="demo-probe-actions"><a class="s-btn s-btn-orange" href="mailto:'.e(s_mail()).'?subject='.rawurlencode('Firmenshop für '.$name).'">Gespräch vereinbaren</a><a class="s-btn s-btn-navy" href="/so-funktionierts">So funktioniert’s</a></div></div></section>';
+    echo '<section class="demo-probe-next"><div class="demo-shell demo-probe-next-inner"><div><h2>Gefällt dir, was du siehst?</h2><p>Im echten Firmenshop legen wir gemeinsam deine Kollektion, Logo-Positionen, Budgets und Freigaben fest. Dein Team bestellt danach selbst – am Computer oder Smartphone.</p></div><div class="demo-probe-actions"><a class="s-btn s-btn-orange" href="mailto:'.e(s_mail()).'?subject='.rawurlencode('Firmenshop für '.$name).'">Gespräch vereinbaren</a><a class="s-btn s-btn-navy" href="/so-funktionierts">So funktioniert’s</a></div></div></section>';
     global_footer();
     render_foot();
 }
@@ -272,12 +272,12 @@ function yw_inquiry_confirmation_mail(string $email,?string $probeshopToken): bo
 
 /** Betreff und Text der Eingangsbestätigung: nimmt bewusst keine Formulareingaben entgegen. @return array{0:string,1:string} */
 function yw_inquiry_confirmation_text(?string $probeshopToken): array {
-    $text="Guten Tag,\n\nvielen Dank für Ihre Anfrage zum WorkwearCenter. Wir haben Ihre Angaben erhalten und melden uns zeitnah persönlich bei Ihnen.\n\n";
+    $text="Hallo,\n\nvielen Dank für deine Anfrage zum WorkwearCenter. Wir haben deine Angaben erhalten und melden uns so schnell wie möglich persönlich bei dir.\n\n";
     if($probeshopToken!==null){
-        $text.="Vorab haben wir aus Ihrem Logo einen persönlichen Probeshop erstellt. So könnte Ihr eigener Firmenshop aussehen:\n\n".yw_probeshop_url($probeshopToken)."\n\nDer Link ist nur für Sie bestimmt, 30 Tage gültig und wird danach samt Logo automatisch gelöscht.\n\n";
+        $text.="Vorab haben wir aus deinem Logo einen persönlichen Probeshop erstellt. So könnte dein eigener Firmenshop aussehen:\n\n".yw_probeshop_url($probeshopToken)."\n\nDer Link ist nur für dich bestimmt, 30 Tage gültig und wird danach samt Logo automatisch gelöscht.\n\n";
     }
-    $text.="Sie haben keine Anfrage gestellt? Dann hat jemand Ihre Adresse eingetragen – Sie können diese E-Mail einfach ignorieren.\n\nMit freundlichen Grüßen\n".current_site_setting('imprint_company','Yanik Textildruck')."\n".s_mail();
-    return ['Ihre Anfrage beim WorkwearCenter'.($probeshopToken!==null?' – Ihr Probeshop ist fertig':''),$text];
+    $text.="Du hast keine Anfrage gestellt? Dann hat jemand deine Adresse eingetragen – du kannst diese E-Mail einfach ignorieren.\n\nViele Grüße\n".current_site_setting('imprint_company','Yanik Textildruck')."\n".s_mail();
+    return ['Deine Anfrage beim WorkwearCenter'.($probeshopToken!==null?' – dein Probeshop ist fertig':''),$text];
 }
 
 /** 10.15: Höchstens eine Eingangsbestätigung je Adresse in 24 Stunden und YW_INQUIRY_CONFIRM_PER_HOUR insgesamt je Stunde. */

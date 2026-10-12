@@ -81,6 +81,187 @@
     });
   });
 
+  /* ---------- Gebündelte Team-Bestellung im Verantwortlichen-Portal ---------- */
+  document.querySelectorAll('form[data-team-order]').forEach(function (teamForm) {
+    var peopleBox = teamForm.querySelector('[data-team-people]');
+    var personTemplate = teamForm.querySelector('template[data-team-person-template]') || document.querySelector('template[data-team-person-template]');
+    var feedback = teamForm.querySelector('[data-team-feedback]');
+    var catalogData = {};
+    try {
+      var bytes = Uint8Array.from(atob(teamForm.dataset.catalog || ''), function (c) { return c.charCodeAt(0); });
+      catalogData = JSON.parse(new TextDecoder('utf-8').decode(bytes));
+    } catch (e) { catalogData = {}; }
+    var catalogs = catalogData.profiles || {};
+    var accountCatalogs = catalogData.accounts || {};
+    var productsFor = function (account) { return catalogs[accountCatalogs[String(account)]] || []; };
+    var limit = int(teamForm.dataset.maxPeople || '20');
+    var message = function (key) { return teamForm.dataset[key] || ''; };
+    var tell = function (text) { if (feedback) feedback.textContent = text; };
+    var cards = function () { return Array.prototype.slice.call(peopleBox.querySelectorAll('[data-team-person]')); };
+    var refreshNames = function () {
+      cards().forEach(function (person, personIndex) {
+        person.dataset.teamIndex = String(personIndex);
+        var number = person.querySelector('[data-team-number]');
+        if (number) number.textContent = String(personIndex + 1).padStart(2, '0');
+        var account = person.querySelector('[data-team-account]');
+        if (account) account.name = 'team[' + personIndex + '][employee_id]';
+        person.querySelectorAll('[data-team-item]').forEach(function (row, itemIndex) {
+          var base = 'team[' + personIndex + '][items][' + itemIndex + ']';
+          var product = row.querySelector('[data-team-product]');
+          var size = row.querySelector('[data-team-size]');
+          var quantity = row.querySelector('[data-team-quantity]');
+          if (product) product.name = base + '[product_id]';
+          if (size) size.name = base + '[size]';
+          if (quantity) quantity.name = base + '[quantity]';
+        });
+      });
+      refreshAccounts();
+    };
+    var refreshAccounts = function () {
+      var selected = cards().map(function (person) { return person.querySelector('[data-team-account]').value; }).filter(Boolean);
+      cards().forEach(function (person) {
+        var current = person.querySelector('[data-team-account]');
+        Array.prototype.forEach.call(current.options, function (option) {
+          option.disabled = !!option.value && option.value !== current.value && selected.indexOf(option.value) !== -1;
+        });
+      });
+    };
+    var updateSizes = function (row) {
+      var product = row.querySelector('[data-team-product]');
+      var size = row.querySelector('[data-team-size]');
+      var account = row.closest('[data-team-person]').querySelector('[data-team-account]').value;
+      var selected = product.value;
+      var item = productsFor(account).find(function (entry) { return String(entry.id) === String(selected); });
+      size.innerHTML = '';
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = size.dataset.placeholder || '';
+      size.appendChild(placeholder);
+      if (!item) { size.disabled = true; return; }
+      (item.sizes || []).forEach(function (label) {
+        var option = document.createElement('option');
+        option.value = label; option.textContent = label; size.appendChild(option);
+      });
+      size.disabled = false;
+    };
+    var updateProducts = function (person) {
+      var account = person.querySelector('[data-team-account]').value;
+      person.querySelectorAll('[data-team-item]').forEach(function (row) {
+        var product = row.querySelector('[data-team-product]');
+        var size = row.querySelector('[data-team-size]');
+        var placeholder = product.options[0] ? product.options[0].textContent : '';
+        product.innerHTML = '';
+        var first = document.createElement('option'); first.value = ''; first.textContent = placeholder; product.appendChild(first);
+        productsFor(account).forEach(function (item) {
+          var option = document.createElement('option');
+          option.value = String(item.id); option.textContent = item.name + ' · ' + item.price + ' (' + (teamForm.dataset.priceUnit || 'brutto je Stück') + ')'; product.appendChild(option);
+        });
+        product.disabled = !account;
+        size.innerHTML = '';
+        var sizeFirst = document.createElement('option'); sizeFirst.value = ''; sizeFirst.textContent = size.dataset.placeholder || ''; size.appendChild(sizeFirst);
+        size.disabled = true;
+      });
+    };
+    var populateProductOptions = function (row, account) {
+      var product = row.querySelector('[data-team-product]');
+      var size = row.querySelector('[data-team-size]');
+      var placeholder = product.options[0] ? product.options[0].textContent : '';
+      product.innerHTML = '';
+      var first = document.createElement('option'); first.value = ''; first.textContent = placeholder; product.appendChild(first);
+      productsFor(account).forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = String(item.id); option.textContent = item.name + ' · ' + item.price + ' (' + (teamForm.dataset.priceUnit || 'brutto je Stück') + ')'; product.appendChild(option);
+      });
+      product.disabled = !account;
+      size.innerHTML = '';
+      var sizeFirst = document.createElement('option'); sizeFirst.value = ''; sizeFirst.textContent = size.dataset.placeholder || ''; size.appendChild(sizeFirst);
+      size.disabled = true;
+    };
+    var addItem = function (person) {
+      var host = person.querySelector('[data-team-items]');
+      var template = person.querySelector('template[data-team-item-template]');
+      if (!template || host.children.length >= 10) { tell(message('limitMessage')); return; }
+      var row = template.content.firstElementChild.cloneNode(true);
+      var size = row.querySelector('[data-team-size]');
+      size.dataset.placeholder = size.options[0] ? size.options[0].textContent : '';
+      host.appendChild(row);
+      populateProductOptions(row, person.querySelector('[data-team-account]').value);
+      refreshNames();
+    };
+    var addPerson = function (accountId) {
+      if (cards().length >= limit) { tell(message('limitMessage')); return null; }
+      var person = personTemplate.content.firstElementChild.cloneNode(true);
+      peopleBox.appendChild(person);
+      var account = person.querySelector('[data-team-account]');
+      if (accountId) account.value = String(accountId);
+      var template = person.querySelector('template[data-team-item-template]');
+      var firstRow = template.content.firstElementChild.cloneNode(true);
+      var size = firstRow.querySelector('[data-team-size]');
+      size.dataset.placeholder = size.options[0] ? size.options[0].textContent : '';
+      person.querySelector('[data-team-items]').appendChild(firstRow);
+      populateProductOptions(firstRow, account.value);
+      refreshNames();
+      return person;
+    };
+    teamForm.querySelector('[data-team-add-person]').addEventListener('click', function () {
+      var person = addPerson('');
+      if (person) { tell(''); person.querySelector('[data-team-account]').focus(); }
+    });
+    teamForm.querySelector('[data-team-add-all]').addEventListener('click', function () {
+      var optionNodes = personTemplate.content.querySelector('[data-team-account]').options;
+      var ids = Array.prototype.map.call(optionNodes, function (option) { return option.value; }).filter(Boolean);
+      if (ids.length > limit) { tell(message('limitMessage')); return; }
+      cards().forEach(function (person) {
+        var hasProduct = Array.prototype.some.call(person.querySelectorAll('[data-team-product]'), function (product) { return !!product.value; });
+        if (!person.querySelector('[data-team-account]').value && !hasProduct) person.remove();
+      });
+      var selectedIds = cards().map(function (person) { return person.querySelector('[data-team-account]').value; }).filter(Boolean);
+      var missing = ids.filter(function (id) { return selectedIds.indexOf(id) === -1; });
+      if (cards().length + missing.length > limit) { tell(message('limitMessage')); return; }
+      missing.forEach(function (id) { addPerson(id); });
+      tell('');
+    });
+    peopleBox.addEventListener('change', function (event) {
+      if (event.target.matches('[data-team-account]')) {
+        updateProducts(event.target.closest('[data-team-person]'));
+        refreshAccounts();
+      }
+      if (event.target.matches('[data-team-product]')) updateSizes(event.target.closest('[data-team-item]'));
+    });
+    peopleBox.addEventListener('click', function (event) {
+      var removeItem = event.target.closest('[data-team-remove-item]');
+      var removePerson = event.target.closest('[data-team-remove]');
+      if (removeItem) { removeItem.closest('[data-team-item]').remove(); refreshNames(); return; }
+      if (removePerson) { removePerson.closest('[data-team-person]').remove(); refreshNames(); return; }
+      var addLine = event.target.closest('[data-team-add-item]');
+      if (addLine) addItem(addLine.closest('[data-team-person]'));
+    });
+    teamForm.addEventListener('submit', function (event) {
+      var selectedPeople = {}, positions = 0, invalid = '';
+      cards().forEach(function (person) {
+        var account = person.querySelector('[data-team-account]').value;
+        person.querySelectorAll('[data-team-item]').forEach(function (row) {
+          var product = row.querySelector('[data-team-product]').value;
+          var size = row.querySelector('[data-team-size]').value;
+          var qty = int(row.querySelector('[data-team-quantity]').value);
+          if (product) {
+            positions++;
+            if (!account) invalid = message('duplicateMessage');
+            else if (!size) invalid = message('sizeMessage');
+            else if (qty < 1 || qty > 10) invalid = message('limitMessage');
+          }
+        });
+        if (account) {
+          if (selectedPeople[account]) invalid = message('duplicateMessage');
+          selectedPeople[account] = true;
+        }
+      });
+      if (!positions && !invalid) invalid = message('emptyMessage');
+      if (invalid) { event.preventDefault(); tell(invalid); if (feedback) feedback.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+    addPerson('');
+  });
+
   var form = document.querySelector('form[data-order-form]');
   if (!form) return;
 
@@ -343,15 +524,33 @@
       update();
     });
   });
+  var sizeMissing = function (dialog, size, input) {
+    var msg = tr('size_missing', { name: input.dataset.lineName || tr('item') });
+    var status = dialog ? dialog.querySelector('[data-detail-status]') : null;
+    if (status) status.textContent = msg;
+    size.setAttribute('aria-invalid', 'true');
+    window.setTimeout(function () { size.focus(); }, 60);
+    toast(msg);
+  };
+  form.querySelectorAll('select[data-size-select]').forEach(function (s) {
+    s.addEventListener('change', function () {
+      s.removeAttribute('aria-invalid');
+      var dialog = s.closest('[data-detail]');
+      var status = dialog ? dialog.querySelector('[data-detail-status]') : null;
+      if (status) status.textContent = '';
+    });
+  });
   document.querySelectorAll('[data-add-detail]').forEach(function (button) {
     button.addEventListener('click', function () {
       var dialog = button.closest('[data-detail]');
       var id = activeVariant(dialog);
       var input = document.getElementById('qty-' + id);
       if (!input || input.disabled) { toast(tr('limit_reached')); return; }
+      var size = document.getElementById(input.dataset.sizeTarget || '');
+      // 10.19: Ohne gewählte Größe nichts übernehmen (kein stilles „erste Größe“ mehr).
+      if (size && size.value === '') { sizeMissing(dialog, size, input); return; }
       if (int(input.value) === 0) input.value = '1';
       update();
-      var size = document.getElementById(input.dataset.sizeTarget || '');
       var msg = tr(size ? 'added_size' : 'added', { qty: input.value, name: input.dataset.lineName || tr('item'), size: size ? size.value : '' });
       // Karte zeigt danach die zuletzt gewählte Farbe
       var card = document.querySelector('.sp-card[data-group="' + dialog.id + '"] .sp-card-visual .mockup-view');
@@ -366,7 +565,19 @@
       if (panel) { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); panel.focus({ preventScroll: true }); }
     });
   });
-  form.addEventListener('submit', function () {
+  form.addEventListener('submit', function (event) {
+    var missing = null;
+    qtyInputs.forEach(function (input) {
+      var size = document.getElementById(input.dataset.sizeTarget || '');
+      if (!missing && int(input.value) > 0 && size && size.value === '') missing = { input: input, size: size };
+    });
+    if (missing) {
+      event.preventDefault();
+      var dialog = document.getElementById(missing.input.dataset.group || '');
+      if (dialog) { selectVariant(dialog, missing.input.id.replace('qty-', ''), false); openDetail(dialog, null); }
+      sizeMissing(dialog, missing.size, missing.input);
+      return;
+    }
     var submit = form.querySelector('.shop-submit');
     if (submit) { window.setTimeout(function () { submit.disabled = true; submit.textContent = tr('sending'); }, 0); }
   });

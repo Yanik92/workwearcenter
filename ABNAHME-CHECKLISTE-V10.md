@@ -1,4 +1,4 @@
-# Abnahme-Checkliste WorkwearCenter 10.12.0
+# Abnahme-Checkliste WorkwearCenter 10.16.4
 
 Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danach öffentlich freischalten.
 
@@ -16,6 +16,10 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 
 ## Admin-Sicherheit (neu in 10)
 
+- [ ] Verwaltung nach Aufträgen, Kunden, Sortiment, Website und Betrieb gegliedert; jeder Bereich lässt sich direkt öffnen.
+- [ ] Mitarbeiter-Freigaben listet Registrierungen firmenübergreifend, Suche und Seitennavigation funktionieren.
+- [ ] Eine Freigabe kann nur einmal verarbeitet werden; veraltete Einträge bleiben unverändert und zeigen einen Hinweis.
+
 - [ ] Zwei-Faktor-Anmeldung eingerichtet, Anmeldung mit Code getestet.
 - [ ] Wiederherstellungscodes ausgedruckt bzw. im Passwort-Manager gespeichert.
 - [ ] Jede Person mit Admin-Zugang hat ein eigenes Konto (Mein Konto → Administratoren).
@@ -32,6 +36,11 @@ Diese Liste nach dem Upload im Wartungsmodus vollständig durchgehen. Erst danac
 ## Öffentliche Website
 
 - [ ] Startseite auf Desktop und Smartphone ohne Verzerrung oder übergroße Bildfläche.
+- [ ] Startseite und öffentliche Unterseiten haben auf Desktop und Smartphone stimmige Seitenköpfe, lesbare Karten/Formulare und funktionierende Kontaktwege.
+- [ ] Startseite zeigt eine native Kollektion-Vorschau; der vollständige Mustershop ist separat erreichbar und kennzeichnet Beispielpreise, Budget und Auswahl.
+- [ ] Mustershop: eigene KANTENWERK-Marke, Firmenfarben und Logo auf Produktvorschauen sichtbar; mehrere Größen/Positionen auswählbar; Restbudget, Entfernen und Leeren stimmen; keine echte Bestellung wird gespeichert.
+- [ ] Systemstatus: privater Datenordner geschützt; Fehlerprotokoll lesbar; keine ungeklärten PHP-Fehler der letzten 24 Stunden.
+- [ ] Wenn ein Reverse-Proxy/CDN eingesetzt wird: nur dessen feste IPs/CIDRs in `trusted_proxies` eingetragen und `X-Forwarded-Proto` wird am Proxy überschrieben.
 - [ ] Logo, Fotos und drei echte Mustershop-Produkte werden geladen.
 - [ ] Leistungen, Über uns, Ablauf, Kontakt und Anfrageformular erreichbar.
 - [ ] Anfrage wird gespeichert, erscheint im Admin und löst eine E-Mail aus.
@@ -124,6 +133,19 @@ Kleine Verbesserungen
 - [ ] Artikel ohne Logo: kein Hinweis „Vorschau mit deinem Firmenlogo“.
 - [ ] Mustershop: Begrüßung passt zur Tageszeit.
 - [ ] Startseite: neue Shop-Bilder (Musterbau GmbH) am Computer und am Handy.
+
+## Neu in 10.16
+
+Firmenshop-Design (am Computer und am Handy prüfen)
+- [ ] Kopfzeile: Firmenlogo, Menü, Sprache und Konto-Menü sind erreichbar; Firmenfarbe bleibt als Akzent gut lesbar.
+- [ ] Handy: untere Navigation zeigt die passenden Punkte für Mitarbeitende bzw. Verantwortliche; Zähler stimmen.
+- [ ] Produkte: Kategorien bleiben beim Scrollen erreichbar; Produktdetails öffnen und lassen sich ohne abgeschnittene Inhalte bedienen.
+- [ ] Computer: „Deine Auswahl“ bleibt beim Scrollen sichtbar und verdeckt keine Produkt- oder Formularinhalte.
+- [ ] Handy: Auswahl lässt sich über den festen Knopf im Produktdetail hinzufügen; Warenkorb und Absenden bleiben erreichbar.
+- [ ] Startseite, Bestellungen, Freigaben, Anmeldung und Registrierung auf schmalem Bildschirm ohne horizontales Scrollen geprüft.
+- [ ] Öffentliche Website zeigt aktuelle 10.16-Shopansichten ohne die alte Seitenleiste; Desktop- und Mobilaufnahme entsprechen dem freigegebenen Stand.
+- [ ] Firmenlogo, Firmenfarbe, Preis, Budgetwarnung und Freigabestatus sind in heller und dunkler Firmenfarbe gut lesbar.
+- [ ] Desktop- und Mobilansicht mit einer Firma ohne Logo sowie mit mehr als einer Produktkategorie geprüft.
 
 ## Mail und Betrieb
 

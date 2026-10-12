@@ -1,11 +1,11 @@
 # Go-Live-Checkliste WorkwearCenter (Großkunde)
 
-Stand: Version 10.17.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was hier steht, kann das Programm nicht selbst einstellen – es hängt am Hoster, an der config.php oder an deiner Einrichtung.
+Stand: Version 10.18.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was hier steht, kann das Programm nicht selbst einstellen – es hängt am Hoster, an der config.php oder an deiner Einrichtung.
 
 ## 1. Hoster / Server (einmalig, ggf. Hoster-Support fragen)
 
 - [ ] **HTTPS** mit gültigem Zertifikat für workwearcenter.de (und www). Die Seite leitet selbst auf https um.
-- [ ] **PHP 8.1 oder neuer** (empfohlen 8.3), mit den Erweiterungen pdo_mysql, gd, zip, mbstring, curl, openssl.
+- [ ] **PHP 8.1 oder neuer** (empfohlen 8.3), mit den Erweiterungen pdo_mysql, gd, zip, mbstring, curl, openssl, fileinfo, dom und xmlreader.
 - [ ] **PHP-Einstellungen** (php.ini oder Hoster-Oberfläche):
   - `memory_limit = 256M`
   - `max_execution_time = 300` (Datensicherung und große Exporte)
@@ -13,7 +13,7 @@ Stand: Version 10.17.0 · Reihenfolge von oben nach unten abarbeiten. Alles, was
   - `display_errors = Off`, `expose_php = Off`
   - `session.gc_maxlifetime = 14400` (sonst werden Mitarbeitende schon nach 24 Minuten abgemeldet)
 - [ ] **Apache:** `AllowOverride All`, `mod_rewrite` und `mod_headers` aktiv. Ohne diese drei sind die Schutzregeln in den `.htaccess`-Dateien wirkungslos. Bei nginx die Regeln aus `START-HIER-V10.txt` übernehmen.
-- [ ] **Hinter einem Proxy/CDN** (z. B. Cloudflare): Der Server muss die echte Besucher-IP weitergeben (mod_remoteip). Sonst gelten Login-Sperren für alle Besucher gemeinsam.
+- [ ] **Hinter einem Proxy/CDN** (z. B. Cloudflare): Die echte Besucher-IP sicher weitergeben (z. B. mod_remoteip). In `config.php` unter `trusted_proxies` nur die IP-Adressen/CIDRs der eigenen Reverse-Proxys eintragen. Der Proxy muss `X-Forwarded-Proto` selbst setzen und Clientwerte überschreiben; sonst gelten HTTPS-Erkennung und API-Schutz absichtlich als nicht vertrauenswürdig.
 - [ ] **MySQL/MariaDB:** InnoDB, `max_allowed_packet ≥ 16M`, wenn möglich `innodb_buffer_pool_size ≥ 256M`.
 - [ ] **Cronjob alle 5 Minuten:** `php /pfad/zu/workwearcenter/cron.php` (Mails, Übergabe, Sammel-Erinnerungen, Produktbilder, Druckzonen, Aufräumen). Ohne Cronjob gehen bei 1.500 Mitarbeitern Einrichtungs-Mails nur schleppend raus.
 - [ ] **Ausgehende HTTPS-Verbindungen** zu `www.daiber.shop`, `daiber-prod-media-hp.s3.sbg.perf.cloud.ovh.net` und `daiber-images.synaigy.com` erlaubt (bei fast allen Hostern Standard). Darüber kommen die Produktbilder vorne, hinten und Ärmel automatisch.

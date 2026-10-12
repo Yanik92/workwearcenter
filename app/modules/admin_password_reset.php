@@ -41,7 +41,7 @@ function admin_password_forgot_page(): void {
     render_head('Admin-Passwort vergessen');
     echo site_brand_style();
     echo '<div class="login-brandbar"><div class="wrap">'.site_brand_html().'</div></div>';
-    echo '<main class="login-shell" style="--primary:#101b2d;--accent:#ff6b00"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">YANIK WORKWEAR</div><h1>Passwort zurücksetzen</h1><p>Gib die E-Mail-Adresse des Administratorkontos ein.</p><form method="post" class="form-stack">'.csrf_field().'<div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><label>E-Mail<input type="email" name="email" autocomplete="email" required></label><button class="btn primary" type="submit">Link anfordern</button></form><p><a href="/admin/login">Zurück zur Anmeldung</a></p></div></section></main>';
+    echo '<main class="login-shell" style="--primary:#fc6904;--accent:#fc6904"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">YANIK WORKWEAR</div><h1>Passwort zurücksetzen</h1><p>Gib die E-Mail-Adresse des Administratorkontos ein.</p><form method="post" class="form-stack">'.csrf_field().'<div style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><label>E-Mail<input type="email" name="email" autocomplete="email" required></label><button class="btn primary" type="submit">Link anfordern</button></form><p><a href="/admin/login">Zurück zur Anmeldung</a></p></div></section></main>';
     global_footer();render_foot();
 }
 
@@ -71,7 +71,7 @@ function admin_password_reset_page(string $token): void {
         }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();$error=$e instanceof DomainException?$e->getMessage():'Passwort konnte nicht gespeichert werden.';}
     }
     render_head('Neues Admin-Passwort');echo site_brand_style();
-    echo '<div class="login-brandbar"><div class="wrap">'.site_brand_html().'</div></div><main class="login-shell" style="--primary:#101b2d;--accent:#ff6b00"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">YANIK WORKWEAR</div><h1>Neues Passwort</h1>';
+    echo '<div class="login-brandbar"><div class="wrap">'.site_brand_html().'</div></div><main class="login-shell" style="--primary:#fc6904;--accent:#fc6904"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">YANIK WORKWEAR</div><h1>Neues Passwort</h1>';
     if($error)echo '<div class="flash error">'.e($error).'</div>';
     echo '<form method="post" class="form-stack">'.csrf_field().'<label>Passwort<input type="password" name="password" minlength="12" maxlength="72" autocomplete="new-password" required></label><label>Wiederholen<input type="password" name="password_repeat" minlength="12" maxlength="72" autocomplete="new-password" required></label><button class="btn primary" type="submit">Passwort speichern</button></form></div></section></main>';
     global_footer();render_foot();

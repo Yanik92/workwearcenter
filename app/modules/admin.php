@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/product_import.php';
 require_once __DIR__.'/admin_password_reset.php';
 require_once __DIR__.'/admin_account.php';
+require_once __DIR__.'/admin_approvals.php';
 require_once __DIR__.'/probeshop.php';
 
 function yw_admin_product_ids(mixed $raw): array {
@@ -67,7 +68,7 @@ function admin_login_page(): void {
     render_head('Administrator anmelden');
     echo site_brand_style();
     echo '<div class="login-brandbar"><div class="wrap">'.site_brand_html().'</div></div>';
-    echo '<main class="login-shell" style="--primary:#101b2d;--accent:#ff6b00"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">YANIK WORKWEAR</div><h1>Verwaltung</h1><p>Hier richtest du Firmen-Shops ein und bearbeitest freigegebene Aufträge.</p>';
+    echo '<main class="login-shell" style="--primary:#fc6904;--accent:#fc6904"><section class="login-card"><div class="login-accent"></div><div class="login-body"><div class="eyebrow">YANIK WORKWEAR</div><h1>Verwaltung</h1><p>Hier richtest du Firmen-Shops ein und bearbeitest freigegebene Aufträge.</p>';
     render_flash();
     if (isset($_GET['installed'])) echo '<div class="flash success">Installation abgeschlossen. Du kannst dich jetzt anmelden.</div>';
     if ($error) echo '<div class="flash error">'.e($error).'</div>';
@@ -79,7 +80,7 @@ function admin_page(): void {
     require_admin();
     if (is_post()) { verify_csrf(); handle_admin_action(); }
 
-    $allowedTabs=['dashboard','account','corporate','production','handover','system','schnittstellen','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges','lexware'];
+    $allowedTabs=['dashboard','account','approvals','corporate','production','handover','system','schnittstellen','inquiries','orders','companies','new','products','content','design','audit','guide','suche','api','katalog','exchanges','lexware'];
     $tab=(string)($_GET['tab'] ?? 'dashboard');
     if(!in_array($tab,$allowedTabs,true))$tab='dashboard';
     if($tab==='corporate') yw_admin_corporate(); // alte Links: Weiterleitung vor jeder Ausgabe
@@ -145,6 +146,7 @@ function admin_page(): void {
     elseif($tab==='production') yw_production();
     elseif($tab==='schnittstellen') yw_admin_integrations_page(); // 10.16: app/modules/integrations.php
     elseif($tab==='account') yw_admin_account_page();
+    elseif($tab==='approvals') yw_admin_approvals_page();
     elseif($tab==='system') yw_system();
     elseif($tab==='companies') render_admin_companies($companies,$products);
     elseif($tab==='products') render_admin_products($products);
@@ -159,7 +161,7 @@ function admin_page(): void {
     elseif($tab==='exchanges') yw_admin_exchanges(); // 10.11: app/modules/exchange.php
     elseif($tab==='lexware') yw_lexware_admin_page();
     elseif($tab==='audit') render_admin_audit($auditLogs);
-    else render_admin_dashboard($companies,$products,$orders,$inquiries);
+    else render_admin_dashboard($companies,$orders,$inquiries);
 
     echo '</main></div>';
     global_footer();
@@ -194,17 +196,20 @@ function handle_admin_action(): never {
             $accountId=(int)($_POST['account_id']??0);
             $decision=(string)($_POST['decision']??'');
             if(!in_array($decision,['approved','rejected'],true)) throw new RuntimeException('Freigabeentscheidung ist ungültig.');
-            $stmt=db()->prepare('SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,ea.role,ea.registration_status,ea.active,ea.employment_start,ea.employment_end,ea.anonymized_at,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? LIMIT 1');
+            $stmt=db()->prepare("SELECT ea.id,ea.name,ea.email,ea.language,ea.company_id,ea.role,ea.registration_status,ea.active,ea.employment_start,ea.employment_end,ea.anonymized_at,c.slug,c.shop_languages FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.id=? AND ea.registration_status='pending' AND ea.anonymized_at IS NULL LIMIT 1");
             $stmt->execute([$accountId]);$account=$stmt->fetch();
-            if(!$account) throw new RuntimeException('Mitarbeiterkonto wurde nicht gefunden.');
-            $stmt=db()->prepare('UPDATE employee_accounts SET registration_status=?,active=? WHERE id=?');
+            if(!$account) throw new RuntimeException('Diese Freigabe wurde bereits bearbeitet oder das Mitarbeiterkonto wurde nicht gefunden.');
+            $stmt=db()->prepare("UPDATE employee_accounts SET registration_status=?,active=? WHERE id=? AND registration_status='pending' AND anonymized_at IS NULL");
             $stmt->execute([$decision,$decision==='approved'?1:0,$accountId]);
+            if($stmt->rowCount()!==1) throw new RuntimeException('Diese Freigabe wurde zwischenzeitlich bearbeitet. Bitte die Liste neu laden.');
             yw_mail_to_person($account,yw_access_mail($decision==='approved',['slug'=>$account['slug']],true)); // 10.12: in der Sprache der Person
             audit_log('employee.access_'.$decision,'employee',$accountId,['company_id'=>(int)$account['company_id']]);
             yw_manager_change_audit((int)$account['company_id'],$accountId,$account,['registration_status'=>$decision,'active'=>$decision==='approved'?1:0]+$account,'admin'); // 10.15
             flash('success',$decision==='approved'?'Mitarbeiter wurde freigegeben.':'Registrierung wurde abgelehnt.');
             $returnCompany=(int)($_POST['return_company']??0);
-            redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter','person-'.$accountId):'/admin');
+            $returnTab=(string)($_POST['return_tab']??'');
+            $returnUrl=$returnTab==='approvals'?yw_admin_approvals_return_url():'/admin';
+            redirect($returnCompany?yw_customer_return_url($returnCompany,'mitarbeiter','person-'.$accountId):$returnUrl);
         }
 
         if ($action==='bulk_fulfillment') {
@@ -227,8 +232,8 @@ function handle_admin_action(): never {
 
         if ($action==='save_design_settings') {
             $title=trim((string)($_POST['site_title']??'WorkwearCenter'));
-            $primary=trim((string)($_POST['site_primary']??'#17324d'));
-            $accent=trim((string)($_POST['site_accent']??'#f47b20'));
+            $primary=trim((string)($_POST['site_primary']??'#fc6904'));
+            $accent=trim((string)($_POST['site_accent']??'#fc6904'));
 
             if($title===''||mb_strlen($title)>190||!color_ok($primary)||!color_ok($accent)) {
                 throw new RuntimeException('Seitentitel oder Farben sind ungültig.');
@@ -297,54 +302,7 @@ function handle_admin_action(): never {
 
         if ($action==='save_content_settings') {
             $fields=[
-                'hero_eyebrow'=>trim((string)($_POST['hero_eyebrow']??'')),
-                'hero_title'=>trim((string)($_POST['hero_title']??'')),
-                'hero_text'=>sanitize_rich_text((string)($_POST['hero_text']??'')),
-                'hero_button_text'=>trim((string)($_POST['hero_button_text']??'')),
-                'hero_button_link'=>yw_public_link($_POST['hero_button_link']??'','/anfrage'),
-                'hero_secondary_text'=>trim((string)($_POST['hero_secondary_text']??'')),
-                'hero_secondary_link'=>yw_public_link($_POST['hero_secondary_link']??'','/so-funktionierts'),
-                'intro_title'=>trim((string)($_POST['intro_title']??'')),
-                'intro_text'=>sanitize_rich_text((string)($_POST['intro_text']??'')),
-                'section1_title'=>trim((string)($_POST['section1_title']??'')),
-                'section1_text'=>sanitize_rich_text((string)($_POST['section1_text']??'')),
-                'section2_title'=>trim((string)($_POST['section2_title']??'')),
-                'section2_text'=>sanitize_rich_text((string)($_POST['section2_text']??'')),
-                'section3_title'=>trim((string)($_POST['section3_title']??'')),
-                'section3_text'=>sanitize_rich_text((string)($_POST['section3_text']??'')),
-                'process_title'=>trim((string)($_POST['process_title']??'')),
-                'process_step1_title'=>trim((string)($_POST['process_step1_title']??'')),
-                'process_step1_text'=>sanitize_rich_text((string)($_POST['process_step1_text']??'')),
-                'process_step2_title'=>trim((string)($_POST['process_step2_title']??'')),
-                'process_step2_text'=>sanitize_rich_text((string)($_POST['process_step2_text']??'')),
-                'process_step3_title'=>trim((string)($_POST['process_step3_title']??'')),
-                'process_step3_text'=>sanitize_rich_text((string)($_POST['process_step3_text']??'')),
-                'process_step4_title'=>trim((string)($_POST['process_step4_title']??'')),
-                'process_step4_text'=>sanitize_rich_text((string)($_POST['process_step4_text']??'')),
-                'faq1_question'=>trim((string)($_POST['faq1_question']??'')),
-                'faq1_answer'=>sanitize_rich_text((string)($_POST['faq1_answer']??'')),
-                'faq2_question'=>trim((string)($_POST['faq2_question']??'')),
-                'faq2_answer'=>sanitize_rich_text((string)($_POST['faq2_answer']??'')),
-                'faq3_question'=>trim((string)($_POST['faq3_question']??'')),
-                'faq3_answer'=>sanitize_rich_text((string)($_POST['faq3_answer']??'')),
-                'faq4_question'=>trim((string)($_POST['faq4_question']??'')),
-                'faq4_answer'=>sanitize_rich_text((string)($_POST['faq4_answer']??'')),
-                'final_cta_title'=>trim((string)($_POST['final_cta_title']??'')),
-                'final_cta_text'=>sanitize_rich_text((string)($_POST['final_cta_text']??'')),
-                'final_cta_button'=>trim((string)($_POST['final_cta_button']??'')),
-                'final_cta_link'=>yw_public_link($_POST['final_cta_link']??'','/anfrage'),
-                'services_title'=>trim((string)($_POST['services_title']??'')),
-                'services_intro'=>sanitize_rich_text((string)($_POST['services_intro']??'')),
-                'services_body'=>sanitize_rich_text((string)($_POST['services_body']??'')),
-                'about_title'=>trim((string)($_POST['about_title']??'')),
-                'about_intro'=>sanitize_rich_text((string)($_POST['about_intro']??'')),
-                'about_body'=>sanitize_rich_text((string)($_POST['about_body']??'')),
-                'how_title'=>trim((string)($_POST['how_title']??'')),
-                'how_intro'=>sanitize_rich_text((string)($_POST['how_intro']??'')),
-                'how_body'=>sanitize_rich_text((string)($_POST['how_body']??'')),
-                'contact_title'=>trim((string)($_POST['contact_title']??'')),
-                'contact_intro'=>sanitize_rich_text((string)($_POST['contact_intro']??'')),
-                'contact_body'=>sanitize_rich_text((string)($_POST['contact_body']??'')),
+                // 10.19: nur noch Felder, die das Formular zeigt – frühere Startseiten-/Unterseitenwerte bleiben unangetastet.
                 'footer_text'=>trim((string)($_POST['footer_text']??'')),
                 'imprint_company'=>trim((string)($_POST['imprint_company']??'')),
                 'imprint_owner'=>trim((string)($_POST['imprint_owner']??'')),
@@ -879,20 +837,28 @@ function handle_admin_action(): never {
 
 function admin_backend_style(): string {
     return '<style>
-    .admin-topbar{background:#10263a;border-bottom:4px solid var(--accent);position:sticky;top:0;z-index:80;box-shadow:0 5px 18px rgba(16,24,40,.12)}
+    .admin-topbar{background:#29363c;border-bottom:3px solid var(--accent);position:sticky;top:0;z-index:80;box-shadow:0 4px 16px rgba(24,42,49,.12)}
     .admin-topbar-inner{min-height:88px;display:flex;align-items:center;gap:20px}
     .admin-topbar-title{display:flex;flex-direction:column;line-height:1.2;margin-right:auto;color:#fff}.admin-topbar-title strong{font-size:1.3rem;color:#fff}
-    .admin-topbar-title small{color:rgba(255,255,255,.66);margin-top:4px}.admin-topbar-badge{display:inline-block;padding:5px 10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.86)}@media(max-width:700px){.admin-topbar-badge{display:none}}.admin-topbar .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.admin-topbar .btn:hover{background:#fff;color:#10263a}
-    .admin-shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:calc(100vh - 92px);background:linear-gradient(90deg,#fff 239px,#e6e8ec 239px,#e6e8ec 240px,#f7f7f8 240px)}
-    .admin-sidebar{background:#fff;color:#172033;padding:24px 16px;position:sticky;top:92px;max-height:calc(100vh - 92px);overflow:auto;box-sizing:border-box;border-right:1px solid #e6e8ec}
-    .admin-menu-title{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:#8a93a2;padding:0 12px 10px}
-    .admin-menu{display:flex;flex-direction:column;gap:5px}
-    .admin-menu a{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;text-decoration:none;color:#4d596a;font-weight:650;border-left:3px solid transparent}
+    .admin-topbar-title small{color:rgba(255,255,255,.66);margin-top:4px}.admin-topbar-badge{display:inline-block;padding:5px 10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.86)}@media(max-width:700px){.admin-topbar-badge{display:none}}.admin-topbar .btn{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.08);color:#fff}.admin-topbar .btn:hover{background:#fff;color:#29363c}
+    .admin-shell{display:grid;grid-template-columns:264px minmax(0,1fr);min-height:calc(100vh - 92px);background:linear-gradient(90deg,#fff 263px,#e6e8ec 263px,#e6e8ec 264px,#f7f7f8 264px)}
+    .admin-sidebar{background:#fff;color:#172033;padding:20px 13px;position:sticky;top:92px;max-height:calc(100vh - 92px);overflow:auto;box-sizing:border-box;border-right:1px solid #e6e8ec}
+    .admin-menu{display:flex;flex-direction:column;gap:7px}
+    .admin-menu a{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:10px;text-decoration:none;color:#4d596a;font-weight:680;border:1px solid transparent;min-height:42px}
     .admin-menu a:hover{background:#f7f8fa;color:#172033}
-    .admin-menu a.active{background:var(--accent);color:#fff}
-    .admin-menu .sep{height:1px;background:#e7e9ed;margin:10px 8px}
+    .admin-menu a.active{background:color-mix(in srgb,var(--accent) 10%,#fff);border-color:color-mix(in srgb,var(--accent) 24%,#fff);color:#172033;font-weight:850}
+    .admin-menu a.active .admin-menu-icon{color:var(--accent)}
+    .admin-menu-icon{width:19px;height:19px;display:grid;place-items:center;flex:0 0 19px;color:#7a8493}.admin-menu-icon svg{width:18px;height:18px}
+    .admin-menu-home{margin-bottom:4px}
+    .admin-menu-group{border:1px solid #e8ebf0;border-radius:12px;background:#fff;overflow:hidden}
+    .admin-menu-group summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;cursor:pointer;list-style:none;font-size:.76rem;font-weight:850;letter-spacing:.055em;text-transform:uppercase;color:#687386}
+    .admin-menu-group summary::-webkit-details-marker{display:none}
+    .admin-menu-group summary:after{content:"+";font-size:1rem;color:#8992a0}
+    .admin-menu-group[open] summary:after{content:"−"}
+    .admin-menu-group summary:hover{background:#f8f9fb;color:#172033}
+    .admin-menu-group-links{display:grid;gap:2px;padding:0 6px 7px}
     .admin-menu .count{margin-left:auto;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#fff1e8;color:#c94f00;display:grid;place-items:center;font-size:.75rem}
-    .admin-menu a.active .count{background:rgba(255,255,255,.22);color:#fff}
+    .admin-menu a.active .count{background:#fff;color:#a84200}
     .admin-content{padding:34px;min-width:0;max-width:1600px;width:100%;box-sizing:border-box}
     .admin-page-head{margin-bottom:24px}
     .admin-page-head h1{margin:0 0 7px}
@@ -901,6 +867,16 @@ function admin_backend_style(): string {
     .admin-location-kicker{font-size:.76rem;letter-spacing:.13em;font-weight:900;color:var(--accent);margin-bottom:8px}
     .admin-location-head h1{font-size:2.35rem;line-height:1.05;margin:0 0 8px;color:#172033}
     .admin-location-head p{margin:0;color:#667085;font-size:1rem}
+    .approval-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+    .approval-search{display:flex;align-items:flex-end;gap:8px;min-width:min(100%,420px)}.approval-search label{display:grid;gap:5px;flex:1;font-size:.78rem;font-weight:750}.approval-search input{min-width:0}
+    .approval-list{display:grid;gap:10px}
+    .approval-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;padding:15px;border:1px solid #e5e9ef;border-radius:13px;background:#fff}
+    .approval-person{display:flex;align-items:center;gap:12px;min-width:0}
+    .approval-avatar{width:42px;height:42px;display:grid;place-items:center;flex:0 0 42px;border-radius:12px;background:#f0f2f5;color:#485568;font-weight:900}
+    .approval-person strong,.approval-person small{display:block;overflow-wrap:anywhere}.approval-person small{color:#667085;margin-top:3px}
+    .approval-company{color:#667085;font-size:.84rem;margin-top:5px}.approval-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:7px}
+    .approval-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.approval-actions form{margin:0}
+    .approval-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px}.approval-pagination .muted{margin:0}
 
     .admin-dashboard-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-bottom:26px}
     .admin-dashboard-card{display:flex;flex-direction:column;background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:22px;box-shadow:0 8px 26px rgba(16,24,40,.05);text-decoration:none;min-height:132px}
@@ -951,8 +927,9 @@ function admin_backend_style(): string {
 
     @media(max-width:1050px){
       .admin-shell{grid-template-columns:1fr;background:#f7f7f8}
-      .admin-sidebar{position:relative;top:0;height:auto}
-      .admin-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+      .admin-sidebar{position:relative;top:0;height:auto;max-height:none;border-right:0;border-bottom:1px solid #e6e8ec;padding:12px}
+      .admin-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+      .admin-menu-home{grid-column:1/-1}
       .admin-dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.company-kpi-grid,.manager-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
       .control-grid{grid-template-columns:1fr}.filter-bar{grid-template-columns:repeat(2,minmax(0,1fr))}
       .admin-content{padding:22px}
@@ -960,6 +937,12 @@ function admin_backend_style(): string {
     @media(max-width:650px){
       .admin-menu{grid-template-columns:1fr}
       .admin-dashboard-grid,.settings-grid,.company-kpi-grid,.manager-stat-grid{grid-template-columns:1fr}
+      .admin-content{padding:16px}
+      .admin-location-head{padding:20px}
+      .admin-location-head h1{font-size:1.85rem}
+      .approval-card{grid-template-columns:1fr;align-items:stretch}
+      .approval-actions{justify-content:flex-start}
+      .approval-search{min-width:100%}
       .inquiry-card{grid-template-columns:1fr}
       .control-head{align-items:flex-start;flex-direction:column}.filter-bar{grid-template-columns:1fr}.work-task{grid-template-columns:36px minmax(0,1fr)}.task-actions{grid-column:1/-1}.release-checks{grid-template-columns:1fr}
       .employee-role-form{grid-template-columns:1fr}
@@ -1083,12 +1066,13 @@ function admin_context_header(string $tab): string {
         'corporate'=>['Regeln & Budget','Jetzt Teil der Kundenakte.'],
         'production'=>['Produktion','Auftragsdetails, Materialübersicht und Packlisten.'],
         'account'=>['Mein Konto & Administratoren','Passwort, Zwei-Faktor-Anmeldung und weitere Admin-Zugänge.'],
+        'approvals'=>['Mitarbeiter-Freigaben','Neue Registrierungen aller Firmen gesammelt prüfen und bearbeiten.'],
         'system'=>['Systemstatus','Ist alles betriebsbereit? Jede offene Prüfung führt direkt dorthin, wo sie sich beheben lässt.'],
         'schnittstellen'=>['Schnittstellen','Auftragszentrale, E-Mail, Lexware Office und Zugänge für andere Systeme – einrichten, prüfen, Fehler beheben.'],
         'inquiries'=>['Anfragen','Neue Interessenten und Shop-Anfragen bearbeiten.'],
         'orders'=>['Aufträge','Bestellungen, Freigaben und Bearbeitungsstatus verwalten.'],
-        'companies'=>['Kunden','Firmenshops: Kollektion, Mitarbeiter, Regeln, Aufträge und Zugänge.'],
-        'new'=>['Neuen Kunden anlegen','Einen neuen Firmenshop mit Kollektion und Shopregeln einrichten.'],
+        'companies'=>['Firmenkunden','Firmenshops: Kollektion, Mitarbeiter, Regeln, Aufträge und Zugänge.'],
+        'new'=>['Neuen Firmen-Shop anlegen','Shop, Kollektion und Zugänge für einen neuen Firmenkunden einrichten.'],
         'products'=>['Produkte','Produktkatalog, Kategorien, Preise und Veredelungen verwalten.'],
         'content'=>['Inhalte','Texte der öffentlichen Website bearbeiten.'],
         'design'=>['Design','Logo, Farben, Bilder und Wartungsmodus verwalten.'],
@@ -1102,66 +1086,78 @@ function admin_context_header(string $tab): string {
     if($tab==='companies'&&!empty($_GET['company']))$data['companies']=['Kundenakte','Alles zu diesem Kunden an einem Ort.'];
     if($tab==='orders'&&!empty($_GET['auftrag']))$data['orders']=['Auftrag','Positionen, Produktion, Übergabe und Verlauf.'];
     [$title,$subtitle]=$data[$tab]??$data['dashboard'];
-    $sub='';
-    $groups=['website'=>['content'=>'Inhalte','design'=>'Design'],'produkte'=>['products'=>'Produkte','katalog'=>'Lieferantenkatalog'],'system'=>['system'=>'Systemstatus','schnittstellen'=>'Schnittstellen','account'=>'Administratoren','audit'=>'Aktivitäten','guide'=>'Anleitung']];
-    foreach($groups as $g=>$items)if(isset($items[$tab])){$sub='<nav class="admin-subtabs">';foreach($items as $k=>$l)$sub.='<a class="'.($k===$tab?'active':'').'" href="/admin?tab='.$k.'">'.e($l).'</a>';$sub.='</nav>';}
     // Kicker nennt den Bereich (Logo und „Verwaltung“ stehen schon im Kopf).
-    $area=match(true){in_array($tab,['dashboard','inquiries','orders','production','suche','exchanges','lexware'],true)=>'Tagesgeschäft',in_array($tab,['companies','new','corporate','products','katalog'],true)=>'Kunden & Katalog',in_array($tab,['content','design'],true)=>'Website',default=>'System'};
-    return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">'.e(mb_strtoupper($area)).'</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>'.$sub;
+    $area=match(true){$tab==='dashboard'=>'Arbeitsübersicht',in_array($tab,['orders','production','suche','exchanges','lexware'],true)=>'Aufträge & Produktion',in_array($tab,['inquiries','companies','approvals','new','corporate'],true)=>'Kunden & Shops',in_array($tab,['products','katalog'],true)=>'Sortiment',in_array($tab,['content','design'],true)=>'Website & Design',default=>'System'};
+    return '<section class="admin-location-head admin-context"><div class="admin-location-kicker">'.e(mb_strtoupper($area)).'</div><h1>'.e($title).'</h1><p>'.e($subtitle).'</p></section>';
 }
 
 function admin_sidebar(string $active): string {
-    $counts=['inquiries'=>0,'orders'=>0,'companies'=>0,'system'=>0,'handover'=>0];
+    $counts=['inquiries'=>0,'orders'=>0,'approvals'=>0,'system'=>0,'schnittstellen'=>0,'exchanges'=>0];
     try {
         $counts['inquiries']=(int)db()->query("SELECT COUNT(*) FROM inquiries WHERE status='new'")->fetchColumn();
         $counts['orders']=(int)db()->query("SELECT COUNT(*) FROM orders WHERE status='approved' AND fulfillment_status IN ('new','accepted')")->fetchColumn();
-        $counts['companies']=(int)db()->query("SELECT COUNT(*) FROM employee_accounts WHERE registration_status='pending'")->fetchColumn();
-        $counts['system']=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();
-        $counts['handover']=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();
+        $counts['approvals']=yw_admin_approvals_count();
+        // Mail- und Übergabefehler werden auf der Seite Schnittstellen behoben.
+        $counts['schnittstellen']=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn()+(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();
         $counts['exchanges']=yw_admin_exchange_open_count();
     } catch(Throwable $e) {}
 
-    $counts['website']=0;$counts['systemgroup']=$counts['system']+$counts['handover'];
+    $runtimeErrors=function_exists('yw_runtime_recent_errors')?yw_runtime_recent_errors(24,100):null;
+    $counts['system']+=(is_array($runtimeErrors)?count($runtimeErrors):0);
     $groups=[
-        'Tagesgeschäft'=>[
-            'dashboard'=>['Übersicht','home'],
-            'inquiries'=>['Anfragen','mail'],
+        'Aufträge & Produktion'=>[
             'orders'=>['Aufträge','box'],
             'production'=>['Produktion','check'],
             'exchanges'=>['Umtausch & Retouren','layers'],
             'lexware'=>['Abrechnung','budget'],
+            'suche'=>['Suche','search'],
         ],
-        'Kunden & Katalog'=>[
-            'companies'=>['Kunden','building'],
+        'Kunden & Shops'=>[
+            'inquiries'=>['Shop-Anfragen','mail'],
+            'companies'=>['Firmenkunden','building'],
+            'approvals'=>['Mitarbeiter-Freigaben','user'],
+            'new'=>['Firmenshop anlegen','building'],
+        ],
+        'Sortiment'=>[
             'products'=>['Produkte','shirt'],
+            'katalog'=>['Lieferantenkatalog','box'],
         ],
-        'Einstellungen'=>[
-            'website'=>['Website','file'],
-            'systemgroup'=>['System','settings'],
+        'Website & Design'=>[
+            'design'=>['Shop-Design','file'],
+            'content'=>['Website-Inhalte','file'],
+        ],
+        'System'=>[
+            'system'=>['Systemstatus','settings'],
+            'schnittstellen'=>['Schnittstellen','settings'],
+            'account'=>['Administratoren','user'],
+            'audit'=>['Aktivitäten','shield'],
+            'guide'=>['Anleitung','file'],
         ],
     ];
-    $activeKey=match(true){in_array($active,['content','design'],true)=>'website',in_array($active,['system','schnittstellen','account','audit','guide'],true)=>'systemgroup',in_array($active,['new','corporate'],true)=>'companies',$active==='katalog'=>'products',default=>$active};
-    $target=['website'=>'content','systemgroup'=>'system'];
-    $html='<aside class="admin-sidebar"><nav class="admin-menu" aria-label="Verwaltung">';
+    $activeGroup=match(true){in_array($active,['dashboard','orders','production','exchanges','suche','lexware'],true)=>'Aufträge & Produktion',in_array($active,['inquiries','companies','approvals','new','corporate'],true)=>'Kunden & Shops',in_array($active,['products','katalog'],true)=>'Sortiment',in_array($active,['design','content'],true)=>'Website & Design',default=>'System'};
+    $menuActive=$active==='corporate'?'companies':$active;
+    $html='<aside class="admin-sidebar"><nav class="admin-menu" aria-label="Verwaltung">'
+        .'<a class="admin-menu-home'.($active==='dashboard'?' active':'').'" href="/admin"'.($active==='dashboard'?' aria-current="page"':'').'><span class="admin-menu-icon">'.wc_public_icon('home').'</span><span>Übersicht</span></a>';
     foreach($groups as $group=>$items){
-        $html.='<div class="admin-menu-group"><div class="admin-menu-group-title">'.e($group).'</div>';
+        $groupCount=0;foreach($items as $key=>$item)$groupCount+=(int)($counts[$key]??0);
+        $html.='<details class="admin-menu-group"'.($group===$activeGroup?' open':'').'><summary>'.e($group).($groupCount>0?'<span class="count">'.$groupCount.'</span>':'').'</summary><div class="admin-menu-group-links">';
         foreach($items as $key=>[$label,$icon]){
-            $href='/admin'.($key==='dashboard'?'':'?tab='.($target[$key]??$key));
-            $html.='<a class="'.($activeKey===$key?'active':'').'" href="'.$href.'"><span class="admin-menu-icon">'.wc_public_icon($icon).'</span><span>'.e($label).'</span>';
+            $href='/admin?tab='.$key;
+            $html.='<a class="'.($menuActive===$key?'active':'').'" href="'.$href.'"'.($menuActive===$key?' aria-current="page"':'').'><span class="admin-menu-icon">'.wc_public_icon($icon).'</span><span>'.e($label).'</span>';
             if(($counts[$key]??0)>0)$html.='<span class="count">'.(int)$counts[$key].'</span>';
             $html.='</a>';
         }
-        $html.='</div>';
+        $html.='</div></details>';
     }
     return $html.'</nav></aside>';
 }
 
-function render_admin_dashboard(array $companies,array $products,array $orders,array $inquiries): void {
+function render_admin_dashboard(array $companies,array $orders,array $inquiries): void {
     $age=yw_backup_age_days();
     if($age===null||$age>7)echo '<div class="flash info"><strong>Datensicherung:</strong> '.($age===null?'Noch keine Sicherung heruntergeladen.':'Die letzte Sicherung ist '.$age.' Tage alt.').' <a href="/admin/sicherung">Jetzt sichern (ZIP)</a> – dauert nur einen Moment.</div>';
     $newInquiries=count(array_filter($inquiries,fn($i)=>(string)($i['status']??'')==='new'));
     $pendingEmployees=[];$pendingEmployeeCount=0;$failedMails=0;
-    try{$pendingEmployeeCount=(int)db()->query("SELECT COUNT(*) FROM employee_accounts WHERE registration_status='pending'")->fetchColumn();$pendingEmployees=db()->query("SELECT ea.id,ea.name,ea.email,c.legal_name FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.registration_status='pending' ORDER BY ea.created_at LIMIT 8")->fetchAll();}catch(Throwable $e){}
+    try{$pendingEmployeeCount=yw_admin_approvals_count();$pendingEmployees=db()->query("SELECT ea.id,ea.name,ea.email,c.legal_name FROM employee_accounts ea JOIN companies c ON c.id=ea.company_id WHERE ea.registration_status='pending' AND ea.anonymized_at IS NULL ORDER BY ea.created_at LIMIT 8")->fetchAll();}catch(Throwable $e){}
     try{$failedMails=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
     $failedHandovers=0;try{$failedHandovers=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
     // $orders: je offenem Produktionsstand freigegebener Aufträge die Anzahl (amount) und davon überfällige (overdue), siehe admin_page().
@@ -1170,15 +1166,15 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     $production=$stageCount(['goods_received','processing','production','quality_check']);
     $overdue=(int)array_sum(array_map(fn($o)=>(int)$o['overdue'],$orders));
 
-    echo '<div class="control-head"><div><h2>Heute im Blick</h2><p>Offene Aufgaben und der aktuelle Auftragsfluss.</p></div><div class="actions"><a class="btn" href="/admin?tab=orders">Aufträge öffnen</a><a class="btn primary" href="/admin?tab=new">Neuen Firmen-Shop anlegen</a></div></div>';
-    echo '<div class="admin-dashboard-grid">'
-        .'<a class="admin-dashboard-card" href="/admin?tab=orders"><span>Neue Aufträge</span><strong>'.$newOrders.'</strong><small>freigegeben und unbearbeitet</small></a>'
-        .'<a class="admin-dashboard-card" href="/admin?tab=companies"><span>Freigaben offen</span><strong>'.$pendingEmployeeCount.'</strong><small>Mitarbeiterkonten prüfen</small></a>'
-        .'<a class="admin-dashboard-card" href="/admin?tab=production"><span>In Arbeit</span><strong>'.$production.'</strong><small>Material bis Qualitätskontrolle</small></a>'
-        .'<a class="admin-dashboard-card '.($overdue||$failedMails||$failedHandovers?'attention':'').'" href="/admin?tab=schnittstellen"><span>Handlungsbedarf</span><strong>'.($overdue+$failedMails+$failedHandovers).'</strong><small>'.$overdue.' überfällig · '.$failedMails.' Mailfehler · '.$failedHandovers.' Übergabefehler</small></a>'
+    echo '<div class="admin-dashboard-actions"><div><span class="admin-dashboard-kicker">TAGESSTEUERUNG</span><p>Prioritäten, Freigaben und Auftragsstand auf einen Blick.</p></div><div class="actions"><a class="btn" href="/admin?tab=orders">Aufträge öffnen</a>'.($pendingEmployeeCount?'<a class="btn" href="/admin?tab=approvals">'.$pendingEmployeeCount.' Freigaben prüfen</a>':'').'<a class="btn primary" href="/admin?tab=new">Firmenshop anlegen</a></div></div>';
+    echo '<div class="admin-dashboard-metrics" aria-label="Aktuelle Kennzahlen">'
+        .'<a class="admin-metric" href="/admin?tab=orders"><span>Neue Aufträge</span><strong>'.$newOrders.'</strong><small>freigegeben · noch unbearbeitet</small></a>'
+        .'<a class="admin-metric" href="/admin?tab=approvals"><span>Mitarbeiter-Freigaben</span><strong>'.$pendingEmployeeCount.'</strong><small>offene Registrierungen</small></a>'
+        .'<a class="admin-metric" href="/admin?tab=production"><span>In Bearbeitung</span><strong>'.$production.'</strong><small>Material bis Qualitätskontrolle</small></a>'
+        .'<a class="admin-metric '.($overdue||$failedMails||$failedHandovers?'attention':'').'" href="/admin#today-tasks"><span>Handlungsbedarf</span><strong>'.($overdue+$failedMails+$failedHandovers).'</strong><small>'.$overdue.' überfällig · '.$failedMails.' Mailfehler · '.$failedHandovers.' Übergabefehler</small></a>'
         .'</div>';
 
-    echo '<div class="control-grid"><section class="card"><div class="title-row"><div><h2>Heute zu erledigen</h2><p class="muted">Nach Dringlichkeit sortiert.</p></div></div>';
+    echo '<div class="admin-dashboard-workspace"><section class="admin-desk-panel admin-task-panel" id="today-tasks"><div class="admin-desk-head"><div><span class="admin-desk-kicker">PRIORITÄTEN</span><h2>Heute zu erledigen</h2><p>Dringende Aufgaben und neue Freigaben.</p></div></div>';
     $me=yw_admin_current();
     if($me && !(int)($me['totp_enabled']??0)) echo '<div class="work-task danger"><span class="task-icon">'.wc_public_icon('lock').'</span><div><strong>Zwei-Faktor-Anmeldung einrichten</strong><small>Schützt die Verwaltung, falls dein Passwort bekannt wird. Dauert zwei Minuten.</small></div><a class="btn small primary" href="/admin?tab=account">Einrichten</a></div>';
     if($failedHandovers) echo '<div class="work-task danger"><span class="task-icon">!</span><div><strong>'.$failedHandovers.' Auftr'.($failedHandovers===1?'ag':'äge').' nicht an die Auftragsverwaltung übergeben</strong><small>Verbindung prüfen und erneut senden.</small></div><a class="btn small" href="/admin?tab=schnittstellen#auftragszentrale">Übergabe prüfen</a></div>';
@@ -1187,17 +1183,18 @@ function render_admin_dashboard(array $companies,array $products,array $orders,a
     foreach($pendingEmployees as $person){
         echo '<div class="work-task"><span class="task-icon">'.wc_public_icon('user').'</span><div><strong>'.e($person['name']).' freigeben?</strong><small>'.e($person['legal_name']).' · '.e($person['email']).'</small></div><div class="task-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="rejected"><button class="btn small" type="submit">Ablehnen</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="employee_access"><input type="hidden" name="account_id" value="'.(int)$person['id'].'"><input type="hidden" name="decision" value="approved"><button class="btn small primary" type="submit">Freigeben</button></form></div></div>';
     }
+    if($pendingEmployeeCount>count($pendingEmployees))echo '<div class="work-task"><span class="task-icon">'.wc_public_icon('user').'</span><div><strong>'.($pendingEmployeeCount-count($pendingEmployees)).' weitere offene Freigaben</strong><small>Alle Registrierungen gesammelt prüfen.</small></div><a class="btn small" href="/admin?tab=approvals">Freigabeeingang öffnen</a></div>';
     // 10.15: Rollenänderungen bei Verantwortlichen der letzten 14 Tage (ohne eigene Änderungen; keine Mail an andere)
     $roleChanges=yw_manager_role_changes(null,6,(int)($me['id']??0));$rolePeople=yw_actor_people($roleChanges);
     foreach($roleChanges as $r){[$head,$sub]=yw_manager_role_change_text($r,$rolePeople,true);echo '<div class="work-task'.($r['action']==='employee.manager_change_blocked'?' danger':'').'"><span class="task-icon">'.wc_public_icon('shield').'</span><div><strong>'.e($head).'</strong><small>'.e($sub).'</small></div><a class="btn small" href="'.e(yw_customer_url((int)$r['company_id'],'mitarbeiter')).'">Ansehen</a></div>';}
     if(!$failedMails&&!$overdue&&!$pendingEmployees&&!$failedHandovers&&!$roleChanges&&(!$me||(int)($me['totp_enabled']??0))) echo '<div class="empty compact">Keine dringenden Aufgaben. Das System ist aufgeräumt.</div>';
-    echo '</section><section class="card"><div class="title-row"><div><h2>Auftragsfluss</h2><p class="muted">Freigegebene Bestellungen.</p></div><a class="btn small" href="/admin?tab=production">Öffnen</a></div>';
+    echo '</section><section class="admin-desk-panel admin-flow-panel"><div class="admin-desk-head"><div><span class="admin-desk-kicker">PRODUKTION</span><h2>Auftragsfluss</h2><p>Freigegebene Bestellungen nach Status.</p></div><a class="admin-text-link" href="/admin?tab=production">Produktion öffnen&nbsp;→</a></div>';
     $stages=['new'=>'Neu','accepted'=>'Angenommen','goods_ordered'=>'Material offen','goods_received'=>'Material da','production'=>'Produktion','quality_check'=>'Qualitätskontrolle','ready'=>'Fertig'];
     $max=1;foreach($stages as $key=>$label)$max=max($max,$stageCount([$key]));
     foreach($stages as $key=>$label){$count=$stageCount([$key]);echo '<div class="flow-row"><span>'.e($label).'</span><span class="flow-bar"><i style="width:'.(int)round($count/$max*100).'%"></i></span><strong>'.$count.'</strong></div>';}
     echo '</section></div>';
 
-    echo '<section class="card shop-performance"><div class="title-row"><div><h2>Firmen im Blick</h2><p class="muted">Aktive Konten, Aufträge und Bestellvolumen.</p></div><a class="btn small" href="/admin?tab=companies">Alle Firmen</a></div>';
+    echo '<section class="admin-company-overview"><div class="admin-company-head"><div><span class="admin-desk-kicker">KUNDENKONTEN</span><h2>Firmen im Blick</h2><p>Aktive Konten, offene Produktion und Bestellvolumen.</p></div><a class="admin-text-link" href="/admin?tab=companies">Alle Firmen ansehen&nbsp;→</a></div>';
     if(!$companies) echo '<div class="empty">Noch keine Firmen-Shops vorhanden.</div>';
     else {echo '<div class="table-wrap"><table><thead><tr><th>Firmen-Shop</th><th>Mitarbeiter</th><th>Offene Produktion</th><th>Abgeschlossen</th><th>Bestellvolumen brutto</th><th></th></tr></thead><tbody>';foreach(array_slice($companies,0,8) as $c){$open=max(0,(int)$c['approved_order_count']-(int)$c['completed_order_count']);echo '<tr><td><strong>'.e($c['shop_name']).'</strong><br><span class="muted">'.e($c['legal_name']).'</span></td><td>'.(int)$c['registered_count'].'</td><td>'.$open.'</td><td>'.(int)$c['completed_order_count'].'</td><td class="money-cell">'.money((int)$c['revenue_cents']).'</td><td><a class="btn small" href="/admin?tab=companies&amp;company='.(int)$c['id'].'">Öffnen</a></td></tr>';}echo '</tbody></table></div>';}
     echo '</section>';

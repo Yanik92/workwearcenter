@@ -2,13 +2,13 @@
    Gemeinsames Oberflaechensystem fuer Website, Zugang und Administration. */
 
 :root {
-  --yw-ink: #10263a;
-  --yw-ink-2: #173b58;
-  --yw-orange: #ef6c1a;
-  --yw-paper: #f4f2ed;
+  --yw-ink: #292d2f;
+  --yw-ink-2: #292d2f;
+  --yw-orange: #fc6904;
+  --yw-paper: #f3f0ea;
   --yw-soft: #f7f8f9;
   --yw-line: #dce1e5;
-  --yw-copy: #4d5e6c;
+  --yw-copy: #565957;
   --yw-white: #fff;
 }
 
@@ -19,7 +19,7 @@ body :focus-visible { outline: 3px solid rgba(239,108,26,.45); outline-offset: 3
 
 /* Oeffentliche Navigation */
 body .public-header {
-  background: rgba(16,38,58,.97);
+  background: rgba(41,45,47,.97);
   border-bottom: 1px solid rgba(255,255,255,.12);
   box-shadow: none;
   backdrop-filter: blur(14px);

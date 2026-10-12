@@ -65,8 +65,15 @@ function yw_exchange_deadline(string $base,int $days): ?DateTimeImmutable {
     return (new DateTimeImmutable($base,new DateTimeZone('Europe/Berlin')))->modify('+'.$days.' days')->setTime(23,59,59);
 }
 
+/** 10.19: Ware ist nachweislich noch in Arbeit (Status aus Produktion/Auftragszentrale) – Frist beginnt erst mit dem Versand. */
+function yw_exchange_in_production(array $order): bool {
+    return in_array((string)($order['fulfillment_status']??''),['accepted','goods_ordered','goods_received','processing','production','quality_check','ready'],true);
+}
+
 function yw_exchange_window_open(array $company,array $order,?DateTimeImmutable $now=null): bool {
     if((string)$order['status']!=='approved')return false;
+    // Lange Produktion darf die Frist nicht vor der Lieferung ablaufen lassen.
+    if(yw_exchange_in_production($order))return (int)($company['exchange_window_days']??30)>0;
     $deadline=yw_exchange_deadline(yw_exchange_window_base($order),(int)($company['exchange_window_days']??30));
     return $deadline!==null && ($now??new DateTimeImmutable('now',new DateTimeZone('Europe/Berlin')))<=$deadline;
 }
@@ -140,13 +147,14 @@ function yw_exchange_order_panel(array $company,array $account,array $order,arra
     $days=(int)($company['exchange_window_days']??30);
     $deadline=yw_exchange_deadline(yw_exchange_window_base($order),$days);
     $open=yw_exchange_window_open($company,$order);
+    $inProduction=yw_exchange_in_production($order);
     if(!$open && !$requests)return '';
     $sizesByProduct=[];
     $productIds=array_values(array_unique(array_map(fn($i)=>(int)$i['product_id'],$items)));
     if($productIds){$q=db()->prepare('SELECT id,sizes FROM products WHERE id IN ('.implode(',',array_fill(0,count($productIds),'?')).')');$q->execute($productIds);foreach($q as $p)$sizesByProduct[(int)$p['id']]=json_decode((string)$p['sizes'],true)?:[];}
     $approval=(int)($company['approval_required']??1)===1;
     $html=yw_exchange_style().'<section class="yw-x" aria-label="'.e(t('x.title')).'"><div class="yw-x-head"><strong>'.e(t('x.title')).'</strong><small>'
-        .e($open?t('x.until',['date'=>yw_date($deadline)]).' · '.($approval?t('x.to_managers'):t('x.to_admin')):t('x.expired')).'</small></div>';
+        .e($open?($inProduction?t('x.until_shipping'):t('x.until',['date'=>yw_date($deadline)])).' · '.($approval?t('x.to_managers'):t('x.to_admin')):t('x.expired')).'</small></div>';
     foreach($items as $item){
         $itemRequests=$requests[(int)$item['id']]??[];
         $reserved=0;foreach($itemRequests as $r)if($r['status']!=='rejected')$reserved+=(int)$r['quantity'];
@@ -171,7 +179,7 @@ function yw_exchange_order_panel(array $company,array $account,array $order,arra
                 foreach($sizes as $s)$html.='<option value="'.e($s).'">'.e(t('common.size_value',['size'=>$s])).'</option>';
                 $html.='</select></label>'.$qtyField('xq-e-'.(int)$item['id']).'<label class="full">'.e(t('x.reason')).'<textarea name="reason" maxlength="500" minlength="3" required placeholder="'.e(t('x.reason_swap_placeholder')).'"></textarea></label><button class="cp-btn approve" type="submit">'.e(t('x.request_swap')).'</button></form></details>';
             }
-            $html.='<details><summary>'.e(t('x.return')).'</summary><form method="post" class="yw-x-form">'.$base.'<input type="hidden" name="type" value="return">'.$qtyField('xq-r-'.(int)$item['id']).'<label class="full">'.e(t('x.reason')).'<textarea name="reason" maxlength="500" minlength="3" required placeholder="'.e(t('x.reason_return_placeholder')).'"></textarea></label><button class="cp-btn approve" type="submit">'.e(t('x.request_return')).'</button></form></details>';
+            if(!$inProduction)$html.='<details><summary>'.e(t('x.return')).'</summary><form method="post" class="yw-x-form">'.$base.'<input type="hidden" name="type" value="return">'.$qtyField('xq-r-'.(int)$item['id']).'<label class="full">'.e(t('x.reason')).'<textarea name="reason" maxlength="500" minlength="3" required placeholder="'.e(t('x.reason_return_placeholder')).'"></textarea></label><button class="cp-btn approve" type="submit">'.e(t('x.request_return')).'</button></form></details>';
             $html.='</div>';
         }
         $html.='</div>';
@@ -211,6 +219,7 @@ function yw_exchange_create(array $company,array $account,int $itemId,string $ty
         if(!$item)throw new DomainException(t('x.err.item'));
         $order=['status'=>$item['order_status'],'fulfillment_status'=>$item['fulfillment_status'],'production_updated_at'=>$item['production_updated_at'],'decided_at'=>$item['decided_at'],'created_at'=>$item['order_created_at']];
         if(!yw_exchange_window_open($company,$order))throw new DomainException(t('x.err.window'));
+        if($type==='return' && yw_exchange_in_production($order))throw new DomainException(t('x.err.not_delivered'));
         $q=db()->prepare("SELECT COALESCE(SUM(quantity),0) FROM yw_exchange_requests WHERE order_item_id=? AND status<>'rejected'");$q->execute([$itemId]);
         $prior=(int)$q->fetchColumn();
         if($qty>(int)$item['quantity']-$prior)throw new DomainException(t('x.err.already'));

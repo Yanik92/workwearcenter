@@ -4,6 +4,7 @@ declare(strict_types=1);
 $config=['base_domain'=>'workwearcenter.de','db_pass'=>'test-secret'];
 $_SESSION=[];
 require dirname(__DIR__).'/app/functions.php';
+require dirname(__DIR__).'/app/request_security.php';
 require dirname(__DIR__).'/app/modules/public.php';
 require dirname(__DIR__).'/app/modules/corporate.php';
 require dirname(__DIR__).'/app/modules/admin_account.php';
@@ -127,7 +128,7 @@ test_ok(yw_zones_sanitize(['front'=>['chest_left'=>['x'=>60,'y'=>30,'w'=>14],'ka
 // 10.8: API v1 – Schlüsselrechte und HTTPS-Pflicht
 test_ok(yw_api_scopes(['scopes'=>'orders:read, orders:write ,,'])===['orders:read','orders:write'],'API-Rechte werden sauber aus dem Schlüssel gelesen');
 test_ok(!in_array('customers:read',yw_api_scopes(['scopes'=>'orders:read']),true),'API-Schlüssel ohne customers:read hat dieses Recht nicht');
-$_SERVER['HTTPS']='';$_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['REMOTE_ADDR']='203.0.113.9';
+$_SERVER['HTTPS']='';$_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['REMOTE_ADDR']='203.0.113.9';$config['trusted_proxies']=['203.0.113.0/24'];
 test_ok(!yw_api_https_ok(),'API über unverschlüsseltes HTTP von außen wird abgelehnt');
 $_SERVER['HTTP_X_FORWARDED_PROTO']='https';test_ok(yw_api_https_ok(),'API hinter HTTPS-Proxy wird angenommen');
 $_SERVER['HTTP_X_FORWARDED_PROTO']='';$_SERVER['HTTPS']='on';test_ok(yw_api_https_ok(),'API über HTTPS wird angenommen');
@@ -304,7 +305,12 @@ $lxCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/lexware.php');
 test_ok(str_contains($lxCode,"SET status='creating',last_error=NULL WHERE id=? AND status IN ('planned','failed')") && str_contains($lxCode,"SET status='failed',last_error=? WHERE id=? AND status='creating'"),'Teil wird nur von einer Anfrage gesendet; sicherer Fehler bleibt „fehlgeschlagen“ mit denselben Aufträgen (erneut sendbar, keine Doppelanlage)');
 test_ok(str_contains($lxCode,"\$doc['status']==='creating' && strtotime((string)\$doc['updated_at'])>=time()-300)throw") && !str_contains($lxCode,'Bitte „Je Kostenstelle eine eigene Rechnung“ wählen'),'Entwurf im Versand kann nicht freigegeben werden; alter Hinweis „je Kostenstelle wählen“ entfernt');
 $lxMig=(string)file_get_contents(dirname(__DIR__).'/app/migrations.php');
-test_ok(preg_match("/\/\/ 10\.15 – Lexware[^\n]*\n(?:[^\n]*\n)*?\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_no'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_count'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','line_grouping'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.15\.0'/u",$lxMig)===1 && str_contains((string)file_get_contents(dirname(__DIR__).'/app/functions.php'),"const YW_SCHEMA_REQUIRED='10.15.0';"),'Datenbank-Update 10.15: Teil-Spalten idempotent vor der Versionsmarke 10.15.0, die das Programm verlangt');
+test_ok(preg_match("/\/\/ 10\.15 – Lexware[^\n]*\n(?:[^\n]*\n)*?\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_no'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_count'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','line_grouping'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.15\.0'/u",$lxMig)===1 && str_contains((string)file_get_contents(dirname(__DIR__).'/app/functions.php'),"const YW_SCHEMA_REQUIRED='10.18.0';"),'Datenbank-Update 10.15: Teil-Spalten idempotent vor der Versionsmarke 10.15.0');
+// 10.18: Team-Bestellung merkt sich, wer bestellt hat; diese Person gibt den Auftrag nicht selbst frei, und es entsteht kein Eigenanteil
+test_ok(preg_match("/schema_add_column\(\\\$pdo,'orders','placed_by_account_id'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.18\.0'/u",$lxMig)===1,'Datenbank-Update 10.18: placed_by_account_id vor der Versionsmarke 10.18.0');
+$teamCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/corporate.php');$decideCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/order_mail_actions.php');
+test_ok(str_contains($teamCode,"INSERT INTO orders(placed_by_account_id,") && str_contains($teamCode,"\$insertOrder->execute([(int)\$manager['id'],") && str_contains($teamCode,'$calc=yw_calc_items($calcLines,0);') && str_contains($teamCode,'$shippingEmployee=0;'),'Team-Bestellung: Besteller gespeichert, Firma zahlt ganz (kein Lohnabzug ohne eigene Bestellung)');
+test_ok(str_contains($decideCode,"(int)(\$owner['placed_by_account_id']??0)===(int)\$account['id']"),'Vier-Augen-Prinzip gilt auch für selbst angelegte Team-Bestellungen');
 // 10.15: Nur wenn das Zeitbudget je Aufruf abläuft, sendet die Seite die übrigen Entwürfe automatisch weiter – nach Fehler oder Abbruch nie
 $_SESSION=[];yw_lexware_flash_result(3,'2026-08',['created'=>[['gross_cents'=>1190,'orders'=>2]],'failed'=>[],'pending'=>13,'stopped'=>false],14,[]);
 test_ok(($_SESSION['lexware_weiter'][0]??0)===3 && ($_SESSION['lexware_weiter'][1]??'')==='2026-08' && $_SESSION['flash'][0]==='success' && str_contains($_SESSION['flash'][1],'13 weitere Entwürfe werden jetzt automatisch'),'Zeitbudget abgelaufen: übrige Entwürfe werden automatisch weiter gesendet');
@@ -415,7 +421,14 @@ test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/ap
 test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/modules/corporate_admin.php'),"'/.htaccess'=>'RewriteRule'"),'Systemstatus prüft auch versteckte Dateien, uploads/-Sperre und SVG-Header');
 
 // Härtung CSRF: GET-Links mit Wirkung (Vorschau, Sicherung) nicht von fremden Seiten aus auslösbar
-$crossSite=static fn(string $site): string => (string)shell_exec(escapeshellarg(PHP_BINARY).' -r '.escapeshellarg('$_SERVER["HTTP_SEC_FETCH_SITE"]='.var_export($site,true).';require '.var_export(dirname(__DIR__).'/app/functions.php',true).';yw_block_cross_site_get();echo "weiter";').' 2>&1');
+$crossSite=static function(string $site): string {
+    $code='$_SERVER["HTTP_SEC_FETCH_SITE"]='.var_export($site,true).';require '.var_export(dirname(__DIR__).'/app/functions.php',true).';yw_block_cross_site_get();echo "weiter";';
+    $pipes=[];$process=proc_open([PHP_BINARY,'-r',$code],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);
+    if(!is_resource($process))return '';
+    fclose($pipes[0]);$output=(string)stream_get_contents($pipes[1]).(string)stream_get_contents($pipes[2]);
+    fclose($pipes[1]);fclose($pipes[2]);proc_close($process);
+    return $output;
+};
 test_ok(!str_contains($crossSite('cross-site'),'weiter')&&str_contains($crossSite('same-origin'),'weiter')&&str_contains($crossSite(''),'weiter'),'Fremdseiten-Aufruf (Sec-Fetch-Site: cross-site) wird abgewiesen, eigene Links und alte Browser nicht');
 $adminTools=(string)file_get_contents(dirname(__DIR__).'/app/modules/admin_tools.php');
 test_ok(substr_count($adminTools,'yw_block_cross_site_get();')>=2,'Vorschau beenden und Datensicherung prüfen Sec-Fetch-Site (Vorschau starten nur per POST+CSRF)');
@@ -472,11 +485,11 @@ $decideSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/order_mail_a
 test_ok(str_contains($decideSrc,"if(\$selfApproval && yw_other_manager_count((int)\$company['id'],(int)\$account['id'])>0)") && str_contains($decideSrc,"if(\$selfApproval)audit_log('order.four_eyes_fallback'") && str_contains($decideSrc,"\$selfBlocked=\$own && yw_other_manager_count("),'Vier-Augen-Prinzip: eigene Bestellung weder im Shop noch per Mail-Link freigebbar; Rückfall wird protokolliert');
 test_ok(str_contains($exchangeSrc,"if(\$self && \$decision==='approved' && yw_other_manager_count((int)\$company['id'],(int)\$account['id'])>0)return ['error',t('x.err.four_eyes')];") && str_contains($exchangeSrc,"audit_log('exchange.four_eyes_fallback'"),'Vier-Augen-Prinzip: eigener Umtausch nicht selbst freigebbar; Rückfall wird protokolliert');
 test_ok(str_contains($shopSrc,"(\$own&&\$others>0?'':'<button class=\"cp-btn approve\"") && str_contains($decideSrc,"AND registration_status='approved' AND anonymized_at IS NULL AND (employment_start IS NULL OR employment_start<=CURDATE()) AND (employment_end IS NULL OR employment_end>=CURDATE()) AND id<>?"),'Freigaben-Seite ohne Freigeben-Knopf für eigene Bestellungen; als zweite Person zählt nur, wer heute freigeben kann');
-test_ok(substr_count($shopSrc,"yw_pending_decision_count((int)\$company['id'],(int)\$account['id'])")===3 && str_contains($decideSrc,"AND status='pending'\".(\$others?' AND NOT (employee_account_id<=>?)':'')") && str_contains($exchangeSrc,"\$others===0||(int)\$r['employee_account_id']!==(int)\$account['id']"),'Freigaben: eigene Bestellungen und Anträge zählen nicht als „wartet auf deine Entscheidung“, solange eine andere Person freigibt (Seite, Startseite und Zähler im Menü gleich)');
+test_ok(substr_count($shopSrc,"yw_pending_decision_count((int)\$company['id'],(int)\$account['id'])")===3 && str_contains($decideSrc,"AND status='pending'\".(\$others?' AND NOT (employee_account_id<=>? OR placed_by_account_id<=>?)':'')") && str_contains($exchangeSrc,"\$others===0||(int)\$r['employee_account_id']!==(int)\$account['id']"),'Freigaben: eigene Bestellungen und Anträge zählen nicht als „wartet auf deine Entscheidung“, solange eine andere Person freigibt (Seite, Startseite und Zähler im Menü gleich)');
 test_ok(str_contains((string)file_get_contents(dirname(__DIR__).'/app/migrations.php'),"schema_add_column(\$pdo,'companies','managers_can_appoint','TINYINT(1) NOT NULL DEFAULT 0',\$changes);"),'Firmen-Einstellung „Verantwortliche dürfen ernennen“ ist standardmäßig aus');
 if(!function_exists('current_site_setting')){function current_site_setting(string $key,string $default=''): string {return $default;}}
 [$confirmSubject,$confirmText]=yw_inquiry_confirmation_text(null);[$confirmSubjectProbe,$confirmTextProbe]=yw_inquiry_confirmation_text(str_repeat('ab',32));
-test_ok((new ReflectionFunction('yw_inquiry_confirmation_text'))->getNumberOfParameters()===1 && str_starts_with($confirmText,"Guten Tag,\n") && $confirmSubject==='Ihre Anfrage beim WorkwearCenter' && str_contains($confirmTextProbe,'/probeshop/'.str_repeat('ab',32)),'Anfrage: Eingangsbestätigung ist fester Text ohne Name, Firma oder Nachricht der eingebenden Person');
+test_ok((new ReflectionFunction('yw_inquiry_confirmation_text'))->getNumberOfParameters()===1 && str_starts_with($confirmText,"Hallo,\n") && $confirmSubject==='Deine Anfrage beim WorkwearCenter' && str_contains($confirmTextProbe,'/probeshop/'.str_repeat('ab',32)),'Anfrage: Eingangsbestätigung ist fester Text ohne Name, Firma oder Nachricht der eingebenden Person');
 test_ok(yw_inquiry_recipient_key('Opfer+Spam@Example.org')===yw_inquiry_recipient_key('opfer@example.org') && yw_inquiry_recipient_key('o.p.f.e.r@googlemail.com')===yw_inquiry_recipient_key('opfer@gmail.com') && yw_inquiry_recipient_key('opfer@example.org')!==yw_inquiry_recipient_key('opfer@example.com'),'Anfrage: Empfängerlimit erkennt dieselbe Mailbox trotz +Zusatz, Großschreibung und Gmail-Punkten');
 $probeSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/probeshop.php');$publicSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
 test_ok(YW_INQUIRY_CONFIRM_PER_HOUR===30 && str_contains($probeSrc,'confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 24 HOUR)') && str_contains($probeSrc,"confirmation_sent_at>DATE_SUB(NOW(),INTERVAL 1 HOUR)')->fetchColumn()>=YW_INQUIRY_CONFIRM_PER_HOUR") && str_contains($publicSrc,"if(\$confirmation==='ok')yw_inquiry_confirmation_mail(\$email,\$probeshopToken);") && strpos($publicSrc,'send_inquiry_mail([')<strpos($publicSrc,"if(\$confirmation==='ok')yw_inquiry_confirmation_mail("),'Anfrage: höchstens 1 Bestätigung je Adresse in 24 h und 30 je Stunde; Anfrage und interne Mail an Yanik bleiben');
@@ -586,5 +599,13 @@ test_ok(str_contains($adminCustomerSrc,"collection-savebar'.(\$editorOpen?' is-s
 test_ok(str_contains($corpAdminSrc,"' von '.\$companyProductCount.' Firmenprodukten freigegeben.")&&!str_contains($corpAdminSrc,"\$limits['counts']['alle'].' Firmenprodukten"),'Regeln: Profilzusammenfassung zählt alle Firmenprodukte, nicht nur die Treffer der Stückzahl-Suche');
 test_ok(str_contains($adminSrc,"'yw_profile_bulk'=>'Profilsortiment per Sammelaktion geändert'"),'Aktivitätsprotokoll: Sammelaktion im Profil hat eine lesbare Bezeichnung');
 test_ok(str_contains($toolsSrc,"yw_customer_state_url((int)\$o['company_id'],'kollektion',['produkt'=>(string)\$itemProduct])"),'Auftrag: Artikelname öffnet den Artikel in der Kollektion (Korrekturabzug)');
+
+// 10.19
+$xSrc=(string)file_get_contents(dirname(__DIR__).'/app/modules/exchange.php');
+test_ok(str_contains($xSrc,"if(\$type==='return' && yw_exchange_in_production(\$order))throw new DomainException(t('x.err.not_delivered'));"),'Umtausch: Rückgabe vor Lieferung wird serverseitig abgelehnt');
+$shopSrc19=(string)file_get_contents(dirname(__DIR__).'/app/modules/shop.php');
+test_ok(str_contains($shopSrc19,"if(!\$sizeKnown)\$html.='<option value=\"\" selected>'")&&str_contains((string)file_get_contents(dirname(__DIR__).'/assets/shop.js'),"if (size && size.value === '') { sizeMissing("),'Shop: ohne bekannte Größe keine stille Vorbelegung, Hinzufügen ohne Größe gesperrt');
+test_ok(str_contains($shopSrc19,"SELECT id,name FROM employee_accounts WHERE company_id=? AND id IN ("),'Bestellungen: Name der bestellenden Person nur aus derselben Firma');
+test_ok(!str_contains($adminSrc,"'hero_title'=>trim("),'Admin Inhalte: wirkungslose Startseitenfelder werden nicht mehr überschrieben');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

@@ -301,7 +301,7 @@ function yw_private_exposure_check(bool $force=false): array {
             $token=bin2hex(random_bytes(16));
             $probe=yw_private_dir().'/sperrtest.txt';
             file_put_contents($probe,$token);
-            $secure=(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https');
+            $secure=function_exists('yw_request_is_https')?yw_request_is_https():(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off');
             $host=(string)($_SERVER['HTTP_HOST']??yw_public_host());
             $base=($secure?'https://':'http://').$host;
             // Zusätzlich: Sperre in uploads/ (Datenlisten) und Schutz-Header für SVG-Logos, die direkt aufgerufen werden können
@@ -336,12 +336,14 @@ function yw_system(): void {
     // Systemen stehen unter System → Schnittstellen; jede offene Prüfung verlinkt dorthin, wo sie sich beheben lässt.
     $age=yw_backup_age_days();
     $mailFailed=0;try{$mailFailed=(int)db()->query("SELECT COUNT(*) FROM yw_mail_queue WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
+    $runtimeErrors=yw_runtime_recent_errors(24,20);
     $missingSupplierData=null;
     $duplicateSkus=null;
     try{
         $missingSupplierData=(int)db()->query("SELECT COUNT(*) FROM products WHERE active=1 AND (TRIM(COALESCE(sku,''))='' OR TRIM(COALESCE(supplier_name,''))='')")->fetchColumn();
         $duplicateSkus=(int)db()->query("SELECT COUNT(*) FROM (SELECT LOWER(TRIM(sku)) normalized_sku FROM products WHERE TRIM(COALESCE(sku,''))<>'' GROUP BY LOWER(TRIM(sku)) HAVING COUNT(*)>1) duplicates")->fetchColumn();
     }catch(Throwable $e){}
+    $missingUploads=yw_missing_upload_files();
     $mailIssues=yw_mail_config_issues();
     [$exposureOk,$exposureHint]=yw_private_exposure_check(isset($_GET['pruefen']));
     $cronLast=current_site_setting('cron_last_run','');
@@ -353,6 +355,7 @@ function yw_system(): void {
     $integrity=yw_file_integrity();
     $outdated=$integrity?array_merge($integrity['stale'],$integrity['missing']):[];
     $integrityHint=$integrity===null?'Dateiliste app/data/dateien.json fehlt – Paket vollständig hochladen':'Nicht aktuell oder fehlend: '.implode(', ',array_slice($outdated,0,10)).(count($outdated)>10?' … (+'.(count($outdated)-10).')':'').' – per FTP erneut hochladen, vorhandene Dateien immer überschreiben';
+    $runtime=yw_runtime_health();
     $handover=yw_handover_config();$handoverIssues=yw_handover_config_issues();
     $handoverFailed=0;try{$handoverFailed=(int)db()->query("SELECT COUNT(*) FROM yw_handover WHERE status='failed'")->fetchColumn();}catch(Throwable $e){}
     // [Bezeichnung, erfüllt, Hinweis, Link zum Beheben, Linktext]
@@ -368,7 +371,16 @@ function yw_system(): void {
         ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint,'',''],
         ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen','/update.php','Update-Assistent'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren','',''],
-        ['HTTPS-Verbindung',(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https'),'SSL/HTTPS beim Hoster aktivieren','',''],
+        ['HTTPS-Verbindung',yw_request_is_https(),yw_untrusted_proxy_https()?'Der Hoster leitet über einen Proxy weiter (Adresse '.(string)($_SERVER['REMOTE_ADDR']??'?').'). Diese Adresse in config.php unter trusted_proxies eintragen, dann sind Anmelde-Cookies wieder als „Secure“ markiert.':'SSL/HTTPS beim Hoster aktivieren','',''],
+        ['PHP-Erweiterungen',$runtime['missing_extensions']===[],'Fehlend: '.implode(', ',$runtime['missing_extensions']).' – beim Hoster aktivieren','',''],
+        ['PHP-Laufzeitwerte',$runtime['php_settings_ok'],$runtime['php_settings_hint'].' · empfohlen: 256M, 20M, 25M, 300 Sekunden','',''],
+        ['Upload-Ordner beschreibbar',$runtime['uploads_writable'],'Ordner uploads/ und Unterordner beim Hoster beschreibbar machen','',''],
+        // Standard app/private liegt im Webspace, ist aber per .htaccess gesperrt; das prüft „Interne Dateien gesperrt“.
+        ['Privater Datenordner geschützt',$runtime['private_writable']&&($runtime['private_outside_webroot']||$exposureOk===true),$runtime['private_writable']?'Ordner ist von außen erreichbar – Webserver-Sperre prüfen oder private_dir in config.php außerhalb des Webspace festlegen':'Privaten Datenordner (app/private oder private_dir) anlegen und für PHP beschreibbar machen','',''],
+        // 10.19.2: konkrete Zeile zum Einfügen statt nur „setzen“ (der Schlüssel ist eine zusätzliche Absicherung der Freigabe-Links aus E-Mails)
+        ['App-Schlüssel gesetzt',$runtime['app_secret_ok'],'Empfohlen: In config.php diese Zeile ergänzen: \'app_secret\' => \''.bin2hex(random_bytes(24)).'\', – schützt Freigabe-Links aus E-Mails zusätzlich, falls jemand die Datenbank bekommt.','',''],
+        ['Hochgeladene Bilder vorhanden',$missingUploads['count']===0,$missingUploads['count'].' Bild(er) fehlen auf dem Server'.($missingUploads['examples']?' (z. B. '.implode(', ',$missingUploads['examples']).')':'').'. Aus der letzten Datensicherung (Ordner uploads) per FTP zurückspielen oder neu hochladen.',$missingUploads['href'],'Öffnen'],
+        ['Unbehandelte Fehler (24 Stunden)',$runtimeErrors!==null&&$runtimeErrors===[],$runtimeErrors===null?'Privates Fehlerprotokoll nicht lesbar – private_dir und Schreibrechte prüfen':count($runtimeErrors).' Fehlerreferenz(en) – Liste unten','',''],
         ['Wartungsmodus aus',!maintenance_enabled(),'Die Website zeigt Besuchern gerade die Wartungsseite','/admin?tab=design','Ausschalten'],
         ['Beschaffungsdaten',$missingSupplierData===0,$missingSupplierData===null?'Datenbankschema aktualisieren':$missingSupplierData.' aktive Produkte ohne Lieferant oder Artikelnummer','/admin?tab=products','Produkte'],
         ['Eindeutige Artikelnummern',$duplicateSkus===0,$duplicateSkus===null?'Datenbankschema aktualisieren':$duplicateSkus.' mehrfach vergebene Artikelnummern im Produktstamm','/admin?tab=products','Produkte'],
@@ -378,7 +390,14 @@ function yw_system(): void {
     usort($checks,fn($a,$b)=>(int)$a[1]<=>(int)$b[1]);
     echo '<section class="card"><div class="title-row"><div><h2>Betriebsprüfung · Version '.e(app_version()).'</h2><p class="muted">'.$ready.' von '.count($checks).' Prüfungen bestanden · PHP '.e(PHP_VERSION).'</p></div><span class="badge '.($ready===count($checks)?'approved':'pending').'">'.($ready===count($checks)?'Betriebsbereit':'Prüfung nötig').'</span></div><div class="release-checks">';
     foreach($checks as [$label,$ok,$hint,$href,$linkText]) echo '<div class="release-check '.($ok?'ok':'warn').'"><strong>'.($ok?'✓':'!').' '.e($label).'</strong><span>'.e($ok?'Erfüllt':$hint).'</span>'.(!$ok&&$href!==''?'<a class="btn small" href="'.e($href).'">'.e($linkText).'</a>':'').'</div>';
-    echo '</div></section>';
+    echo '</div>';
+    if($runtimeErrors===null)echo '<p class="flash info">Das Fehlerprotokoll ist nicht lesbar. Prüfe den privaten Datenordner und die Schreibrechte.</p>';
+    elseif($runtimeErrors){
+        echo '<details class="details space-top" open><summary>Fehlerreferenzen der letzten 24 Stunden ('.count($runtimeErrors).')</summary><div class="details-inner"><p class="muted">Aus Datenschutzgründen werden hier keine Fehlermeldungen oder personenbezogenen Inhalte angezeigt. Die vollständigen, bereinigten Diagnosedaten liegen im privaten Datenordner.</p><div class="table-wrap"><table class="table"><thead><tr><th>Zeit</th><th>Referenz</th><th>Route</th><th>Fehlerstelle</th></tr></thead><tbody>';
+        foreach($runtimeErrors as $incident){$time=strtotime((string)$incident['at']);echo '<tr><td>'.e($time?date('d.m.Y H:i',$time):'–').'</td><td><code>'.e((string)$incident['id']).'</code></td><td>'.e((string)$incident['route']).'</td><td>'.e((string)$incident['type']).' · '.e((string)$incident['file']).':'.(int)$incident['line'].'</td></tr>';}
+        echo '</tbody></table></div></div></details>';
+    }
+    echo '</section>';
     echo '<section class="card"><div class="title-row"><div><h2>Datensicherung</h2><p class="muted">Lädt Datenbank und hochgeladene Dateien als ZIP herunter. Bitte wöchentlich und vor jedem Update, und die Datei außerhalb des Webspace aufbewahren. Zugangsdaten der Schnittstellen liegen darin nur verschlüsselt, der Schlüssel bleibt auf dem Server – nach einem Serverumzug bitte unter Schnittstellen neu eintragen.</p></div><a class="btn primary" href="/admin/sicherung">Sicherung herunterladen</a></div><p>'.($age===null?'Noch keine Sicherung heruntergeladen.':'Letzte Sicherung: vor '.$age.' Tag'.($age===1?'':'en').' ('.e(current_site_setting('last_backup_at','')).').').'</p><div class="actions"><a class="btn" href="/update.php">Update-Assistent</a></div></section>';
     echo yw_retention_card(); // 10.15: Aufbewahrungsfristen und letzte automatische Bereinigung
 }
@@ -431,4 +450,28 @@ function export_procurement_csv(): void {
         fputcsv($out,array_map('yw_csv_safe',$values),';','"','');
     }
     fclose($out);exit;
+}
+
+
+/**
+ * 10.19.2: Hinterlegte Bilder (Produkte, Firmenlogos, Website), deren Datei auf dem Server fehlt –
+ * z. B. wenn der Ordner uploads/ beim Umzug oder per FTP nicht mit übertragen wurde.
+ * @return array{count:int,examples:list<string>,href:string}
+ */
+function yw_missing_upload_files(): array {
+    $root=dirname(__DIR__,2);$missing=[];$href='';
+    $check=static function(string $path,string $label,string $link) use($root,&$missing,&$href): void {
+        $path=trim($path);
+        if($path===''||!str_starts_with($path,'uploads/')||str_contains($path,'..'))return;
+        if(is_file($root.'/'.$path))return;
+        $missing[]=$label;if($href==='')$href=$link;
+    };
+    try{
+        foreach(db()->query("SELECT id,name,image_path,image_back_path,image_sleeve_path FROM products WHERE active=1") as $p)
+            foreach(['image_path','image_back_path','image_sleeve_path'] as $col)$check((string)($p[$col]??''),'Produkt „'.$p['name'].'“','/admin?tab=products');
+        foreach(db()->query("SELECT id,shop_name,legal_name,logo_path FROM companies") as $c)$check((string)($c['logo_path']??''),'Logo '.($c['shop_name']?:$c['legal_name']),'/admin?tab=companies&company='.(int)$c['id']);
+        foreach(db()->query("SELECT setting_key,setting_value FROM site_settings WHERE setting_key LIKE '%image' OR setting_key LIKE '%logo%' OR setting_key LIKE '%photo'") as $r)$check((string)$r['setting_value'],'Website-Bild','/admin?tab=design');
+    }catch(Throwable $e){return ['count'=>0,'examples'=>[],'href'=>''];}
+    $examples=array_slice(array_values(array_unique($missing)),0,3);
+    return ['count'=>count($missing),'examples'=>$examples,'href'=>$href];
 }
