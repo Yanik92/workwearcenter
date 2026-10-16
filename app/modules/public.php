@@ -537,9 +537,12 @@ function maintenance_page(): void {
             display:grid;place-items:center;
             font-size:40px;font-weight:900;
         }
+        .maintenance-legal{position:fixed;left:0;right:0;bottom:20px;display:flex;justify-content:center;gap:22px;font-size:14px}
+        .maintenance-legal a{color:rgba(255,255,255,.72);text-decoration:none}
+        .maintenance-legal a:hover,.maintenance-legal a:focus-visible{color:#fff;text-decoration:underline}
     </style></head><body><main class="maintenance-wrap">';
     echo '<img class="maintenance-logo" src="/'.e($logo).'" alt="'.e($title).'">';
-    echo '</main></body></html>';
+    echo '</main><nav class="maintenance-legal" aria-label="Rechtliches"><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></nav></body></html>';
 }
 
 
@@ -576,15 +579,30 @@ function render_content_settings(): void {
 
     // 10.19: Startseite und Unterseiten sind seit 10.16.23 fest im Seitendesign hinterlegt. Die früheren Eingabefelder hatten
     // keine Wirkung mehr und wurden entfernt; gespeicherte Altwerte bleiben unverändert in der Datenbank.
-    echo '<section class="card"><h2>Texte der Website</h2><p class="muted">Die Texte von Startseite, Leistungen, So funktioniert’s, Über uns, Kontakt und Anfrage sind fest auf das Seitendesign abgestimmt und kommen mit jedem Update. Hier pflegst du Footer, Impressum, Datenschutz und den Ansprechpartner auf der Startseite.</p></section>';
+    echo '<section class="card"><h2>Texte der Website</h2><p class="muted">Die Texte von Startseite, Leistungen, So funktioniert’s, Über uns, Kontakt und Anfrage sind fest auf das Seitendesign abgestimmt und kommen mit jedem Update. Hier pflegst du Footer, Impressum, die Angaben zur Datenschutzerklärung und den Ansprechpartner auf der Startseite.</p></section>';
     echo '<form method="post" class="settings-form">'.csrf_field().'<input type="hidden" name="action" value="save_content_settings">';
 
     echo '<details class="settings-group" open><summary>Footer und Impressum</summary><div class="settings-group-inner"><label>Footer-Text<input name="footer_text" value="'.$v('footer_text','WorkwearCenter – ein Service von Yanik Textildruck').'"></label>';
     echo '<div class="grid2"><label>Unternehmen<input name="imprint_company" value="'.$v('imprint_company','Yanik Textildruck').'"></label><label>Inhaber<input name="imprint_owner" value="'.$v('imprint_owner','Jens Yanik').'"></label></div>';
     echo '<div class="grid2"><label>Straße<input name="imprint_street" value="'.$v('imprint_street','Geseker Straße 19').'"></label><label>PLZ / Ort<input name="imprint_city" value="'.$v('imprint_city','33154 Salzkotten').'"></label></div>';
     echo '<div class="grid2"><label>Telefon<input name="imprint_phone" value="'.$v('imprint_phone','05258 / 2090004').'"></label><label>E-Mail<input name="imprint_email" value="'.$v('imprint_email','info@yanik-textildruck.de').'"></label></div>';
-    echo '<div class="grid2"><label>Umsatzsteuer-ID <small>Pflichtangabe, falls vorhanden (§ 27a UStG)</small><input name="imprint_vat_id" maxlength="40" placeholder="DE123456789" value="'.$v('imprint_vat_id','').'"></label><label>Handelsregister <small>nur falls eingetragen</small><input name="imprint_register" maxlength="200" placeholder="Amtsgericht Paderborn, HRA 1234" value="'.$v('imprint_register','').'"></label></div></div></details>';
-    echo '<details class="settings-group"><summary>Datenschutz</summary><div class="settings-group-inner"><p class="muted">Hier muss vor dem Marktstart die rechtlich geprüfte Datenschutzerklärung für WorkwearCenter hinterlegt werden.</p><details class="details"><summary>Vorlage mit allen Datenverarbeitungen des WorkwearCenters anzeigen</summary><div class="details-inner"><p class="muted">Die Vorlage beschreibt, welche Daten das System technisch verarbeitet. Sie ersetzt keine Rechtsberatung: Platzhalter in [eckigen Klammern] ausfüllen und vor Veröffentlichung von einer fachkundigen Person prüfen lassen.</p><pre class="json-view" style="white-space:pre-wrap">'.e(yw_privacy_template()).'</pre><button type="button" class="btn small" data-copy="'.e(yw_privacy_template()).'">Vorlage kopieren</button></div></details>'.rich_editor_field('privacy_body','Datenschutzerklärung',$raw('privacy_body','Bitte hinterlege hier die rechtlich geprüfte Datenschutzerklärung für WorkwearCenter.de.'),420).'</div></details>';
+    echo '<div class="grid2"><label>Umsatzsteuer-ID <small>Pflichtangabe, falls vorhanden (§ 27a UStG)</small><input name="imprint_vat_id" maxlength="40" placeholder="DE123456789" value="'.$v('imprint_vat_id','').'"></label><label>Handelsregister <small>nur falls eingetragen</small><input name="imprint_register" maxlength="200" placeholder="Amtsgericht Paderborn, HRA 1234" value="'.$v('imprint_register','').'"></label></div>';
+    echo '<label>Wirtschafts-Identifikationsnummer <small>nur falls vom Bundeszentralamt für Steuern zugeteilt (§ 5 DDG)</small><input name="imprint_wid" maxlength="40" placeholder="DE123456789-00001" value="'.$v('imprint_wid','').'"></label>';
+    echo '<p class="muted">Telefon leer lassen, wenn keine Nummer im Impressum stehen soll. <a href="/impressum" target="_blank" rel="noopener">Impressum ansehen</a></p></div></details>';
+    // 10.22: Die Datenschutzerklärung wird aus dem System erzeugt (app/modules/legal.php); hier nur Betreiberangaben, Ergänzungen oder ein eigener Text.
+    $mode=current_site_setting('privacy_mode','auto')==='custom'?'custom':'auto';
+    echo '<details class="settings-group" open><summary>Datenschutzerklärung</summary><div class="settings-group-inner">';
+    echo '<p class="muted">Die Datenschutzerklärung wird automatisch aus den Funktionen des WorkwearCenters erstellt (Cookies, Speicherfristen, Schnittstellen, Firmenshops) und mit jedem Update aktuell gehalten. Verantwortlicher und Kontakt kommen aus dem Impressum oben. <a href="/datenschutz" target="_blank" rel="noopener">Datenschutzerklärung ansehen</a></p>';
+    echo '<label>Hoster (Name und Anschrift) <small>steht in der Erklärung als Auftragsverarbeiter</small><input name="privacy_hoster" maxlength="300" value="'.$v('privacy_hoster',YW_DEFAULT_HOSTER).'"></label>';
+    echo '<div class="grid2"><label>E-Mail-Versand über <small>leer = derselbe Anbieter wie das Hosting</small><input name="privacy_mail_provider" maxlength="300" placeholder="z. B. Greenmark IT GmbH (do.de)" value="'.$v('privacy_mail_provider','').'"></label>';
+    echo '<label>Server-Protokolle werden gelöscht … <small>Angabe des Hosters, z. B. „nach 7 Tagen“</small><input name="privacy_log_retention" maxlength="120" placeholder="nach 7 Tagen" value="'.$v('privacy_log_retention','').'"></label></div>';
+    echo '<label>Datenschutzbeauftragter <small>nur falls benannt: Name und Kontakt</small><input name="privacy_dpo" maxlength="300" value="'.$v('privacy_dpo','').'"></label>';
+    echo rich_editor_field('privacy_extra','Ergänzende Hinweise (optional, erscheinen als letzter Abschnitt)',$raw('privacy_extra',''),160);
+    echo '<fieldset class="choice-row" style="margin-top:16px"><legend>Welcher Text erscheint auf /datenschutz?</legend>';
+    echo '<label class="check"><input type="radio" name="privacy_mode" value="auto" '.($mode==='auto'?'checked':'').'><span><strong>Automatisch erstellte Erklärung</strong> (empfohlen)</span></label>';
+    echo '<label class="check"><input type="radio" name="privacy_mode" value="custom" '.($mode==='custom'?'checked':'').'><span><strong>Eigener Text</strong>, z. B. von einem Anwalt (wird nur verwendet, wenn er mindestens 250 Zeichen hat)</span></label></fieldset>';
+    echo '<details class="details"><summary>Eigenen Text bearbeiten</summary><div class="details-inner">'.rich_editor_field('privacy_body','Eigene Datenschutzerklärung',$raw('privacy_body',''),420).'</div></details>';
+    echo '</div></details>';
 
     echo '<button class="btn primary" type="submit" style="margin-top:20px">Inhalte speichern</button></form>';
     echo rich_editor_script();
@@ -742,48 +760,6 @@ function render_guide(): void {
 
 
 
-
-/** Technisch vollständige Vorlage – ersetzt keine Rechtsberatung. */
-function yw_privacy_template(): string {
-    return <<<'TXT'
-Datenschutzerklärung – WorkwearCenter (Yanik Textildruck)
-
-1. Verantwortlicher
-[Firma, Inhaber, Anschrift, E-Mail, Telefon – wie im Impressum]
-
-2. Hosting und Server-Protokolle
-Diese Website wird bei [Name und Anschrift des Hosters] betrieben. Beim Aufruf werden technisch notwendige Daten (IP-Adresse, Datum/Uhrzeit, aufgerufene Seite, Browserkennung) in Server-Protokollen verarbeitet. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (sicherer Betrieb). Speicherdauer: [laut Hoster, z. B. 7 Tage]. Mit dem Hoster besteht ein Vertrag zur Auftragsverarbeitung.
-
-3. Cookies
-Wir verwenden ausschließlich ein technisch notwendiges Sitzungs-Cookie („yanik_workwear_session“) für Anmeldung und Formularschutz. Es wird beim Schließen des Browsers gelöscht. Es findet kein Tracking, keine Analyse und keine Werbung statt. Rechtsgrundlage: § 25 Abs. 2 TDDDG, Art. 6 Abs. 1 lit. f DSGVO.
-
-4. Anfrageformular
-Angaben im Anfrageformular (Firma, Name, E-Mail, Telefon, Mitarbeiterzahl, Nachricht) verwenden wir zur Bearbeitung der Anfrage. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Erledigte Anfragen werden nach spätestens 24 Monaten gelöscht.
-
-5. Probeshop für Interessenten
-Laden Sie im Anfrageformular freiwillig Ihr Firmenlogo hoch (oder geben Sie es uns bei einem Termin), erstellen wir daraus einen persönlichen Vorschau-Shop mit Ihrem Firmennamen und Logo auf Musterartikeln. Gespeichert werden nur Firmenname, Logo-Datei, Ablaufdatum und die Anzahl der Aufrufe. Der Probeshop ist nur über einen zufällig erzeugten, nicht erratbaren Link erreichbar, wird nicht von Suchmaschinen erfasst und ist nur lesend. Die Logo-Datei liegt unter einem zufälligen Dateinamen in einem nicht auflistbaren Ordner. Nach 30 Tagen läuft der Probeshop ab; Eintrag und Logo werden danach automatisch gelöscht, auf Wunsch jederzeit früher. Rechtsgrundlage: Art. 6 Abs. 1 lit. a und b DSGVO (Ihre Anfrage bzw. vorvertragliche Maßnahme).
-
-6. Unternehmensshops für Mitarbeitende
-Im Auftrag des jeweiligen Arbeitgebers verarbeiten wir: Name, dienstliche E-Mail-Adresse, Abteilung, Kostenstelle, Standort, Personalnummer, Beschäftigungszeitraum, Rolle, Ausstattungsprofil, Budgetangaben, Bestellungen (Artikel, Größen, Mengen, Preise, Eigenanteil) sowie Anmeldezeitpunkte. Zweck ist die Bereitstellung und Abwicklung der Firmenbekleidung. Rechtsgrundlage: Art. 6 Abs. 1 lit. b und f DSGVO bzw. [Vertrag mit dem Arbeitgeber / Auftragsverarbeitung nach Art. 28 DSGVO – bitte rechtlich klären]. Passwörter werden ausschließlich als sicherer Hash gespeichert.
-
-7. Bestellabwicklung, Produktion und Buchhaltung
-Freigegebene Bestellungen werden in unsere Auftragsverwaltung übertragen und für Beschaffung, Veredelung, Versand und Rechnungsstellung verwendet. Rechnungen erstellen wir mit [Lexware Office, Haufe-Lexware GmbH & Co. KG]. Bestellungen bewahren wir entsprechend den handels- und steuerrechtlichen Aufbewahrungspflichten (bis zu 10 Jahre) auf. Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO.
-
-8. E-Mails
-Für Systemnachrichten (Zugang, Bestellbestätigung, Freigabe, Status) nutzen wir [E-Mail-Anbieter / SMTP-Dienst]. Kopien versendeter Systemnachrichten werden nach 90 Tagen gelöscht.
-
-9. Löschung von Konten
-Ausgeschiedene Mitarbeitende können vom Arbeitgeber oder von uns anonymisiert werden. Dabei werden Name, E-Mail-Adresse und weitere Kontodaten dauerhaft entfernt; Bestellungen bleiben im Rahmen der Aufbewahrungspflichten erhalten.
-
-10. Ihre Rechte
-Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie das Recht auf Beschwerde bei einer Aufsichtsbehörde, z. B. [Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen].
-
-11. Kontakt in Datenschutzfragen
-[E-Mail-Adresse; ggf. Datenschutzbeauftragter]
-
-Stand: [Datum]
-TXT;
-}
 
 /* ---------- 10.11: Vertrauen auf der Startseite (Referenzen, Zitat, Ansprechpartner) ---------- */
 

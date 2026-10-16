@@ -433,8 +433,8 @@ function yw_cleanup_expired_security_rows(): void {
         db()->exec("DELETE FROM yw_login_attempts WHERE started_at<DATE_SUB(NOW(),INTERVAL 1 DAY)");
         db()->exec("DELETE FROM yw_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
         db()->exec("DELETE FROM yw_admin_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
-        // Datensparsamkeit (DSGVO Art. 5): erledigte Anfragen nach 24 Monaten.
-        db()->exec("DELETE FROM inquiries WHERE status='done' AND created_at<DATE_SUB(NOW(),INTERVAL 24 MONTH)");
+        // Datensparsamkeit (DSGVO Art. 5): Anfragen nach 24 Monaten (10.22: unabhängig vom Status, so steht es in der Datenschutzerklärung).
+        db()->exec("DELETE FROM inquiries WHERE created_at<DATE_SUB(NOW(),INTERVAL 24 MONTH)");
     } catch(Throwable $e) {
         error_log('WorkwearCenter security cleanup failed: '.$e->getMessage());
     }

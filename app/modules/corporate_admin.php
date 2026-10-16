@@ -367,7 +367,8 @@ function yw_system(): void {
         ['Übergabe an die Auftragszentrale',$handover['mode']!=='off' && !$handoverIssues && $handoverFailed===0,$handover['mode']==='off'?'Noch nicht eingeschaltet – Aufträge werden gesammelt':($handoverIssues?implode(' · ',$handoverIssues):$handoverFailed.' Übergabe(n) fehlgeschlagen'),'/admin?tab=schnittstellen#auftragszentrale','Öffnen'],
         ['E-Mail-Versand',$mailIssues===[] && $mailFailed===0,$mailIssues?implode(' · ',$mailIssues):$mailFailed.' E-Mail(s) fehlgeschlagen','/admin?tab=schnittstellen#mail','Öffnen'],
         ['Impressum vollständig',$imprintMissing===[],'Fehlt: '.implode(', ',$imprintMissing),'/admin?tab=content','Ergänzen'],
-        ['Datenschutztext',mb_strlen(strip_tags(current_site_setting('privacy_body','')))>250,'Geprüften Datenschutztext hinterlegen','/admin?tab=content','Ergänzen'],
+        // 10.22: Die Datenschutzerklärung wird automatisch erzeugt; zu prüfen bleiben die Angaben des Hosters.
+        ['Datenschutzerklärung',current_site_setting('privacy_mode','auto')==='custom'?yw_privacy_uses_custom_text():trim(current_site_setting('privacy_log_retention',''))!=='','Speicherfrist der Server-Protokolle beim Hoster nachsehen und eintragen','/admin?tab=content','Ergänzen'],
         ['Programmdateien vollständig hochgeladen',$integrity!==null&&$outdated===[],$integrityHint,'',''],
         ['Datenbankschema '.app_version(),yw_schema_ready(true),'Update-Assistent ausführen','/update.php','Update-Assistent'],
         ['PHP-Version',PHP_VERSION_ID>=80100,'Mindestens PHP 8.1 beim Hoster aktivieren','',''],

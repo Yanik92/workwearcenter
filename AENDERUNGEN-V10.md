@@ -1,6 +1,17 @@
 # WorkwearCenter 10 – Änderungen
 
-Stand: 12. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+Stand: 16. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+
+## 10.22.0 – Impressum und Datenschutzerklärung DSGVO-konform
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+- Datenschutzerklärung neu: wird jetzt automatisch aus dem tatsächlichen Verhalten des Systems erzeugt und bleibt mit jedem Update aktuell. 14 Abschnitte mit Inhaltsverzeichnis: Verantwortlicher, Hosting und Server-Protokolle, Cookies (Sitzung und Sprachwahl, beide technisch notwendig, kein Cookie-Banner nötig), keine Tracking- oder Fremddienste, Anfrageformular und Probeshop, Geschäftskunden und Rechnungen (Lexware Office nur, wenn eingerichtet), Firmenshops für Mitarbeitende (Arbeitgeber verantwortlich, wir Auftragsverarbeiter nach Art. 28 DSGVO), Empfänger, System-E-Mails, Sicherheitsprotokoll, Speicherfristen als Tabelle, Betroffenenrechte mit hervorgehobenem Widerspruchsrecht und zuständiger Aufsichtsbehörde (LDI NRW).
+- Verwaltung → Website & Design → Inhalte: neue Felder für Hoster (vorbelegt: Greenmark IT GmbH / do.de), E-Mail-Anbieter, Speicherfrist der Server-Protokolle, Datenschutzbeauftragten und ergänzende Hinweise. Ein eigener (z. B. anwaltlicher) Text kann weiterhin gewählt werden; der bisher gespeicherte Text bleibt dafür erhalten.
+- Impressum: nach § 5 DDG und § 18 Abs. 2 MStV, jetzt mit Telefon, optionaler Wirtschafts-Identifikationsnummer, Hinweis zur Verbraucherstreitbeilegung (ohne die abgeschaffte EU-Schlichtungsplattform), Haftung für Links und Urheberrecht. E-Mail-Adresse ist Pflichtfeld.
+- Impressum und Datenschutzerklärung sind auch im Wartungsmodus erreichbar; die Wartungsseite verlinkt beide.
+- Löschfristen an die Erklärung angepasst: Anfragen werden 24 Monate nach Eingang gelöscht, unabhängig vom Status (bisher nur erledigte). Protokolleinträge zu Lexware und Lohnabzug werden nach 10 Jahren gelöscht (bisher nie).
+- Anfrageformular: Haken heißt jetzt „Ich habe die Datenschutzerklärung gelesen …“ (die Verarbeitung beruht auf der Anfrage, nicht auf einer Einwilligung).
+- Systemstatus: Prüfung „Datenschutzerklärung“ erinnert an die Speicherfrist der Server-Protokolle des Hosters.
 
 ## 10.21.0 – Firmenshops im neuen Design, „Mein Spind“ und Erfolgsbild
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.

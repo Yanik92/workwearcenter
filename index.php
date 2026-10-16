@@ -136,7 +136,8 @@ register_shutdown_function(static function(): void {
 /* Schnittstelle für die Auftragsverwaltung (eigene Authentifizierung per API-Schlüssel) */
 if (str_starts_with($path, '/api/')) { yw_api_route($path); }
 
-if (maintenance_enabled() && !str_starts_with($path, '/admin')) {
+// 10.22: Impressum und Datenschutzerklärung bleiben auch im Wartungsmodus erreichbar (Pflichtangaben).
+if (maintenance_enabled() && !str_starts_with($path, '/admin') && !in_array($path, ['/impressum', '/datenschutz'], true)) {
     maintenance_page();
     exit;
 }
