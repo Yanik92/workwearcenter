@@ -395,10 +395,10 @@ function yw_audit_created_index_ready(): bool {
  * Löscht stapelweise nur Protokoll- und Warteschlangenzeilen (je Art höchstens $batch pro Lauf): Aktivitätsprotokoll
  * nach der eingestellten Frist (Einträge zu Lexware/Rechnungen und Lohnabzug bleiben), versendete Mails nach 90 Tagen,
  * fehlgeschlagene nach 180 Tagen. Aufträge, Positionen, Umtausch und Lexware-Belege werden nie berührt.
- * @return array{audit:int,mail_sent:int,mail_failed:int}
+ * @return array{audit:int,audit_billing:int,mail_sent:int,mail_failed:int}
  */
 function yw_retention_prune(int $batch=YW_RETENTION_BATCH): array {
-    $batch=max(1,min(50000,$batch));$done=['audit'=>0,'mail_sent'=>0,'mail_failed'=>0];
+    $batch=max(1,min(50000,$batch));$done=['audit'=>0,'audit_billing'=>0,'mail_sent'=>0,'mail_failed'=>0];
     $run=static function(string $key,string $sql,array $params) use(&$done): void {
         try{$q=db()->prepare($sql);$q->execute($params);$done[$key]=$q->rowCount();}
         catch(Throwable $e){error_log('WorkwearCenter retention '.$key.': '.$e->getMessage());}
@@ -408,6 +408,9 @@ function yw_retention_prune(int $batch=YW_RETENTION_BATCH): array {
     $run('mail_failed',"DELETE FROM yw_mail_queue WHERE status='failed' AND created_at<DATE_SUB(NOW(),INTERVAL 180 DAY) ORDER BY id LIMIT ".$batch,[]);
     if(yw_audit_created_index_ready())
         $run('audit',"DELETE FROM audit_log WHERE created_at<DATE_SUB(NOW(),INTERVAL ? MONTH) AND action NOT LIKE 'lexware.%' AND action NOT LIKE 'payroll.%' ORDER BY created_at LIMIT ".$batch,[yw_audit_retention_months()]);
+    // 10.22: Abrechnungseinträge (Lexware, Lohnabzug) nicht unbegrenzt, sondern höchstens 10 Jahre (§ 147 AO) – wie in der Datenschutzerklärung.
+    if(yw_audit_created_index_ready())
+        $run('audit_billing',"DELETE FROM audit_log WHERE created_at<DATE_SUB(NOW(),INTERVAL 120 MONTH) AND (action LIKE 'lexware.%' OR action LIKE 'payroll.%') ORDER BY created_at LIMIT ".$batch,[]);
     try{
         $now=date('Y-m-d H:i:s');$prev=json_decode(current_site_setting('retention_status',''),true);
         set_site_setting('retention_status',(string)json_encode(['at'=>$now,'last'=>array_sum($done)>0?['at'=>$now]+$done:(is_array($prev['last']??null)?$prev['last']:null)]));
@@ -421,9 +424,9 @@ function yw_retention_card(): string {
     $last=is_array($status['last']??null)?$status['last']:null;$n=static fn($v): string => number_format((int)$v,0,',','.');
     $when=static fn($v): string => ($ts=strtotime((string)$v))?date('d.m.Y H:i',$ts):'–';
     $info=!empty($status['at'])?'Letzte Bereinigung: '.e($when($status['at'])).' Uhr':'Noch keine Bereinigung – sie läuft automatisch mit dem Cronjob';
-    if($last)$info.=' · zuletzt gelöscht am '.e($when($last['at']??'')).' Uhr: Protokolleinträge '.$n($last['audit']??0).', versendete E-Mails '.$n($last['mail_sent']??0).', fehlgeschlagene E-Mails '.$n($last['mail_failed']??0); // Zahl hinten: stimmt auch bei „1“
+    if($last)$info.=' · zuletzt gelöscht am '.e($when($last['at']??'')).' Uhr: Protokolleinträge '.$n((int)($last['audit']??0)+(int)($last['audit_billing']??0)).', versendete E-Mails '.$n($last['mail_sent']??0).', fehlgeschlagene E-Mails '.$n($last['mail_failed']??0); // Zahl hinten: stimmt auch bei „1“
     return '<section class="card" id="aufbewahrung"><h2>Aufbewahrung</h2><form method="post" class="filter-bar">'.csrf_field().'<input type="hidden" name="action" value="yw_retention"><label>Aktivitätsprotokoll aufbewahren (Monate)<input type="number" name="audit_retention_months" min="'.YW_AUDIT_RETENTION_MIN.'" max="'.YW_AUDIT_RETENTION_MAX.'" step="1" value="'.yw_audit_retention_months().'" required></label><button class="btn primary">Speichern</button></form>'
-        .'<p class="muted">Der Cronjob löscht automatisch Protokolleinträge nach dieser Frist (mindestens '.YW_AUDIT_RETENTION_MIN.' Monate), versendete E-Mails nach 90 und fehlgeschlagene nach 180 Tagen. Aufträge, Rechnungen/Lexware und Lohnabzug-Einträge bleiben immer erhalten.</p><p>'.$info.'.</p></section>';
+        .'<p class="muted">Der Cronjob löscht automatisch Protokolleinträge nach dieser Frist (mindestens '.YW_AUDIT_RETENTION_MIN.' Monate), versendete E-Mails nach 90 und fehlgeschlagene nach 180 Tagen. Aufträge und Rechnungen werden nie gelöscht; Protokolleinträge zu Lexware und Lohnabzug bleiben 10 Jahre erhalten (§ 147 AO).</p><p>'.$info.'.</p></section>';
 }
 
 /** Speichern der Aufbewahrungsfrist (Verwaltung → System). */

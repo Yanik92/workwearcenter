@@ -580,3 +580,27 @@ body.w-body{margin:0;font-family:var(--f-body);color:var(--ink);background:var(-
 /* Formulare dürfen auf schmalen Bildschirmen nicht über den Rand ragen. */
 .w-inquiry>*,.w-form label,.w-form .row>*{min-width:0}
 .w-form input,.w-form textarea{max-width:100%}
+
+/* 10.22: Impressum und Datenschutzerklärung */
+.w-legal{overflow-wrap:anywhere}
+.w-legal-lead{font-size:18px;margin-bottom:8px}
+.w-legal ul,.w-legal ol{margin:10px 0 10px 22px;padding:0}
+.w-legal li+li{margin-top:6px}
+.w-legal table{width:100%;border-collapse:collapse;margin:14px 0;font-size:15px}
+.w-legal th,.w-legal td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}
+.w-legal th{font-weight:700;color:var(--ink,#101b2d);background:rgba(16,27,45,.04)}
+.w-legal td:first-child{font-weight:600;white-space:nowrap}
+.w-legal-toc{border:1px dashed var(--line);border-radius:18px;padding:18px 22px;margin:22px 0 8px}
+.w-legal-toc ol{columns:2;column-gap:28px;margin:8px 0 0 20px}
+.w-legal-toc li{break-inside:avoid}
+.w-legal h2[id]{scroll-margin-top:96px}
+.w-legal-note{border-left:4px solid var(--orange,#fc6904);background:rgba(252,105,4,.06);border-radius:0 14px 14px 0;padding:14px 18px;margin:14px 0}
+.w-legal-date{margin-top:28px;font-size:14px;opacity:.75}
+@media (max-width:640px){
+  .w-legal-toc ol{columns:1}
+  .w-legal table,.w-legal thead,.w-legal tbody,.w-legal tr,.w-legal th,.w-legal td{display:block}
+  .w-legal thead{display:none}
+  .w-legal tr{border-bottom:1px solid var(--line);padding:8px 0}
+  .w-legal td{border:0;padding:2px 0}
+  .w-legal td:first-child{white-space:normal}
+}

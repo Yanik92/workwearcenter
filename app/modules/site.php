@@ -7,6 +7,8 @@ declare(strict_types=1);
  * global_footer() im alten Stil bleiben für Mustershop, Probeshop und Verwaltung erhalten.
  */
 
+require_once __DIR__.'/legal.php';
+
 function s_mail(): string { return current_site_setting('imprint_email','info@yanik-textildruck.de'); }
 function s_arrow(): string { return '<svg class="s-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function s_img(string $key,string $fallback): string { return yw_site_image_url($key,$fallback); }
@@ -415,21 +417,15 @@ function contact_page(): void {
 function imprint_page(): void {
     hp_page_start('Impressum – '.current_site_setting('site_title','WorkwearCenter'));
     hp_page_hero('Rechtliches','Impressum','',[],true);
-    echo '<section class="w-sec w-sec-tight"><div class="w-wrap"><article class="w-legal">';
-    echo '<h2>Angaben gemäß § 5 DDG</h2><p><strong>'.e(current_site_setting('imprint_company','Yanik Textildruck')).'</strong><br>Inhaber: '.e(current_site_setting('imprint_owner','Jens Yanik')).'<br>'.e(current_site_setting('imprint_street','Geseker Straße 19')).'<br>'.e(current_site_setting('imprint_city','33154 Salzkotten')).'</p>';
-    echo '<h2>Kontakt</h2><p>E-Mail: <a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a><br>Kontaktformular: <a href="/anfrage">workwearcenter.de/anfrage</a></p>';
-    $vat=trim(current_site_setting('imprint_vat_id',''));$register=trim(current_site_setting('imprint_register',''));
-    if($vat!=='')echo '<h2>Umsatzsteuer</h2><p>Umsatzsteuer-Identifikationsnummer gemäß § 27a Umsatzsteuergesetz: '.e($vat).'</p>';
-    if($register!=='')echo '<h2>Registereintrag</h2><p>'.e($register).'</p>';
-    echo '<h2>Verantwortlich für den Inhalt</h2><p>'.e(current_site_setting('imprint_owner','Jens Yanik')).', Anschrift wie oben.</p>';
-    echo '</article></div></section>';
+    echo '<section class="w-sec w-sec-tight"><div class="w-wrap"><article class="w-legal">'.yw_imprint_html().'</article></div></section>';
     hp_page_end();
 }
 
+/** 10.22: Standard ist die aus dem System erzeugte Erklärung (app/modules/legal.php); ein eigener Text ist in Admin → Inhalte wählbar. */
 function privacy_page(): void {
-    hp_page_start('Datenschutz – '.current_site_setting('site_title','WorkwearCenter'));
-    hp_page_hero('Rechtliches','Datenschutz','',[],true);
-    echo '<section class="w-sec w-sec-tight"><div class="w-wrap"><article class="w-legal">'.rich_text(current_site_setting('privacy_body','Bitte hinterlege hier die rechtlich geprüfte Datenschutzerklärung für WorkwearCenter.de.')).'</article></div></section>';
+    hp_page_start('Datenschutzerklärung – '.current_site_setting('site_title','WorkwearCenter'));
+    hp_page_hero('Rechtliches','Datenschutzerklärung','',[],true);
+    echo '<section class="w-sec w-sec-tight"><div class="w-wrap"><article class="w-legal">'.(yw_privacy_uses_custom_text()?rich_text(current_site_setting('privacy_body','')):yw_privacy_html()).'</article></div></section>';
     hp_page_end();
 }
 
@@ -451,7 +447,7 @@ function site_inquiry_render(bool $success,string $error,?string $probeshopToken
         echo '<div class="row"><label>E-Mail<input type="email" name="email" autocomplete="email" value="'.e((string)($_POST['email']??'')).'" required></label><label>Teamgröße <small>ungefähr, optional</small><input type="number" min="0" name="employees" value="'.e((string)($_POST['employees']??'')).'"></label></div>';
         echo '<label>Welche Artikel und Bestellwege brauchst du?<textarea name="message" rows="6" placeholder="Zum Beispiel Arbeitsjacken und Polos; Mitarbeitende bestellen selbst oder eine Person sammelt die Ausstattung fürs Team." required>'.e((string)($_POST['message']??'')).'</textarea></label>';
         echo '<div class="w-upload"><label>Dein Firmenlogo <small>optional · PNG, JPG, WebP oder SVG, max. 4 MB</small><input type="file" name="logo" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"></label><p>Mit deinem Logo erstellen wir eine <strong>unverbindliche Vorschau</strong> mit Musterartikeln. Der Link ist 30 Tage gültig. Die abgestimmte Kollektion kommt erst nach deiner Freigabe in den Firmenshop.</p></div>';
-        echo '<label class="w-check"><input type="checkbox" name="privacy" value="1" required><span>Ich bin einverstanden, dass meine Angaben und ein gegebenenfalls hochgeladenes Logo zur Bearbeitung der Anfrage verwendet werden. <a href="/datenschutz" target="_blank" rel="noopener">Datenschutzhinweise</a></span></label>';
+        echo '<label class="w-check"><input type="checkbox" name="privacy" value="1" required><span>Ich habe die <a href="/datenschutz" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen. Meine Angaben und ein hochgeladenes Logo werden nur zur Bearbeitung der Anfrage verwendet.</span></label>';
         echo '<button class="w-btn w-btn-o" type="submit">Anfrage senden'.w_icon('arrow').'</button></form>';
     }
     echo '</div><aside class="w-side"><h2>Was nach deiner Anfrage passiert</h2><ol><li><div><strong>Wir prüfen deine Angaben</strong><span>Wir melden uns so schnell wie möglich per E-Mail.</span></div></li><li><div><strong>Wir stimmen den Entwurf ab</strong><span>Artikel, Logo und Veredelung legen wir gemeinsam fest.</span></div></li><li><div><strong>Du gibst die Gestaltung frei</strong><span>Erst danach kommen die abgestimmten Artikel in den Firmenshop.</span></div></li></ol><p class="mail">Lieber per E-Mail?<br><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p></aside></div></section>';

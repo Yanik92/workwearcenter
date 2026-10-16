@@ -312,15 +312,25 @@ function handle_admin_action(): never {
                 'imprint_email'=>trim((string)($_POST['imprint_email']??'')),
                 'imprint_vat_id'=>trim((string)($_POST['imprint_vat_id']??'')),
                 'imprint_register'=>trim((string)($_POST['imprint_register']??'')),
+                'imprint_wid'=>trim((string)($_POST['imprint_wid']??'')),
                 'privacy_body'=>sanitize_rich_text((string)($_POST['privacy_body']??'')),
+                // 10.22: Angaben für die automatisch erzeugte Datenschutzerklärung (app/modules/legal.php)
+                'privacy_mode'=>($_POST['privacy_mode']??'auto')==='custom'?'custom':'auto',
+                'privacy_hoster'=>trim((string)($_POST['privacy_hoster']??'')),
+                'privacy_mail_provider'=>trim((string)($_POST['privacy_mail_provider']??'')),
+                'privacy_log_retention'=>trim((string)($_POST['privacy_log_retention']??'')),
+                'privacy_dpo'=>trim((string)($_POST['privacy_dpo']??'')),
+                'privacy_extra'=>sanitize_rich_text((string)($_POST['privacy_extra']??'')),
             ];
 
             foreach($fields as $key=>$value){
                 $richField=preg_match('/(?:_text|_intro|_body|_answer)$/D',$key)===1;
-                $limit=$key==='privacy_body'?60000:($richField?20000:500);
+                $limit=$key==='privacy_body'?60000:($richField||$key==='privacy_extra'?20000:500);
                 if(mb_strlen((string)$value)>$limit)throw new RuntimeException('Der Inhalt im Feld „'.str_replace('_',' ',$key).'“ ist zu lang.');
             }
             if($fields['imprint_email']!=='' && !filter_var($fields['imprint_email'],FILTER_VALIDATE_EMAIL))throw new RuntimeException('Die E-Mail-Adresse im Impressum ist ungültig.');
+            if($fields['imprint_email']==='')throw new RuntimeException('Die E-Mail-Adresse im Impressum ist Pflicht (§ 5 DDG).');
+            if($fields['privacy_mode']==='custom' && mb_strlen(trim(strip_tags($fields['privacy_body'])))<=250)throw new RuntimeException('Für „Eigener Text“ bitte zuerst die eigene Datenschutzerklärung eintragen (mindestens 250 Zeichen).');
 
             db()->beginTransaction();
             foreach($fields as $k=>$v)set_site_setting($k,(string)$v);
