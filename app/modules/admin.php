@@ -417,6 +417,17 @@ function handle_admin_action(): never {
             audit_log('product.status_toggled','product',$productId);
             flash('success','Produktstatus wurde geändert.'); redirect('/admin?tab=products');
         }
+        if ($action==='toggle_demo_product') {
+            // 10.23.2: Artikel im öffentlichen Mustershop zeigen oder ausblenden
+            $productId=(int)($_POST['product_id']??0);
+            $q=db()->prepare('SELECT id FROM products WHERE id=?');$q->execute([$productId]);if(!$q->fetchColumn())throw new RuntimeException('Produkt wurde nicht gefunden.');
+            $ids=yw_demo_product_ids();
+            if(in_array($productId,$ids,true)){$ids=array_values(array_diff($ids,[$productId]));$msg='Artikel wird nicht mehr im Mustershop gezeigt.';}
+            else{if(count($ids)>=12)throw new RuntimeException('Im Mustershop sind höchstens 12 Artikel möglich. Nimm zuerst einen anderen heraus.');$ids[]=$productId;$msg='Artikel wird im Mustershop gezeigt.';}
+            set_site_setting('demo_product_ids',json_encode($ids));
+            audit_log('product.demo_toggled','product',$productId);
+            flash('success',$msg); redirect('/admin?tab=products');
+        }
         if ($action==='update_product') {
             $id=(int)($_POST['product_id']??0);$name=trim((string)($_POST['name']??''));$categoryId=(int)($_POST['category_id']??0);$priceCents=yw_money_input((string)($_POST['price']??''));$vatRate=yw_decimal_input((string)($_POST['vat_rate']??'19'),0,100,'MwSt.-Satz');$sizes=yw_admin_sizes((string)($_POST['sizes']??''));
             $purchaseRaw=trim((string)($_POST['purchase_price']??'0'));$purchaseCents=yw_money_input($purchaseRaw===''?'0':$purchaseRaw);$sku=trim((string)($_POST['sku']??''));$brand=trim((string)($_POST['brand']??''));$supplier=trim((string)($_POST['supplier_name']??''));
@@ -1278,6 +1289,8 @@ function render_admin_products(array $products): void {
 
     echo '<section class="card"><div class="title-row"><div><h2>Stammprodukt-Katalog</h2><p class="muted">Lege jedes Grundprodukt nur einmal an. Firmenlogos, individuelle Veredelung und abweichende Preise werden anschließend im jeweiligen Firmenshop hinterlegt.</p></div><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="auto_print_zones"><input type="hidden" name="return_tab" value="products"><input type="hidden" name="all" value="1"><button class="btn" type="submit" title="Erkennt Brust, Rücken, Nacken und Ärmel aus den Produktfotos. Von Hand angepasste Zonen bleiben.">Druckzonen automatisch erkennen</button></form><button class="btn primary" type="button" data-open-details="new-product">Produkt hinzufügen</button></div></div>';
 
+    $demoIds=yw_demo_product_ids();
+    echo '<p class="muted">'.($demoIds?count($demoIds).' Artikel stehen im <a href="/mustershop" target="_blank" rel="noopener">Mustershop</a>.':'Der <a href="/mustershop" target="_blank" rel="noopener">Mustershop</a> zeigt automatisch bis zu neun aktive Artikel mit Foto. Mit „Im Mustershop zeigen“ legst du selbst fest, welche (höchstens 12).').'</p>';
     if(!$products){
         echo '<div class="empty">Noch keine Produkte angelegt.</div>';
     }else{
@@ -1321,7 +1334,8 @@ function render_admin_products(array $products): void {
             echo '<button class="btn small" type="submit">Änderungen speichern</button></form></div></details>';
             echo '</div>';
 
-            echo '<div class="product-admin-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="toggle_product"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><input type="hidden" name="return_tab" value="products"><button class="btn small" type="submit">'.((int)$p['active']?'Deaktivieren':'Aktivieren').'</button></form></div>';
+            $inDemo=in_array((int)$p['id'],$demoIds,true);
+            echo '<div class="product-admin-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="toggle_demo_product"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><input type="hidden" name="return_tab" value="products"><button class="btn small'.($inDemo?' primary':'').'" type="submit" title="Öffentlicher Mustershop unter /mustershop">'.($inDemo?'Im Mustershop ✓':'Im Mustershop zeigen').'</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="toggle_product"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><input type="hidden" name="return_tab" value="products"><button class="btn small" type="submit">'.((int)$p['active']?'Deaktivieren':'Aktivieren').'</button></form></div>';
 
             echo '</article>';
         }
@@ -1484,6 +1498,7 @@ function yw_audit_labels(): array {
         'product.created'=>'Produkt angelegt',
         'product.updated'=>'Produkt geändert',
         'product.status_toggled'=>'Produktstatus geändert',
+        'product.demo_toggled'=>'Artikel im Mustershop gezeigt/ausgeblendet',
         'company.created'=>'Firmen-Shop angelegt',
         'company.brand_updated'=>'Firmenauftritt geändert',
         'company.collection_updated'=>'Firmenkollektion geändert',

@@ -2,6 +2,15 @@
 
 Stand: 16. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.23.2 – Mustershop mit deinen Produkten, keine Besuche
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+- Mustershop zeigt jetzt Artikel aus Verwaltung → Sortiment → Produkte statt der drei Beispielartikel: echte Fotos, Namen, Farben, Größen und Bruttopreise. Das KANTENWERK-Logo sitzt in derselben Druckzone wie in den echten Firmenshops (bei Caps vorne, bei Hosen oben am Bein).
+- Ohne Auswahl nimmt der Mustershop automatisch bis zu neun aktive Artikel mit Foto, abwechselnd aus den Kategorien. Mit dem neuen Knopf „Im Mustershop zeigen“ an jedem Produkt legst du selbst fest, welche Artikel erscheinen (höchstens 12, in der Reihenfolge des Anklickens).
+- Weiße Hintergründe der Lieferantenfotos fügen sich ein (keine grauen Kästen mehr).
+- Vorher-nachher-Regler: Logo in der Shop-Vorschau passt jetzt zwischen Reißverschluss und Ärmelnaht.
+- Keine Einladungen mehr zum Vorbeikommen: Über uns, Kontakt und Startseite bieten Telefon, E-Mail und Muster per Post an; Kartenlink entfernt.
+
 ## 10.23.1 – Korrekturen Mustershop und Werkstattfotos
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
 

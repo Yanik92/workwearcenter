@@ -11,8 +11,9 @@ function mustershop_page(): void {
     if($embedded)header('X-Robots-Tag: noindex, nofollow');
     render_head('KANTENWERK Mustershop – Firmenshop live ausprobieren | WorkwearCenter');
     if(!$embedded)w_header(); // 10.21: gleicher Kopf wie die Website
-    $products=[];
-    foreach([
+    // 10.23.2: Artikel aus dem eigenen Produktkatalog (Verwaltung → Produkte); nur ohne Katalog die drei Beispielartikel.
+    $products=yw_demo_catalog_products();
+    if(!$products)foreach([
         ['T-Shirt Classic','T-Shirts','Ein schlichtes Teamshirt für Arbeit und Alltag.',2490,'WC-TS01','Navy','XS–5XL',['XS','S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-tshirt.webp',['x'=>60,'y'=>27,'w'=>9],'T-SHIRT'],
         ['Hoodie Team','Hoodies','Eine zusätzliche Schicht für kühle Arbeitstage.',5490,'WC-HD02','Graphit','XS–4XL',['XS','S','M','L','XL','2XL','3XL','4XL'],'assets/media/products/workwear-hoodie.webp',['x'=>63,'y'=>30,'w'=>9],'HOODIE'],
         ['Softshelljacke','Jacken','Eine Jacke für den Einsatz im Freien.',8490,'WC-SJ03','Schwarz','S–5XL',['S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-softshell.webp',['x'=>61,'y'=>36,'w'=>9],'SOFTSHELL'],
@@ -32,6 +33,69 @@ function mustershop_page(): void {
     ]);
     if(!$embedded)w_footer();
     render_foot();
+}
+
+/** 10.23.2: Im Mustershop gezeigte Katalogartikel (Verwaltung → Produkte → „Im Mustershop zeigen“). */
+function yw_demo_product_ids(): array {
+    $ids=json_decode(current_site_setting('demo_product_ids','[]'),true);
+    return is_array($ids)?array_values(array_unique(array_filter(array_map('intval',$ids),fn($i)=>$i>0))):[];
+}
+
+/**
+ * 10.23.2: Artikel für den Mustershop aus dem Stammkatalog. Angehakte Artikel in ihrer Reihenfolge,
+ * sonst automatisch bis zu neun aktive Artikel mit Foto, abwechselnd aus den Kategorien.
+ * Das KANTENWERK-Zeichen sitzt in der erkannten bzw. von Hand gesetzten Druckzone „Brust links“ –
+ * dieselbe Zone, die auch in den echten Firmenshops gilt.
+ */
+function yw_demo_catalog_products(): array {
+    try{
+        $chosen=yw_demo_product_ids();
+        if($chosen){
+            $in=implode(',',array_fill(0,count($chosen),'?'));
+            $q=db()->prepare('SELECT * FROM products WHERE active=1 AND id IN ('.$in.')');$q->execute($chosen);
+            $byId=[];foreach($q->fetchAll() as $r)$byId[(int)$r['id']]=$r;
+            $rows=[];foreach($chosen as $id)if(isset($byId[$id]))$rows[]=$byId[$id];
+        }else{
+            $all=db()->query("SELECT * FROM products WHERE active=1 AND image_path<>'' ORDER BY id DESC LIMIT 400")->fetchAll();
+            $groups=[];foreach($all as $r)$groups[(string)($r['category']??'')][]=$r;
+            $rows=[];
+            while(count($rows)<9&&$groups){
+                foreach($groups as $k=>&$list){if(count($rows)>=9)break;$rows[]=array_shift($list);if(!$list)unset($groups[$k]);}
+                unset($list);
+            }
+        }
+    }catch(Throwable $e){return [];}
+    $out=[];
+    foreach($rows as $p){
+        if(count($out)>=12)break;
+        $views=yw_product_views($p);
+        if(!isset($views['front']))continue;
+        $zones=yw_product_zones($p);
+        $found=yw_zone_for($zones,'chest_left',['front']);
+        $type=yw_zone_garment_type($p);
+        $layers=[];
+        if($found){$z=$found['zone'];$layers[]=['src'=>'assets/media/demo/kantenwerk-mark.svg','x'=>$z['x'],'y'=>$z['y'],'w'=>round(max(5.0,min(14.0,(float)$z['w']*0.8)),1),'method'=>'embroidery','label'=>'KANTENWERK'];}
+        $sizes=json_decode((string)($p['sizes']??''),true);$sizes=is_array($sizes)?array_values(array_filter(array_map('strval',$sizes),'strlen')):[];
+        $color=trim((string)($p['color']??''));
+        $name=(string)$p['name'];
+        $lines=preg_split('/\R/u',trim(strip_tags((string)($p['description']??''))))?:[];
+        $detail=trim(preg_replace('/\s+/u',' ',(string)($lines[0]??'')));
+        if(mb_strlen($detail)>110)$detail=rtrim(mb_substr($detail,0,107)).' …';
+        $out[]=[
+            'name'=>$name,
+            'category'=>(string)($p['category']??'')!==''?(string)$p['category']:'Kollektion',
+            'detail'=>$detail,
+            'cents'=>gross_from_net((int)$p['price_cents'],product_vat_rate($p)),
+            'sku'=>(string)($p['sku']??'')!==''?(string)$p['sku']:'P'.(int)$p['id'],
+            'color'=>$color!==''?$color:'Wie abgebildet',
+            'sizes'=>$sizes?($sizes[0].(count($sizes)>1?'–'.$sizes[count($sizes)-1]:'')):'Einheitsgröße',
+            'size_options'=>$sizes?:['Einheitsgröße'],
+            'code'=>mb_strtoupper((string)($p['category']??'Artikel')),
+            'logo_caption'=>['head'=>'Logo · vorne','legs'=>'Logo · Bein oben','flat'=>'Logo · mittig'][$type]??'Logo · Brust links',
+            'visual'=>yw_mockup_html([['view'=>'front','label'=>'Vorderseite','image'=>$views['front'],'layers'=>$layers]],$name.($color!==''?' in '.$color:'').' mit Logo-Vorschau',false,'demo-mockup'),
+        ];
+    }
+    return $out;
 }
 
 /**
@@ -61,7 +125,7 @@ function yw_demo_shop_render(array $o): void {
         foreach($o['products'] as $p){
             $sizeOptions='';
             foreach(($p['size_options']??[]) as $size)$sizeOptions.='<option value="'.e((string)$size).'">'.e((string)$size).'</option>';
-            echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)($p['code']??$p['category'])).'</span>'.$p['visual'].'<span class="demo-logo-caption"><span class="demo-mark-dot" aria-hidden="true"></span> Logo · Brust links</span></div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h3>'.e((string)$p['name']).'</h3><p>'.e((string)$p['detail']).'</p><div class="demo-product-foot"><span><i class="demo-color-dot" aria-hidden="true"></i> '.e((string)$p['color']).'</span><span>Größen <b>'.e((string)$p['sizes']).'</b></span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><span>Beispielpreis <b>je Stück</b></span></div><div class="demo-order-row"><label class="demo-size-label">Größe<select class="demo-size" aria-label="Größe für '.e((string)$p['name']).'"><option value="">Größe wählen</option>'.$sizeOptions.'</select></label><label class="demo-size-label">Anzahl<input class="demo-quantity" type="number" min="1" max="20" value="1" aria-label="Anzahl für '.e((string)$p['name']).'"></label><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-sku="'.e((string)$p['sku']).'" data-name="'.e((string)$p['name']).'" disabled><span>Größe wählen</span><span aria-hidden="true">+</span></button></div></div></article>';
+            echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)($p['code']??$p['category'])).'</span>'.$p['visual'].'<span class="demo-logo-caption"><span class="demo-mark-dot" aria-hidden="true"></span> '.e((string)($p['logo_caption']??'Logo · Brust links')).'</span></div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h3>'.e((string)$p['name']).'</h3><p>'.e((string)$p['detail']).'</p><div class="demo-product-foot"><span><i class="demo-color-dot" aria-hidden="true"></i> '.e((string)$p['color']).'</span><span>Größen <b>'.e((string)$p['sizes']).'</b></span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><span>Beispielpreis <b>je Stück</b></span></div><div class="demo-order-row"><label class="demo-size-label">Größe<select class="demo-size" aria-label="Größe für '.e((string)$p['name']).'"><option value="">Größe wählen</option>'.$sizeOptions.'</select></label><label class="demo-size-label">Anzahl<input class="demo-quantity" type="number" min="1" max="20" value="1" aria-label="Anzahl für '.e((string)$p['name']).'"></label><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-sku="'.e((string)$p['sku']).'" data-name="'.e((string)$p['name']).'" disabled><span>Größe wählen</span><span aria-hidden="true">+</span></button></div></div></article>';
         }
         echo '</div><p class="demo-sample-note">Alle Artikel, Preise und das Guthaben dienen nur zur Demonstration. Dein echter Firmenshop wird mit deinen Produkten, Farben und Regeln gestaltet.</p></div></div></section><div class="demo-toast" id="demo-toast" role="status"></div></main>';
         return;
@@ -119,7 +183,8 @@ body.w-body main.demo .demo-filter{border-radius:999px;padding:10px 18px;font-we
 body.w-body main.demo .demo-filter.active{background:var(--demo-ink);border-color:var(--demo-ink);color:#fff}
 body.w-body main.demo .demo-product{background:#fff;border:1px solid var(--demo-line);border-radius:22px;padding:10px;overflow:hidden;transition:transform .2s,box-shadow .2s}
 body.w-body main.demo .demo-product:hover{transform:translateY(-4px);box-shadow:0 30px 60px -20px rgba(8,18,29,.3)}
-body.w-body main.demo .demo-visual{border-radius:15px;overflow:hidden;background:radial-gradient(circle at 50% 35%,#fbfbf9,#eef0ec 75%)}
+body.w-body main.demo .demo-visual{border-radius:15px;overflow:hidden;background:#fff;box-shadow:inset 0 0 0 1px #eceee9}
+body.w-body main.demo:not(.demo-probe) .demo-visual .company-product-visual,body.w-body main.demo:not(.demo-probe) .demo-visual .mockup-view{background:#fff}
 body.w-body main.demo .demo-product-body{padding:16px 8px 6px}
 body.w-body main.demo .demo-cat{font-family:var(--f-mono);letter-spacing:.12em}
 body.w-body main.demo .demo-product h2,body.w-body main.demo .demo-product h3{font-family:var(--f-body);font-stretch:100%;font-weight:800}

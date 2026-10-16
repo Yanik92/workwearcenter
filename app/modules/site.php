@@ -60,7 +60,7 @@ function global_footer(): void {
     echo '<div class="s-footer-brand">'.s_public_brand_html(false).'<p>Firmenshop für Arbeitskleidung mit Stick und Druck aus eigener Produktion in Salzkotten.</p></div>';
     echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/leistungen">Leistungen</a><a href="/so-funktionierts">Firmenshop & Ablauf</a><a href="/mustershop">Mustershop ansehen</a><a href="/anfrage">Firmenshop anfragen</a></nav></div>';
     echo '<div><h2>Yanik Textildruck</h2><nav aria-label="Unternehmen"><a href="/ueber-uns">Über uns</a><a href="/kontakt">Kontakt</a><a href="/zugang">Kundenportal</a></nav></div>';
-    echo '<div><h2>Besuch uns</h2><p>'.e($company).'<br>'.e($street).'<br>'.e($city).'</p><p><a href="mailto:'.e($mail).'">'.e($mail).'</a></p></div>';
+    echo '<div><h2>Kontakt</h2><p>'.e($company).'<br>'.e($street).'<br>'.e($city).'</p><p><a href="mailto:'.e($mail).'">'.e($mail).'</a></p></div>';
     echo '</div><div class="s-footer-bottom"><span>© '.date('Y').' '.e(yw_text('footer_text')).'</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
 }
 
@@ -440,7 +440,7 @@ function w_one_hand_section(): void {
     echo '<div class="w-pillars">';
     echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('gear').'</span><h3>Eigenentwicklung aus der Praxis</h3><p>WorkwearCenter haben wir selbst entwickelt, direkt aus der Arbeit mit unseren Firmenkunden: Größenlisten, Nachbestellungen, Budgets und Freigaben haben wir jahrelang von Hand sortiert. Deshalb passt der Shop zu dem, wie Betriebe wirklich bestellen.</p><a class="w-link" href="/ueber-uns">Unsere Geschichte'.w_icon('arrow').'</a></article>';
     echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('link').'</span><h3>Eigene Auftragsverwaltung im Hintergrund</h3><p>Hinter dem Shop arbeitet unsere eigene Auftragszentrale. Sie verbindet Anfrage, Auftrag, Korrekturabzug, Produktion und Versand. Freigegebene Bestellungen kommen dort ohne Abtippen an, der Status fließt zurück in deinen Shop.</p><a class="w-link" href="/arbeitskleidung-bestellsystem">Zum Bestellsystem'.w_icon('arrow').'</a></article>';
-    echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('factory').'</span><h3>Eigene Veredelung in '.e($city).'</h3><p>Stick, Druck und Transfer machen wir in unserer eigenen Werkstatt. Wir prüfen jedes Teil, bevor es rausgeht, und du kannst Muster vorher anfassen.</p><a class="w-link" href="/leistungen">Kleidung &amp; Veredelung'.w_icon('arrow').'</a></article>';
+    echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('factory').'</span><h3>Eigene Veredelung in '.e($city).'</h3><p>Stick, Druck und Transfer machen wir in unserer eigenen Werkstatt. Wir prüfen jedes Teil, bevor es rausgeht, und auf Wunsch bekommst du vorher ein Muster.</p><a class="w-link" href="/leistungen">Kleidung &amp; Veredelung'.w_icon('arrow').'</a></article>';
     echo '</div></div></section>';
 }
 
@@ -452,7 +452,7 @@ function w_workshop_section(): void {
     echo '<div class="w-craft"><div class="w-compare w-reveal" data-compare><img src="/assets/media/work/jacke-gesamt.webp" alt="Bedrucktes Firmenlogo auf einer Arbeitsjacke" width="1100" height="825" loading="lazy" decoding="async"><div class="before" aria-hidden="true"><div class="pv"><img src="/assets/media/products/workwear-softshell.webp" alt="" loading="lazy"><img class="pv-logo" src="/assets/media/work/stollhans-logo.png" alt="" loading="lazy"></div></div><span class="lbl" style="left:20px">VORSCHAU IM SHOP</span><span class="lbl" style="right:20px">ECHT GEDRUCKT</span><div class="handle"><b>'.w_icon('swap').'</b></div><input type="range" min="0" max="100" value="48" aria-label="Vergleich zwischen Shop-Vorschau und bedrucktem Original verschieben"></div>';
     echo '<div class="w-techs">';
     foreach([['needle','Stick','Hochwertig und waschfest, ideal für Jacken, Polos und Caps.',false],['print','Druck','Große Motive auf Rücken und T-Shirts, auch mehrfarbig, wie auf der Jacke links.',true],['transfer','Transfer & Flex','Für feine Details, Namen, Nummern und kleine Auflagen.',false]] as [$ic,$t,$x,$on])echo '<div class="w-tech'.($on?' on':'').' w-reveal"><span class="ic">'.w_icon($ic).'</span><div><h3>'.e($t).'</h3><p>'.e($x).'</p></div></div>';
-    echo '<div class="w-place w-reveal">'.w_icon('pin').'<div><b>Produktion in '.e($city).'</b><p>Muster anfassen? Komm nach Absprache vorbei oder wir schicken sie dir.</p></div></div>';
+    echo '<div class="w-place w-reveal">'.w_icon('pin').'<div><b>Produktion in '.e($city).'</b><p>Muster anfassen? Auf Wunsch schicken wir dir Musterteile zu.</p></div></div>';
     echo '</div></div></div></section>';
 }
 
@@ -617,7 +617,7 @@ function about_page(): void {
     echo '</div></div></section>';
 
     $tel=yw_tel_href($o['phone']);
-    echo '<section class="w-sec"><div class="w-wrap w-visit"><div class="w-reveal"><span class="w-eyebrow">Standort</span><h2>Unsere Werkstatt in '.e($city).'.</h2><p>Hier sticken und bedrucken wir, hier sitzt dein Ansprechpartner. Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL. Du möchtest Stoffe anfassen oder dein Logo direkt mit uns besprechen? Komm gern vorbei, nach kurzer Terminabsprache.</p></div><address class="w-address w-reveal"><strong>'.e($o['company']).'</strong><span>WorkwearCenter</span><span>'.e($o['street']).'</span><span>'.e($o['city']).'</span>'.($tel!==''?'<a href="'.e($tel).'">'.e($o['phone']).'</a>':'').'<a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></address></div></section>';
+    echo '<section class="w-sec"><div class="w-wrap w-visit"><div class="w-reveal"><span class="w-eyebrow">Standort</span><h2>Unsere Werkstatt in '.e($city).'.</h2><p>Hier sticken und bedrucken wir, hier sitzt dein Ansprechpartner. Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL. Dein Logo besprechen wir am Telefon oder per E-Mail, Muster schicken wir dir auf Wunsch zu.</p></div><address class="w-address w-reveal"><strong>'.e($o['company']).'</strong><span>WorkwearCenter</span><span>'.e($o['street']).'</span><span>'.e($o['city']).'</span>'.($tel!==''?'<a href="'.e($tel).'">'.e($o['phone']).'</a>':'').'<a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></address></div></section>';
     hp_cta_band();
     hp_page_end();
 }
@@ -627,11 +627,10 @@ function contact_page(): void {
     $o=yw_operator();$mail=s_mail();$city=w_city();$tel=yw_tel_href($o['phone']);
     hp_page_start();
     hp_page_hero('Kontakt','Sprich mit uns über deinen Firmenshop.','<p>Du möchtest einen Shop für dein Team einrichten oder hast eine Frage zu einer bestehenden Bestellung? Schreib uns per Anfrageformular, E-Mail oder ruf an. Wir sitzen in '.e($city).' und betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL.</p>');
-    $maps='https://www.openstreetmap.org/search?query='.rawurlencode($o['street'].', '.$o['city']);
     echo '<section class="w-sec"><div class="w-wrap"><div class="w-contact">';
     echo '<article class="w-ccard main w-reveal"><span class="w-eyebrow on-dark">Neu hier</span><h2>Du möchtest einen Firmenshop?</h2><p>Über das Anfrageformular sendest du uns die wichtigsten Eckdaten, gern mit Logo und Artikelliste. Wir melden uns persönlich per E-Mail.</p><div class="w-cta w-cta-tight"><a class="w-btn w-btn-o" href="/anfrage">Firmenshop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-ghost" href="/mustershop">'.w_icon('play').'Mustershop live testen</a></div></article>';
     echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Direkt erreichen</span>'.($tel!==''?'<a class="big" href="'.e($tel).'">'.e($o['phone']).'</a>':'').'<a class="big small" href="mailto:'.e($mail).'">'.e($mail).'</a><p>Kontaktperson: '.e($o['owner']).'. Logo oder Wunschartikel kannst du direkt an die E-Mail hängen.</p></article>';
-    echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Anschrift &amp; Produktion</span><h2>'.e($o['company']).'</h2><address class="w-plain">'.e($o['street']).'<br>'.e($o['city']).'</address><p>Firmensitz und Produktion in '.e($city).'. Besuche nach Terminabsprache.</p><a class="w-link" href="'.e($maps).'" rel="noopener" target="_blank">Auf der Karte ansehen'.w_icon('arrow').'</a></article>';
+    echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Anschrift &amp; Produktion</span><h2>'.e($o['company']).'</h2><address class="w-plain">'.e($o['street']).'<br>'.e($o['city']).'</address><p>Firmensitz und Produktion in '.e($city).'. Wir beraten dich am Telefon oder per E-Mail; Muster schicken wir dir auf Wunsch zu.</p></article>';
     echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Schon Kunde?</span><h2>Zum eigenen Firmenshop</h2><p>Mitarbeitende und Verantwortliche melden sich direkt im eigenen Firmenshop an.</p><a class="w-btn w-btn-dark" href="/zugang">Zum Kundenlogin'.w_icon('arrow').'</a></article>';
     echo '</div></div></section>';
     hp_page_end();
