@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Wer einen eigenen, z. B. anwaltlich erstellten Text verwenden will, stellt dort auf „eigener Text“ um.
  */
 
-const YW_PRIVACY_VERSION_DATE = '16.10.2026';
+const YW_PRIVACY_VERSION_DATE = '16.10.2026'; // 10.23: Du-Form, neue Felder im Anfrageformular, Artikelliste
 const YW_DEFAULT_HOSTER = 'Greenmark IT GmbH (do.de), Leinstraße 3, 31061 Alfeld (Leine), Deutschland';
 
 /** Betreiberangaben aus Admin → Inhalte (mit den bisherigen Standardwerten). */
@@ -90,11 +90,11 @@ function yw_privacy_html(): string {
 
     $sections['verantwortlicher']=['Verantwortlicher',
         '<p>Verantwortlich für die Datenverarbeitung auf dieser Website ist:</p><p>'.yw_operator_address_html($o).'<br>'.yw_operator_contact_html($o).'</p>'
-        .($dpo!==''?'<p>Unseren Datenschutzbeauftragten erreichen Sie unter: '.e($dpo).'</p>':'<p>Für Fragen zum Datenschutz schreiben Sie uns an <a href="mailto:'.e($o['email']).'">'.e($o['email']).'</a>. Einen Datenschutzbeauftragten haben wir nicht benannt, weil dafür bei unserer Betriebsgröße keine gesetzliche Pflicht besteht.</p>')];
+        .($dpo!==''?'<p>Unseren Datenschutzbeauftragten erreichst du unter: '.e($dpo).'</p>':'<p>Für Fragen zum Datenschutz schreib uns an <a href="mailto:'.e($o['email']).'">'.e($o['email']).'</a>. Einen Datenschutzbeauftragten haben wir nicht benannt, weil dafür bei unserer Betriebsgröße keine gesetzliche Pflicht besteht.</p>')];
 
     $sections['hosting']=['Hosting und Server-Protokolle',
         '<p>Diese Website und alle Firmenshops werden auf Servern von '.e($hoster).' betrieben. Mit dem Hoster haben wir einen Vertrag zur Auftragsverarbeitung nach Art. 28 DSGVO geschlossen.</p>'
-        .'<p>Bei jedem Aufruf verarbeitet der Webserver automatisch technische Daten, die Ihr Browser übermittelt: IP-Adresse, Datum und Uhrzeit, aufgerufene Adresse, übertragene Datenmenge, Statuscode, verweisende Seite sowie Browser- und Betriebssystemangaben. Das ist nötig, um die Seiten auszuliefern und Angriffe zu erkennen.</p>'
+        .'<p>Bei jedem Aufruf verarbeitet der Webserver automatisch technische Daten, die dein Browser übermittelt: IP-Adresse, Datum und Uhrzeit, aufgerufene Adresse, übertragene Datenmenge, Statuscode, verweisende Seite sowie Browser- und Betriebssystemangaben. Das ist nötig, um die Seiten auszuliefern und Angriffe zu erkennen.</p>'
         .'<p>Rechtsgrundlage ist unser berechtigtes Interesse an einem sicheren und stabilen Betrieb (Art. 6 Abs. 1 lit. f DSGVO). '.($logRetention!==''?'Die Server-Protokolle werden '.e($logRetention).' gelöscht.':'Die Server-Protokolle werden vom Hoster nach kurzer Zeit automatisch gelöscht.').'</p>'
         .'<p>Alle Verbindungen sind per TLS (https) verschlüsselt.</p>'];
 
@@ -102,16 +102,17 @@ function yw_privacy_html(): string {
         '<p>Wir verwenden nur Cookies, die für die angeforderten Funktionen technisch unbedingt erforderlich sind (§ 25 Abs. 2 Nr. 2 TDDDG). Eine Einwilligung ist dafür nicht nötig.</p>'
         .'<table><thead><tr><th>Name</th><th>Zweck</th><th>Speicherdauer</th></tr></thead><tbody>'
         .'<tr><td>yanik_workwear_session</td><td>Sitzungskennung für Anmeldung, Warenkorb und Schutz von Formularen vor Missbrauch</td><td>bis zum Schließen des Browsers; Abmeldung spätestens nach 4 Stunden ohne Aktivität</td></tr>'
-        .'<tr><td>yw_lang</td><td>merkt sich die Sprache, die Sie in einem Firmenshop ausgewählt haben (wird nur bei einer Sprachwahl gesetzt)</td><td>12 Monate</td></tr>'
+        .'<tr><td>yw_lang</td><td>merkt sich die Sprache, die du in einem Firmenshop ausgewählt hast (wird nur bei einer Sprachwahl gesetzt)</td><td>12 Monate</td></tr>'
         .'</tbody></table><p>Weitere Cookies, Local Storage, Fingerprinting oder vergleichbare Techniken setzen wir nicht ein. Die zugehörige Verarbeitung stützen wir auf Art. 6 Abs. 1 lit. b DSGVO (Bereitstellung der angefragten Funktion) und lit. f DSGVO (Sicherheit).</p>'];
 
     $sections['kontakt']=['Kontakt per E-Mail oder Telefon',
-        '<p>Wenn Sie uns per E-Mail oder Telefon kontaktieren, verarbeiten wir Ihre Angaben (Name, Kontaktdaten, Inhalt der Nachricht), um Ihr Anliegen zu bearbeiten. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, wenn es um einen Vertrag oder dessen Anbahnung geht, sonst Art. 6 Abs. 1 lit. f DSGVO (Beantwortung von Anfragen). Wir löschen die Daten, wenn das Anliegen erledigt ist und keine Aufbewahrungspflicht besteht.</p>'];
+        '<p>Wenn du uns per E-Mail oder Telefon kontaktierst, verarbeiten wir deine Angaben (Name, Kontaktdaten, Inhalt der Nachricht), um dein Anliegen zu bearbeiten. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, wenn es um einen Vertrag oder dessen Anbahnung geht, sonst Art. 6 Abs. 1 lit. f DSGVO (Beantwortung von Anfragen). Wir löschen die Daten, wenn das Anliegen erledigt ist und keine Aufbewahrungspflicht besteht.</p>'];
 
     $sections['anfrage']=['Anfrageformular und Probeshop',
-        '<p>Über das <a href="/anfrage">Anfrageformular</a> erhalten wir Firmenname, Ihren Namen, Ihre E-Mail-Adresse, optional die ungefähre Teamgröße, Ihre Nachricht und optional ein Firmenlogo. Pflichtfelder sind gekennzeichnet; ohne sie können wir die Anfrage nicht bearbeiten.</p>'
-        .'<p>Wir verwenden die Angaben, um Ihre Anfrage zu beantworten und ein Angebot vorzubereiten (Art. 6 Abs. 1 lit. b DSGVO). Die Anfrage geht per E-Mail an uns, Sie erhalten eine kurze Eingangsbestätigung ohne Wiederholung Ihrer Angaben.</p>'
-        .'<p>Laden Sie ein Logo hoch, erstellen wir daraus einen Probeshop: eine Vorschau mit Ihrem Firmennamen und Logo auf Musterartikeln. Er ist nur über einen zufällig erzeugten Link erreichbar, wird von Suchmaschinen nicht erfasst und läuft nach 30 Tagen ab. Danach löschen wir Probeshop und Logo automatisch. Gespeichert werden nur Firmenname, Logo, Farbwahl, Ablaufdatum und die Zahl der Aufrufe.</p>'
+        '<p>Über das <a href="/anfrage">Anfrageformular</a> erhalten wir Firmenname, deinen Namen als Ansprechpartner und deine E-Mail-Adresse, optional deine Telefonnummer, die ungefähre Zahl der Mitarbeitenden, Branche, ob es schon einheitliche Arbeitskleidung gibt, gewünschte Shop-Funktionen, deine Nachricht, ein Firmenlogo und eine bestehende Artikelliste. Pflichtfelder sind gekennzeichnet; ohne sie können wir die Anfrage nicht bearbeiten.</p>'
+        .'<p>Wir verwenden die Angaben, um deine Anfrage zu beantworten und ein Angebot vorzubereiten (Art. 6 Abs. 1 lit. b DSGVO). Die Anfrage geht per E-Mail an uns, Du erhältst eine kurze Eingangsbestätigung ohne Wiederholung deiner Angaben.</p>'
+        .'<p>Lädst du ein Logo hoch, erstellen wir daraus einen Probeshop: eine Vorschau mit deinem Firmennamen und Logo auf Musterartikeln. Er ist nur über einen zufällig erzeugten Link erreichbar, wird von Suchmaschinen nicht erfasst und läuft nach 30 Tagen ab. Danach löschen wir Probeshop und Logo automatisch. Gespeichert werden nur Firmenname, Logo, Farbwahl, Ablaufdatum und die Zahl der Aufrufe.</p>'
+        .'<p>Eine hochgeladene Artikelliste speichern wir in einem geschützten, nicht öffentlich erreichbaren Bereich unseres Servers. Nur wir können sie abrufen, und wir löschen sie zusammen mit der Anfrage.</p>'
         .'<p>Zum Schutz vor automatisierten Massenanfragen begrenzen wir die Zahl der Anfragen je Anschluss. Dafür speichern wir einen nicht umkehrbaren Prüfwert (Hash) der IP-Adresse für höchstens 24 Stunden (Art. 6 Abs. 1 lit. f DSGVO).</p>'
         .'<p>Anfragen löschen wir automatisch spätestens 24 Monate nach Eingang. Wird aus der Anfrage ein Auftrag, gelten die Fristen aus Abschnitt 7.</p>'];
 
@@ -124,12 +125,12 @@ function yw_privacy_html(): string {
         .'<p>Rechnungen, Buchungsbelege und Geschäftsbriefe bewahren wir nach Handels- und Steuerrecht (§ 257 HGB, § 147 AO) bis zu zehn Jahre auf (Art. 6 Abs. 1 lit. c DSGVO).</p>'];
 
     $sections['firmenshops']=['Firmenshops für Mitarbeitende',
-        '<p><strong>Wer ist verantwortlich?</strong> Die Firmenshops betreiben wir im Auftrag des jeweiligen Arbeitgebers. Für die Daten der Mitarbeitenden ist der Arbeitgeber verantwortlich, wir verarbeiten sie als Auftragsverarbeiter nach Art. 28 DSGVO auf Grundlage eines Vertrags zur Auftragsverarbeitung. Fragen und Anträge zu Ihren Rechten richten Sie bitte an Ihren Arbeitgeber; erreichen sie uns, leiten wir sie weiter und unterstützen ihn bei der Bearbeitung. Diese Hinweise dienen Ihrer Information.</p>'
-        .'<p><strong>Welche Daten?</strong> Je nachdem, was Ihr Arbeitgeber nutzt: Name, dienstliche E-Mail-Adresse, Abteilung, Kostenstelle, Standort, Personalnummer, Eintritts- und Austrittsdatum, Rolle (Mitarbeitende oder Verantwortliche), Ausstattungsprofil, Budget, gewählte Sprache, Bestellungen mit Artikeln, Größen, Mengen, Preisen und einem etwaigen Eigenanteil, Hinweise zur Bestellung, Umtausch- und Rückgabewünsche mit Begründung, Freigabeentscheidungen sowie der Zeitpunkt der letzten Anmeldung.</p>'
-        .'<p><strong>Wofür?</strong> Damit Sie Ihre Arbeitskleidung bestellen können, Verantwortliche Bestellungen freigeben, wir die Kleidung herstellen und liefern und Ihr Arbeitgeber die Kosten abrechnen kann. Die rechtliche Grundlage legt Ihr Arbeitgeber fest, in der Regel § 26 BDSG bzw. Art. 88 DSGVO in Verbindung mit Art. 6 Abs. 1 lit. b DSGVO.</p>'
-        .'<p><strong>Wer sieht die Daten?</strong> Die Verantwortlichen Ihres Arbeitgebers für die Firmenkleidung, unsere Mitarbeitenden in Verwaltung und Produktion sowie die in Abschnitt 9 genannten Dienstleister. Auf Wunsch Ihres Arbeitgebers stellen wir eine Übersicht der Eigenanteile für die Lohnabrechnung bereit (Monat, Personalnummer, Name, Kostenstelle, Betrag).</p>'
+        '<p><strong>Wer ist verantwortlich?</strong> Die Firmenshops betreiben wir im Auftrag des jeweiligen Arbeitgebers. Für die Daten der Mitarbeitenden ist der Arbeitgeber verantwortlich, wir verarbeiten sie als Auftragsverarbeiter nach Art. 28 DSGVO auf Grundlage eines Vertrags zur Auftragsverarbeitung. Fragen und Anträge zu deinen Rechten richtest du bitte an deinen Arbeitgeber; erreichen sie uns, leiten wir sie weiter und unterstützen ihn bei der Bearbeitung. Diese Hinweise dienen deiner Information.</p>'
+        .'<p><strong>Welche Daten?</strong> Je nachdem, was dein Arbeitgeber nutzt: Name, dienstliche E-Mail-Adresse, Abteilung, Kostenstelle, Standort, Personalnummer, Eintritts- und Austrittsdatum, Rolle (Mitarbeitende oder Verantwortliche), Ausstattungsprofil, Budget, gewählte Sprache, Bestellungen mit Artikeln, Größen, Mengen, Preisen und einem etwaigen Eigenanteil, Hinweise zur Bestellung, Umtausch- und Rückgabewünsche mit Begründung, Freigabeentscheidungen sowie der Zeitpunkt der letzten Anmeldung.</p>'
+        .'<p><strong>Wofür?</strong> Damit du deine Arbeitskleidung bestellen kannst, Verantwortliche Bestellungen freigeben, wir die Kleidung herstellen und liefern und dein Arbeitgeber die Kosten abrechnen kann. Die rechtliche Grundlage legt dein Arbeitgeber fest, in der Regel § 26 BDSG bzw. Art. 88 DSGVO in Verbindung mit Art. 6 Abs. 1 lit. b DSGVO.</p>'
+        .'<p><strong>Wer sieht die Daten?</strong> Die Verantwortlichen deines Arbeitgebers für die Firmenkleidung, unsere Mitarbeitenden in Verwaltung und Produktion sowie die in Abschnitt 9 genannten Dienstleister. Auf Wunsch deines Arbeitgebers stellen wir eine Übersicht der Eigenanteile für die Lohnabrechnung bereit (Monat, Personalnummer, Name, Kostenstelle, Betrag).</p>'
         .'<p><strong>Sicherheit:</strong> Passwörter speichern wir nur als sicheren Hash. Anmelde-Links per E-Mail gelten 15 Minuten und nur einmal, Links zum Zurücksetzen des Passworts höchstens 60 Minuten, Freigabe-Links für Verantwortliche 7 Tage. Wiederholte Fehlversuche werden gebremst.</p>'
-        .'<p><strong>Löschung:</strong> Scheiden Sie aus dem Unternehmen aus oder endet der Vertrag mit Ihrem Arbeitgeber, wird Ihr Konto auf dessen Veranlassung anonymisiert: Name, E-Mail-Adresse, Personalnummer, Standort, Beschäftigungsdaten und Anmeldedaten werden entfernt, auch in gespeicherten Bestellübersichten und noch nicht versendeten E-Mails. Bestellungen selbst bleiben ohne Namen für die gesetzlichen Aufbewahrungsfristen erhalten.</p>'];
+        .'<p><strong>Löschung:</strong> Scheidest du aus dem Unternehmen aus oder endet der Vertrag mit deinem Arbeitgeber, wird dein Konto auf dessen Veranlassung anonymisiert: Name, E-Mail-Adresse, Personalnummer, Standort, Beschäftigungsdaten und Anmeldedaten werden entfernt, auch in gespeicherten Bestellübersichten und noch nicht versendeten E-Mails. Bestellungen selbst bleiben ohne Namen für die gesetzlichen Aufbewahrungsfristen erhalten.</p>'];
 
     $sections['empfaenger']=['Dienstleister und Empfänger',
         '<p>Wir geben personenbezogene Daten nur weiter, wenn das für die genannten Zwecke nötig ist. Alle Dienstleister sind vertraglich zur Vertraulichkeit verpflichtet und arbeiten als Auftragsverarbeiter nach unseren Weisungen:</p><ul>'
@@ -154,26 +155,26 @@ function yw_privacy_html(): string {
         .'<tr><td>Schutz vor Fehlversuchen (Hash der IP-Adresse)</td><td>nach 24 Stunden</td></tr>'
         .'<tr><td>Anmelde- und Passwort-Links</td><td>nach 2 bzw. 7 Tagen (ungültig bereits nach 15 bzw. 60 Minuten)</td></tr>'
         .'<tr><td>Probeshop mit Logo</td><td>30 Tage nach Erstellung</td></tr>'
-        .'<tr><td>Anfragen</td><td>24 Monate nach Eingang</td></tr>'
+        .'<tr><td>Anfragen mit Artikelliste</td><td>24 Monate nach Eingang</td></tr>'
         .'<tr><td>Kopien von System-E-Mails</td><td>90 Tage, nicht zustellbare 180 Tage</td></tr>'
         .'<tr><td>Sicherheits- und Änderungsprotokoll</td><td>'.$auditMonths.' Monate, Abrechnungseinträge 10 Jahre</td></tr>'
         .'<tr><td>Konten von Mitarbeitenden</td><td>Anonymisierung auf Veranlassung des Arbeitgebers, spätestens nach Vertragsende</td></tr>'
         .'<tr><td>Bestellungen, Rechnungen, Belege</td><td>nach Ablauf der gesetzlichen Aufbewahrungsfristen (bis zu 10 Jahre)</td></tr>'
         .'</tbody></table>'];
 
-    $sections['rechte']=['Ihre Rechte',
-        '<p>Sie haben jederzeit das Recht auf Auskunft über Ihre gespeicherten Daten (Art. 15 DSGVO), auf Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) und Datenübertragbarkeit (Art. 20). Haben Sie eine Einwilligung erteilt, können Sie sie jederzeit mit Wirkung für die Zukunft widerrufen (Art. 7 Abs. 3 DSGVO). Eine formlose Nachricht an <a href="mailto:'.e($o['email']).'">'.e($o['email']).'</a> genügt.</p>'
-        .'<div class="w-legal-note"><p><strong>Widerspruchsrecht (Art. 21 DSGVO):</strong> Verarbeiten wir Daten auf Grundlage berechtigter Interessen (Art. 6 Abs. 1 lit. f DSGVO), können Sie dieser Verarbeitung aus Gründen, die sich aus Ihrer besonderen Situation ergeben, jederzeit widersprechen. Wir verarbeiten die Daten dann nicht mehr, es sei denn, wir können zwingende schutzwürdige Gründe nachweisen, die Ihre Interessen überwiegen, oder die Verarbeitung dient der Geltendmachung, Ausübung oder Verteidigung von Rechtsansprüchen.</p></div>'
-        .'<p>Sie haben außerdem das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Für uns zuständig ist: Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf, <a href="https://www.ldi.nrw.de" rel="noopener">www.ldi.nrw.de</a>.</p>'];
+    $sections['rechte']=['Deine Rechte',
+        '<p>Du hast jederzeit das Recht auf Auskunft über deine gespeicherten Daten (Art. 15 DSGVO), auf Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) und Datenübertragbarkeit (Art. 20). Hast du eine Einwilligung erteilt, kannst du sie jederzeit mit Wirkung für die Zukunft widerrufen (Art. 7 Abs. 3 DSGVO). Eine formlose Nachricht an <a href="mailto:'.e($o['email']).'">'.e($o['email']).'</a> genügt.</p>'
+        .'<div class="w-legal-note"><p><strong>Widerspruchsrecht (Art. 21 DSGVO):</strong> Verarbeiten wir Daten auf Grundlage berechtigter Interessen (Art. 6 Abs. 1 lit. f DSGVO), kannst du dieser Verarbeitung aus Gründen, die sich aus deiner besonderen Situation ergeben, jederzeit widersprechen. Wir verarbeiten die Daten dann nicht mehr, es sei denn, wir können zwingende schutzwürdige Gründe nachweisen, die deine Interessen überwiegen, oder die Verarbeitung dient der Geltendmachung, Ausübung oder Verteidigung von Rechtsansprüchen.</p></div>'
+        .'<p>Du hast außerdem das Recht, dich bei einer Datenschutz-Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Für uns zuständig ist: Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf, <a href="https://www.ldi.nrw.de" rel="noopener">www.ldi.nrw.de</a>.</p>'];
 
     $sections['sonstiges']=['Automatisierte Entscheidungen und Änderungen',
-        '<p>Wir treffen keine ausschließlich automatisierten Entscheidungen im Sinne von Art. 22 DSGVO und erstellen keine Profile. Budget- und Stückzahlgrenzen in den Firmenshops legt Ihr Arbeitgeber fest; über Bestellungen entscheiden seine Verantwortlichen.</p>'
+        '<p>Wir treffen keine ausschließlich automatisierten Entscheidungen im Sinne von Art. 22 DSGVO und erstellen keine Profile. Budget- und Stückzahlgrenzen in den Firmenshops legt dein Arbeitgeber fest; über Bestellungen entscheiden seine Verantwortlichen.</p>'
         .'<p>Wir passen diese Datenschutzerklärung an, wenn sich unsere Angebote oder die Rechtslage ändern. Es gilt die jeweils hier veröffentlichte Fassung.</p>'];
 
     $extra=trim(current_site_setting('privacy_extra',''));
     if(trim(strip_tags($extra))!=='')$sections['ergaenzungen']=['Ergänzende Hinweise',rich_text($extra)];
 
-    $h='<p class="w-legal-lead">Wir nehmen den Schutz Ihrer Daten ernst und verarbeiten sie nur im Rahmen der Datenschutz-Grundverordnung (DSGVO), des Bundesdatenschutzgesetzes (BDSG) und des Telekommunikation-Digitale-Dienste-Datenschutz-Gesetzes (TDDDG). Hier erfahren Sie, welche Daten wir beim WorkwearCenter wofür verarbeiten.</p>';
+    $h='<p class="w-legal-lead">Wir nehmen den Schutz deiner Daten ernst und verarbeiten sie nur im Rahmen der Datenschutz-Grundverordnung (DSGVO), des Bundesdatenschutzgesetzes (BDSG) und des Telekommunikation-Digitale-Dienste-Datenschutz-Gesetzes (TDDDG). Hier erfährst du, welche Daten wir beim WorkwearCenter wofür verarbeiten.</p>';
     $h.='<nav class="w-legal-toc" aria-label="Inhalt"><strong>Inhalt</strong><ol>';
     foreach($sections as $id=>[$title])$h.='<li><a href="#'.e($id).'">'.e($title).'</a></li>';
     $h.='</ol></nav>';

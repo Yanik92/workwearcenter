@@ -633,4 +633,12 @@ foreach(['de','en','pl','tr','ru','ro'] as $l21){$a21=require dirname(__DIR__).'
 test_ok(!$langMissing21,'Neue Shop-Texte in allen sechs Sprachen'.($langMissing21?' (fehlt: '.implode(', ',$langMissing21).')':''));
 test_ok(yw_is_website_path('/mustershop')&&yw_is_website_path('/probeshop/abc'),'Mustershop und Probeshop im Rahmen der Website');
 
+// 10.23: Website-Überarbeitung, Anfrage mit Artikelliste
+$publicSrc23=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
+$siteSrc23=(string)file_get_contents(dirname(__DIR__).'/app/modules/site.php').(string)file_get_contents(dirname(__DIR__).'/app/modules/site_topics.php');
+test_ok(str_contains($publicSrc23,"\$dir=yw_private_dir().'/anfragen';")&&str_contains($publicSrc23,"function yw_inquiry_attachment_download(int \$inquiryId): never {\n    require_admin();"),'Anfrage: Artikelliste liegt im geschützten privaten Ordner, Download nur für Admins');
+test_ok(str_contains($publicSrc23,'is_uploaded_file($tmp)')&&!in_array('php',array_keys(YW_INQUIRY_ATTACHMENT_TYPES),true)&&!in_array('html',array_keys(YW_INQUIRY_ATTACHMENT_TYPES),true),'Anfrage: nur echte Uploads mit erlaubten Dateitypen');
+test_ok(!preg_match('/(Produktion|Werkstatt|Sitz|Standort)[^.<]{0,30}in Paderborn/u',$siteSrc23),'Website: Standort ist Salzkotten, Paderborn nur als Region');
+test_ok(!yw_public_pages()['/zugang']['index']&&yw_public_pages()['/']['index']&&yw_slug_reserved('branchen')&&yw_slug_reserved('workwear-management'),'Website: Login nicht im Index, neue Seiten-Adressen nicht als Firmen-Kurzname vergebbar');
+
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

@@ -109,8 +109,9 @@ if ($path === '/sitemap.xml') {
     header('Content-Type: application/xml; charset=UTF-8');
     $base = 'https://'.yw_public_host();
     echo '<?xml version="1.0" encoding="UTF-8"?>'."\n".'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
-    foreach (['/' => '1.0', '/leistungen' => '0.9', '/so-funktionierts' => '0.8', '/mustershop' => '0.8', '/ueber-uns' => '0.7', '/anfrage' => '0.8', '/kontakt' => '0.7', '/impressum' => '0.2', '/datenschutz' => '0.2'] as $loc => $prio) {
-        echo '  <url><loc>'.e($base.($loc === '/' ? '/' : $loc)).'</loc><priority>'.$prio.'</priority></url>'."\n";
+    foreach (yw_public_pages() as $loc => $page) {
+        if (!$page['index']) continue;
+        echo '  <url><loc>'.e($base.$loc).'</loc><priority>'.$page['priority'].'</priority></url>'."\n";
     }
     echo "</urlset>\n"; exit;
 }
@@ -125,7 +126,7 @@ if ($path === '/robots.txt') {
 register_shutdown_function(static function(): void {
     if(function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
     // Erinnerungen und Aufbewahrungsfristen höchstens einmal täglich, falls kein Cronjob eingerichtet ist.
-    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup(); yw_retention_prune();} } catch(Throwable $e) {}
+    try { if(function_exists('current_site_setting') && current_site_setting('reminders_last_run','')<date('Y-m-d')){ set_site_setting('reminders_last_run',date('Y-m-d')); yw_send_reminders(3); yw_send_budget_year_mails(200); yw_probeshop_cleanup(); yw_retention_prune(); yw_cleanup_expired_security_rows();} } catch(Throwable $e) {}
     try { yw_process_mail_queue(2); }
     catch(Throwable $e) { error_log('WorkwearCenter background mail queue: '.$e->getMessage()); }
     // Übergabe an die Auftragsverwaltung als Rückfallebene zum Cronjob.
@@ -152,6 +153,11 @@ if ($path === '/impressum') { imprint_page(); exit; }
 if ($path === '/datenschutz') { privacy_page(); exit; }
 if ($path === '/mustershop') { mustershop_page(); exit; }
 if ($path === '/zugang') { customer_access_page(); exit; }
+// 10.23: Branchen und Themenseiten (app/modules/site_topics.php)
+if ($path === '/branchen') { industries_page(); exit; }
+if ($path === '/arbeitskleidung-bestellsystem') { topic_ordering_system_page(); exit; }
+if ($path === '/mitarbeitershop-arbeitskleidung') { topic_employee_shop_page(); exit; }
+if ($path === '/workwear-management') { topic_management_page(); exit; }
 if (preg_match('#^/probeshop/([^/]{1,100})$#', $path, $match)) { yw_probeshop_route($match[1]); exit; }
 
 /* Admin */
@@ -161,6 +167,7 @@ if ($path === '/admin/login') { admin_login_page(); exit; }
 if (preg_match('#^/admin/vorschau/(\d+)$#', $path, $m)) { yw_admin_preview_start((int)$m[1]); }
 if ($path === '/admin/vorschau-beenden') { yw_admin_preview_stop(); }
 if ($path === '/admin/sicherung') { yw_backup_download(); }
+if (preg_match('#^/admin/anfrage-datei/(\d+)$#', $path, $m)) { yw_inquiry_attachment_download((int)$m[1]); }
 if (preg_match('#^/admin/aushang/(\d+)$#', $path, $m)) { yw_admin_poster_page((int)$m[1]); exit; }
 if ($path === '/admin/2fa') { admin_2fa_page(); exit; }
 if ($path === '/admin/logout') {
@@ -212,7 +219,7 @@ if (preg_match('#^/([a-z0-9-]+)$#', $path, $match)) {
 
 if($path!=='/'){
     http_response_code(404);
-    simple_message('Seite nicht gefunden','Die angeforderte Seite existiert nicht oder ist nicht mehr verfügbar.');
+    website_not_found_page();
     exit;
 }
 landing_page();

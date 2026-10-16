@@ -106,6 +106,7 @@ function color_ok(string $color): bool { return (bool)preg_match('/^#[0-9a-f]{6}
 function slug_ok(string $slug): bool { return (bool)preg_match('/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/', $slug) && !yw_slug_reserved($slug); }
 /** Kurznamen, die mit festen Seiten, Ordnern oder Systemdateien kollidieren würden. */
 function yw_slug_reserved(string $slug): bool {
+    if(isset(yw_public_pages()['/'.$slug]))return true; // 10.23: neue Website-Seiten
     return in_array($slug,['admin','leistungen','ueber-uns','so-funktionierts','kontakt','anfrage','impressum','datenschutz','mustershop','agb','assets','uploads','app','tests','update','cron','index','config','sitemap','robots','well-known','api','login','logout','shop','www','mail','zugang','kunden','kunden-login','2fa','probeshop'],true);
 }
 function yw_upload_path_ok(string $path,string $folder): bool {
@@ -435,6 +436,7 @@ function yw_cleanup_expired_security_rows(): void {
         db()->exec("DELETE FROM yw_admin_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
         // Datensparsamkeit (DSGVO Art. 5): Anfragen nach 24 Monaten (10.22: unabhängig vom Status, so steht es in der Datenschutzerklärung).
         db()->exec("DELETE FROM inquiries WHERE created_at<DATE_SUB(NOW(),INTERVAL 24 MONTH)");
+        if(function_exists('yw_inquiry_attachments_prune'))yw_inquiry_attachments_prune(); // 10.23: Artikellisten gelöschter Anfragen
     } catch(Throwable $e) {
         error_log('WorkwearCenter security cleanup failed: '.$e->getMessage());
     }
@@ -659,50 +661,20 @@ function render_head(string $title, ?array $brand = null): void {
     }
     $brandTokens=$brand?';--wc-accent:'.e($primary).';--wc-orange:'.e($accent).';--wc-button-ink:'.$buttonInk:'';
     $path=path_only();
-    $public=in_array($path,['/','/leistungen','/ueber-uns','/so-funktionierts','/mustershop','/kontakt','/anfrage','/impressum','/datenschutz','/zugang'],true);
-    // 10.20: Die Website-Seiten nutzen nur noch assets/web.css (Mustershop und Shops bleiben unverändert).
+    // 10.23: Titel, Beschreibung und Indexierung aller öffentlichen Seiten stehen zentral in yw_public_pages().
+    $pages=yw_public_pages();
+    $public=isset($pages[$path]);
     $website=yw_is_website_path($path);
-    $robots=$public&&$path!=='/zugang'?'index,follow,max-image-preview:large':($path==='/zugang'?'noindex,follow':'noindex,nofollow');
+    $robots=$public?($pages[$path]['index']?'index,follow,max-image-preview:large':'noindex,follow'):'noindex,nofollow';
     $url='https://'.yw_public_host().$path;
-    $canonical=$public?'<link rel="canonical" href="'.e($url).'">':'';
-    $descriptions=[
-        '/'=>'WorkwearCenter ist der digitale Firmenshop für Arbeitskleidung: Mitarbeitende bestellen selbst oder Verantwortliche erfassen Teamaufträge – mit Stick und Druck aus eigener Produktion in Paderborn.',
-        '/leistungen'=>'Arbeitskleidung und Teamkleidung mit Logo: Stick, Textildruck und Transferdruck aus eigener Produktion in Paderborn – inklusive Firmenshop mit Budgets und Freigaben.',
-        '/ueber-uns'=>'Yanik Textildruck: Textilveredelung aus eigener Hand mit Produktion in Paderborn, persönliche Beratung und ein Online-Shop für die Firmenkleidung deines Teams.',
-        '/so-funktionierts'=>'In fünf Schritten zum eigenen Firmenshop: anfragen, Kollektion abstimmen, freigeben, Team bestellen lassen, fertig veredelte Kleidung erhalten.',
-        '/mustershop'=>'Probier einen Beispiel-Firmenshop aus – mit echten Artikeln, Budget, Größenwahl und Freigabe durch den Verantwortlichen.',
-        '/kontakt'=>'Kontakt zu Yanik Textildruck: persönliche Beratung zu Firmenkleidung, Veredelung und eigenem Unternehmensshop.',
-        '/anfrage'=>'Unverbindlich anfragen: eigener Online-Shop für die Firmenkleidung deines Teams, mit Logo-Veredelung von Yanik Textildruck.',
-        '/impressum'=>'Impressum von Yanik Textildruck – Betreiber des WorkwearCenters.',
-        '/datenschutz'=>'Datenschutzhinweise für das WorkwearCenter von Yanik Textildruck.',
-        '/zugang'=>'Kunden-Login: Über den Kurznamen direkt zum eigenen Firmenshop im WorkwearCenter.',
-    ];
-    $description=$descriptions[$path]??(yw_lang_shop_active()?t('meta.description'):'Geschützter Unternehmensshop für Firmenkleidung von WorkwearCenter.');
-    $shareImage='https://'.yw_public_host().'/'.yw_site_logo_path();
-    $imageAlt=$path==='/'?'WorkwearCenter – digitaler Firmenshop für Arbeitskleidung':'WorkwearCenter';
-    $social=$public?'<meta property="og:type" content="website"><meta property="og:locale" content="de_DE"><meta property="og:site_name" content="WorkwearCenter"><meta property="og:title" content="'.e($title).'"><meta property="og:description" content="'.e($description).'"><meta property="og:url" content="'.e($url).'"><meta property="og:image" content="'.e($shareImage).'"><meta property="og:image:alt" content="'.e($imageAlt).'"><meta name="twitter:card" content="summary"><meta name="twitter:image" content="'.e($shareImage).'"><meta name="twitter:image:alt" content="'.e($imageAlt).'">':'';
+    $canonical=$public&&$pages[$path]['index']?'<link rel="canonical" href="'.e($url).'">':'';
+    $description=$public?$pages[$path]['description']:(yw_lang_shop_active()?t('meta.description'):'Geschützter Firmenshop für Arbeitskleidung von WorkwearCenter.');
+    $shareImage='https://'.yw_public_host().'/assets/media/workwearcenter-teilen.jpg';
+    $imageAlt='WorkwearCenter – der Firmenshop für Arbeitskleidung mit Logo, von Yanik Textildruck aus Salzkotten';
+    $social=$public?'<meta property="og:type" content="website"><meta property="og:locale" content="de_DE"><meta property="og:site_name" content="WorkwearCenter"><meta property="og:title" content="'.e($title).'"><meta property="og:description" content="'.e($description).'"><meta property="og:url" content="'.e($url).'"><meta property="og:image" content="'.e($shareImage).'"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="'.e($imageAlt).'"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="'.e($shareImage).'"><meta name="twitter:image:alt" content="'.e($imageAlt).'">':'';
     // Symbol auf allen Seiten (sonst fragt der Browser /favicon.ico an und erhält eine 404-Seite).
     $favicon='<link rel="icon" type="image/svg+xml" href="/assets/media/workwearcenter-mark-warm.svg"><link rel="apple-touch-icon" href="/assets/media/workwearcenter-icon.png">';
-    $structured='';
-    if($public){
-        $logo=yw_site_logo_path();
-        $organization=[
-            '@context'=>'https://schema.org',
-            '@type'=>'LocalBusiness',
-            'name'=>current_site_setting('imprint_company','Yanik Textildruck'),
-            'alternateName'=>['WorkwearCenter','Yanik Workwear'],
-            'description'=>'Textilveredelung (Stick und Druck) und Online-Shops für Firmenkleidung.',
-            'url'=>'https://'.yw_public_host(),
-            'sameAs'=>['https://www.yanik-textildruck.de'],
-            'areaServed'=>['Salzkotten','Paderborn','Ostwestfalen-Lippe','Deutschland'],
-            'email'=>current_site_setting('imprint_email','info@yanik-textildruck.de'),
-        ];
-        $organization['logo']='https://'.yw_public_host().'/'.$logo;
-        $organization['image']=$shareImage;
-        $street=trim((string)current_site_setting('imprint_street',''));$city=trim((string)current_site_setting('imprint_city',''));
-        if($street!=='' && preg_match('/^(\d{5})\s+(.+)$/u',$city,$cm))$organization['address']=['@type'=>'PostalAddress','streetAddress'=>$street,'postalCode'=>$cm[1],'addressLocality'=>$cm[2],'addressCountry'=>'DE'];
-        $structured='<script type="application/ld+json">'.json_encode($organization,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
-    }
+    $structured=$public?yw_structured_data_html($path):'';
     $preload=$path==='/mustershop'?'<link rel="preload" as="image" href="/assets/media/products/workwear-tshirt.webp" type="image/webp">':'';
     echo '<!doctype html><html lang="'.e(yw_lang()).'"'.(yw_lang_shop_active()?' data-yw-i18n="'.e(yw_js_i18n()).'"':'').'><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="'.$robots.'"><meta name="description" content="'.e($description).'">'.$canonical.$social.$favicon.$preload.'<meta name="theme-color" content="'.e($primary).'"><title>' . e($title) . '</title>'.($website?'<link rel="preload" href="/assets/fonts/Archivo-Variable.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/assets/fonts/Manrope-Variable.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="'.e(asset_url('assets/web.css')).'">'.$structured.'</head><body class="w-body">':'<link rel="stylesheet" href="'.e(asset_url('assets/style.css')).'"><link rel="stylesheet" href="'.e(asset_url('assets/v9.css')).'">'.($public||$path==='/zugang'||str_starts_with($path,'/probeshop/')?'<link rel="stylesheet" href="'.e(asset_url('assets/site.css')).'"><link rel="preload" href="/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>':'').'<link rel="stylesheet" href="'.e(asset_url('assets/workwear-ui.css')).'"><style>:root{--primary:' . e($primary) . ';--accent:' . e($accent) . $brandTokens.'}</style>'.$structured.'</head><body'.($brand?' class="yw-shop"':'').'>');
 }
@@ -710,4 +682,85 @@ function render_head(string $title, ?array $brand = null): void {
 function render_flash(): void { if ($f=take_flash()) echo '<div class="flash ' . e($f[0]) . '" data-flash>' . e($f[1]) . '</div>'; }
 function render_foot(): void { echo yw_old_input_script().'<script src="'.e(asset_url('assets/app.js')).'" defer></script>'.(yw_is_website_path(path_only())?'<script src="'.e(asset_url('assets/web.js')).'" defer></script>':'').'</body></html>'; }
 /** 10.20: Seiten der öffentlichen Website im neuen Design (ohne Mustershop, Probeshop und Firmenshops). */
-function yw_is_website_path(string $path): bool { return in_array($path,['/','/leistungen','/ueber-uns','/so-funktionierts','/kontakt','/anfrage','/impressum','/datenschutz','/zugang','/mustershop'],true) || str_starts_with($path,'/probeshop/'); } // 10.21: Mustershop und Probeshop im Rahmen der Website
+function yw_is_website_path(string $path): bool { return !empty($GLOBALS['yw_website_404']) || isset(yw_public_pages()[$path]) || str_starts_with($path,'/probeshop/'); } // 10.21: Mustershop und Probeshop im Rahmen der Website
+
+/**
+ * 10.23: Alle öffentlichen Seiten an einer Stelle – Titel (SEO), Beschreibung, Brotkrumen, Sitemap und Indexierung.
+ * Neue Seiten bitte hier eintragen; die Kurznamen werden damit auch für Firmenshops gesperrt (yw_slug_reserved).
+ */
+function yw_public_pages(): array {
+    static $pages=null;
+    if($pages!==null)return $pages;
+    $p=fn(string $title,string $description,string $crumb,string $prio,bool $index=true)=>['title'=>$title,'description'=>$description,'crumb'=>$crumb,'priority'=>$prio,'index'=>$index];
+    return $pages=[
+        '/'=>$p('WorkwearCenter – Firmenshop für Arbeitskleidung mit Logo','Eigener Firmenshop für Arbeitskleidung: Produkte, Firmenlogo, Budgets, Mitarbeiterzugänge und Freigaben zentral verwalten. Stick und Druck aus eigener Produktion in Salzkotten.','Start','1.0'),
+        '/so-funktionierts'=>$p('So funktioniert der Firmenshop für Arbeitskleidung | WorkwearCenter','Von der Anfrage bis zur Lieferung: So richtest du mit WorkwearCenter einen Firmenshop ein, legst Budgets und Freigaben fest und dein Team bestellt Arbeitskleidung selbst.','So funktioniert’s','0.9'),
+        '/arbeitskleidung-bestellsystem'=>$p('Arbeitskleidung Bestellsystem mit Freigabe und Budget | WorkwearCenter','Bestellsystem für Arbeitskleidung: Mitarbeitende bestellen, Budgets und Stücklimits werden geprüft, Verantwortliche geben frei, die Produktion startet ohne Abtippen.','Bestellsystem','0.9'),
+        '/mitarbeitershop-arbeitskleidung'=>$p('Mitarbeitershop für Arbeitskleidung und Berufsbekleidung | WorkwearCenter','Mitarbeitershop für Arbeitskleidung: Jede Person bestellt mit eigenem Zugang die freigegebene Kleidung in ihrer Größe, sieht ihr Budget und den Bestellstatus, auch am Handy.','Mitarbeitershop','0.8'),
+        '/workwear-management'=>$p('Workwear Management: Arbeitskleidung der Mitarbeiter verwalten | WorkwearCenter','Arbeitskleidung im Unternehmen verwalten: Mitarbeiter, Abteilungen, Ausstattungsprofile, Budgets, Ein- und Austritte, Umtausch und Auswertungen an einem Ort.','Workwear Management','0.8'),
+        '/branchen'=>$p('Firmenshop für Arbeitskleidung nach Branche | WorkwearCenter','Firmenshops für Handwerk, Industrie, Zeitarbeit, Pflege, Kommunen, Feuerwehr und Dienstleister: welche Kleidung typisch ist und welche Funktionen dort helfen.','Branchen','0.8'),
+        '/leistungen'=>$p('Arbeitskleidung, Textilveredelung und Firmenshop | WorkwearCenter','Arbeits- und Firmenkleidung, Stick, Druck und Transfer aus eigener Produktion in Salzkotten und der Firmenshop für dein Team: alles aus einer Hand.','Leistungen','0.8'),
+        '/mustershop'=>$p('Mustershop live testen – so sieht dein Firmenshop aus | WorkwearCenter','Teste einen Firmenshop für Arbeitskleidung ohne Anmeldung: Kollektion mit Logo, Größenwahl, Beispielbudget und Preise im Musterunternehmen KANTENWERK.','Mustershop','0.8'),
+        '/ueber-uns'=>$p('Über uns: WorkwearCenter von Yanik Textildruck, Salzkotten','WorkwearCenter ist eine Eigenentwicklung von Yanik Textildruck aus Salzkotten: entstanden aus Größenlisten, Nachbestellungen und Freigaben im Alltag unserer Firmenkunden.','Über uns','0.7'),
+        '/kontakt'=>$p('Kontakt – WorkwearCenter von Yanik Textildruck in Salzkotten','Kontakt zu WorkwearCenter: Yanik Textildruck, Geseker Straße 19, 33154 Salzkotten. Persönliche Beratung für Unternehmen aus Salzkotten, Paderborn, OWL und ganz Deutschland.','Kontakt','0.7'),
+        '/anfrage'=>$p('Firmenshop anfragen | WorkwearCenter','Firmenshop für Arbeitskleidung unverbindlich anfragen: Eckdaten senden, auf Wunsch mit Logo und Artikelliste. Wir melden uns persönlich mit einem Vorschlag.','Anfrage','0.8'),
+        '/impressum'=>$p('Impressum – WorkwearCenter','Impressum von WorkwearCenter, einem Angebot von Yanik Textildruck aus Salzkotten.','Impressum','0.2'),
+        '/datenschutz'=>$p('Datenschutzerklärung – WorkwearCenter','Datenschutzerklärung für WorkwearCenter von Yanik Textildruck: welche Daten Website, Anfrageformular und Firmenshops verarbeiten.','Datenschutz','0.2'),
+        '/zugang'=>$p('Kundenlogin – WorkwearCenter','Kundenlogin: Über den Kurznamen direkt zur Anmeldung im eigenen Firmenshop.','Kundenlogin','0',false),
+    ];
+}
+
+/** Seitentitel einer öffentlichen Seite (Fallback: übergebener Text). */
+function yw_page_title(string $path,string $fallback='WorkwearCenter'): string { return yw_public_pages()[$path]['title']??$fallback; }
+
+/** 10.23: Zusätzliche strukturierte Daten einer Seite (FAQ, Brotkrumen, Leistung); vor render_head() aufrufen. */
+function yw_jsonld_add(array $node): void { $GLOBALS['yw_jsonld_nodes'][]=$node; }
+
+/** Betreiber als schema.org-Knoten (nur echte Angaben aus Admin → Inhalte, keine Bewertungen oder Kennzahlen). */
+function yw_structured_data_html(string $path): string {
+    $host='https://'.yw_public_host();
+    $s=fn(string $k,string $d='')=>trim((string)current_site_setting($k,$d));
+    $org=[
+        '@type'=>'LocalBusiness',
+        '@id'=>$host.'/#unternehmen',
+        'name'=>$s('imprint_company','Yanik Textildruck'),
+        'alternateName'=>['WorkwearCenter','Yanik Textildruck / WorkwearCenter'],
+        'description'=>'Firmenshops für Arbeitskleidung mit Mitarbeiterzugängen, Budgets und Freigaben sowie Textilveredelung (Stick, Druck, Transfer) aus eigener Produktion in Salzkotten.',
+        'url'=>$host.'/',
+        'logo'=>$host.'/assets/media/workwearcenter-logo-dunkel.png',
+        'image'=>$host.'/assets/media/workwearcenter-teilen.jpg',
+        'email'=>$s('imprint_email','info@yanik-textildruck.de'),
+        'sameAs'=>['https://www.yanik-textildruck.de'],
+        'areaServed'=>[['@type'=>'City','name'=>'Salzkotten'],['@type'=>'City','name'=>'Paderborn'],['@type'=>'AdministrativeArea','name'=>'Ostwestfalen-Lippe'],['@type'=>'Country','name'=>'Deutschland']],
+    ];
+    $phone=$s('imprint_phone','05258 / 2090004');
+    if($phone!==''){$digits=preg_replace('/[^\d]/','',$phone)??'';if(str_starts_with($digits,'0'))$org['telephone']='+49'.substr($digits,1);}
+    if(($owner=$s('imprint_owner','Jens Yanik'))!=='')$org['founder']=['@type'=>'Person','name'=>$owner];
+    $street=$s('imprint_street','Geseker Straße 19');$city=$s('imprint_city','33154 Salzkotten');
+    if($street!==''&&preg_match('/^(\d{5})\s+(.+)$/u',$city,$cm))$org['address']=['@type'=>'PostalAddress','streetAddress'=>$street,'postalCode'=>$cm[1],'addressLocality'=>$cm[2],'addressRegion'=>'Nordrhein-Westfalen','addressCountry'=>'DE'];
+    $graph=[$org];
+    if($path==='/')$graph[]=['@type'=>'WebSite','@id'=>$host.'/#website','url'=>$host.'/','name'=>'WorkwearCenter','inLanguage'=>'de-DE','publisher'=>['@id'=>$host.'/#unternehmen']];
+    $page=yw_public_pages()[$path]??null;
+    if($page&&$path!=='/'){
+        $graph[]=['@type'=>'BreadcrumbList','itemListElement'=>[
+            ['@type'=>'ListItem','position'=>1,'name'=>'Start','item'=>$host.'/'],
+            ['@type'=>'ListItem','position'=>2,'name'=>$page['crumb'],'item'=>$host.$path],
+        ]];
+    }
+    foreach((array)($GLOBALS['yw_jsonld_nodes']??[]) as $node){
+        if(isset($node['provider']))$node['provider']=['@id'=>$host.'/#unternehmen'];
+        $graph[]=$node;
+    }
+    return '<script type="application/ld+json">'.json_encode(['@context'=>'https://schema.org','@graph'=>$graph],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP).'</script>';
+}
+
+/** FAQ-Liste als schema.org-FAQPage (nur Fragen, die auf der Seite sichtbar sind). */
+function yw_jsonld_faq(array $faqs): void {
+    $items=[];foreach($faqs as [$q,$a])$items[]=['@type'=>'Question','name'=>$q,'acceptedAnswer'=>['@type'=>'Answer','text'=>$a]];
+    if($items)yw_jsonld_add(['@type'=>'FAQPage','mainEntity'=>$items]);
+}
+
+/** Leistung (Service) einer Seite mit Verweis auf den Betreiber. */
+function yw_jsonld_service(string $name,string $description,string $serviceType): void {
+    yw_jsonld_add(['@type'=>'Service','name'=>$name,'serviceType'=>$serviceType,'description'=>$description,'provider'=>true,'areaServed'=>['@type'=>'Country','name'=>'Deutschland'],'availableLanguage'=>['de','en','pl','tr','ru','ro']]);
+}

@@ -951,7 +951,7 @@ function employee_account_login_page(string $slug): void {
 
     if(!$company){
         http_response_code(404);
-        simple_message('Shop nicht gefunden','Dieser Unternehmensshop ist nicht verfügbar.');
+        website_not_found_page(true);
         return;
     }
 
@@ -1062,7 +1062,7 @@ function company_portal_page(string $slug,string $section='overview'): void {
 
     if(!$company){
         http_response_code(404);
-        simple_message('Shop nicht gefunden','Dieser Unternehmensshop ist nicht verfügbar.');
+        website_not_found_page(true);
         return;
     }
 

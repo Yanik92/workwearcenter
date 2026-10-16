@@ -417,6 +417,17 @@ function handle_admin_action(): never {
             audit_log('product.status_toggled','product',$productId);
             flash('success','Produktstatus wurde geändert.'); redirect('/admin?tab=products');
         }
+        if ($action==='toggle_demo_product') {
+            // 10.23.2: Artikel im öffentlichen Mustershop zeigen oder ausblenden
+            $productId=(int)($_POST['product_id']??0);
+            $q=db()->prepare('SELECT id FROM products WHERE id=?');$q->execute([$productId]);if(!$q->fetchColumn())throw new RuntimeException('Produkt wurde nicht gefunden.');
+            $ids=yw_demo_product_ids();
+            if(in_array($productId,$ids,true)){$ids=array_values(array_diff($ids,[$productId]));$msg='Artikel wird nicht mehr im Mustershop gezeigt.';}
+            else{if(count($ids)>=12)throw new RuntimeException('Im Mustershop sind höchstens 12 Artikel möglich. Nimm zuerst einen anderen heraus.');$ids[]=$productId;$msg='Artikel wird im Mustershop gezeigt.';}
+            set_site_setting('demo_product_ids',json_encode($ids));
+            audit_log('product.demo_toggled','product',$productId);
+            flash('success',$msg); redirect('/admin?tab=products');
+        }
         if ($action==='update_product') {
             $id=(int)($_POST['product_id']??0);$name=trim((string)($_POST['name']??''));$categoryId=(int)($_POST['category_id']??0);$priceCents=yw_money_input((string)($_POST['price']??''));$vatRate=yw_decimal_input((string)($_POST['vat_rate']??'19'),0,100,'MwSt.-Satz');$sizes=yw_admin_sizes((string)($_POST['sizes']??''));
             $purchaseRaw=trim((string)($_POST['purchase_price']??'0'));$purchaseCents=yw_money_input($purchaseRaw===''?'0':$purchaseRaw);$sku=trim((string)($_POST['sku']??''));$brand=trim((string)($_POST['brand']??''));$supplier=trim((string)($_POST['supplier_name']??''));
@@ -820,6 +831,7 @@ function handle_admin_action(): never {
         if ($action==='delete_inquiry') {
             $id=(int)($_POST['inquiry_id']??0);
             $stmt=db()->prepare('DELETE FROM inquiries WHERE id=?');$stmt->execute([$id]);
+            yw_inquiry_attachment_delete($id);
             if(!$stmt->rowCount())throw new RuntimeException('Anfrage wurde nicht gefunden.');
             $q=db()->prepare('SELECT id FROM yw_probeshops WHERE inquiry_id=?');$q->execute([$id]);
             foreach($q->fetchAll(PDO::FETCH_COLUMN) as $probeshopId)yw_probeshop_delete((int)$probeshopId);
@@ -1230,7 +1242,9 @@ function render_admin_inquiries(array $inquiries): void {
         if(!empty($i['phone'])) echo '<span><a href="tel:'.e($i['phone']).'">'.e($i['phone']).'</a></span>';
         if(!empty($i['employees'])) echo '<span>'.(int)$i['employees'].' Mitarbeitende</span>';
         echo '</div>';
-        echo '<div class="inquiry-message">'.e($i['message']).'</div></div>';
+        echo '<div class="inquiry-message">'.e($i['message']).'</div>';
+        if(yw_inquiry_attachment((int)$i['id'])!=='')echo '<p class="space-top"><a class="btn small" href="/admin/anfrage-datei/'.(int)$i['id'].'">Artikelliste herunterladen</a></p>';
+        echo '</div>';
         echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen (inklusive Probeshop und Logo)? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form>'.yw_probeshop_admin_box($probeshops[(int)$i['id']]??null,$i).'</div>';
         echo '</article>';
     }
@@ -1275,6 +1289,8 @@ function render_admin_products(array $products): void {
 
     echo '<section class="card"><div class="title-row"><div><h2>Stammprodukt-Katalog</h2><p class="muted">Lege jedes Grundprodukt nur einmal an. Firmenlogos, individuelle Veredelung und abweichende Preise werden anschließend im jeweiligen Firmenshop hinterlegt.</p></div><div class="actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="auto_print_zones"><input type="hidden" name="return_tab" value="products"><input type="hidden" name="all" value="1"><button class="btn" type="submit" title="Erkennt Brust, Rücken, Nacken und Ärmel aus den Produktfotos. Von Hand angepasste Zonen bleiben.">Druckzonen automatisch erkennen</button></form><button class="btn primary" type="button" data-open-details="new-product">Produkt hinzufügen</button></div></div>';
 
+    $demoIds=yw_demo_product_ids();
+    echo '<p class="muted">'.($demoIds?count($demoIds).' Artikel stehen im <a href="/mustershop" target="_blank" rel="noopener">Mustershop</a>.':'Der <a href="/mustershop" target="_blank" rel="noopener">Mustershop</a> zeigt automatisch bis zu neun aktive Artikel mit Foto. Mit „Im Mustershop zeigen“ legst du selbst fest, welche (höchstens 12).').'</p>';
     if(!$products){
         echo '<div class="empty">Noch keine Produkte angelegt.</div>';
     }else{
@@ -1318,7 +1334,8 @@ function render_admin_products(array $products): void {
             echo '<button class="btn small" type="submit">Änderungen speichern</button></form></div></details>';
             echo '</div>';
 
-            echo '<div class="product-admin-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="toggle_product"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><input type="hidden" name="return_tab" value="products"><button class="btn small" type="submit">'.((int)$p['active']?'Deaktivieren':'Aktivieren').'</button></form></div>';
+            $inDemo=in_array((int)$p['id'],$demoIds,true);
+            echo '<div class="product-admin-actions"><form method="post">'.csrf_field().'<input type="hidden" name="action" value="toggle_demo_product"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><input type="hidden" name="return_tab" value="products"><button class="btn small'.($inDemo?' primary':'').'" type="submit" title="Öffentlicher Mustershop unter /mustershop">'.($inDemo?'Im Mustershop ✓':'Im Mustershop zeigen').'</button></form><form method="post">'.csrf_field().'<input type="hidden" name="action" value="toggle_product"><input type="hidden" name="product_id" value="'.(int)$p['id'].'"><input type="hidden" name="return_tab" value="products"><button class="btn small" type="submit">'.((int)$p['active']?'Deaktivieren':'Aktivieren').'</button></form></div>';
 
             echo '</article>';
         }
@@ -1481,6 +1498,7 @@ function yw_audit_labels(): array {
         'product.created'=>'Produkt angelegt',
         'product.updated'=>'Produkt geändert',
         'product.status_toggled'=>'Produktstatus geändert',
+        'product.demo_toggled'=>'Artikel im Mustershop gezeigt/ausgeblendet',
         'company.created'=>'Firmen-Shop angelegt',
         'company.brand_updated'=>'Firmenauftritt geändert',
         'company.collection_updated'=>'Firmenkollektion geändert',
@@ -1523,6 +1541,7 @@ function yw_audit_labels(): array {
         'admin.activated'=>'Administrator aktiviert',
         'company.status_toggled'=>'Firmen-Shop aktiviert/deaktiviert',
         'inquiry.deleted'=>'Anfrage gelöscht',
+        'inquiry.attachment_downloaded'=>'Artikelliste einer Anfrage heruntergeladen',
         'probeshop.created'=>'Probeshop erzeugt',
         'exchange.requested'=>'Umtausch/Rückgabe beantragt',
         'exchange.approved'=>'Umtausch/Rückgabe freigegeben',

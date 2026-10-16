@@ -655,11 +655,76 @@ function send_inquiry_mail(array $data): bool {
         ."E-Mail: ".$data['email']."\n"
         ."Telefon: ".$data['phone']."\n"
         ."Mitarbeitende: ".$data['employees']."\n\n"
-        ."Nachricht:\n".$data['message']."\n"
+        .$data['message']."\n"
+        .(!empty($data['attachment'])?"\nArtikelliste hochgeladen: in der Verwaltung unter Shop-Anfragen herunterladen (".workwearcenter_url('/admin?tab=inquiries').")\n":'')
         .(!empty($data['probeshop'])?"\nProbeshop mit Logo (30 Tage gültig): ".yw_probeshop_url((string)$data['probeshop'])."\n":'')
         .(isset($data['confirmation'])?"\nEingangsbestätigung an den Interessenten: ".match($data['confirmation']){'ok'=>'gesendet','recipient'=>'nicht gesendet – diese Adresse hat in den letzten 24 Stunden schon eine bekommen (Missbrauchsschutz)','global'=>'nicht gesendet – Stundenlimit für Bestätigungen erreicht (Missbrauchsschutz)',default=>'nicht gesendet – bitte selbst kurz antworten'}."\n":'');
 
     return send_system_mail($to,$subject,$body,false,(string)$data['email']);
+}
+
+/* 10.23: Optionale Artikelliste zur Anfrage. Liegt im privaten Datenordner, nie öffentlich abrufbar,
+ * und wird mit der Anfrage gelöscht (manuell oder nach 24 Monaten, siehe yw_inquiry_attachments_prune). */
+const YW_INQUIRY_ATTACHMENT_TYPES=['pdf'=>['application/pdf'],'xlsx'=>['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/zip','application/octet-stream'],'xls'=>['application/vnd.ms-excel','application/x-ole-storage','application/CDFV2','application/octet-stream'],'csv'=>['text/plain','text/csv','application/csv','text/x-comma-separated-values'],'docx'=>['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/zip','application/octet-stream'],'doc'=>['application/msword','application/x-ole-storage','application/CDFV2','application/octet-stream'],'png'=>['image/png'],'jpg'=>['image/jpeg'],'jpeg'=>['image/jpeg'],'webp'=>['image/webp']];
+
+function yw_inquiry_attachment_dir(): string {
+    $dir=yw_private_dir().'/anfragen';
+    if(!is_dir($dir)&&!@mkdir($dir,0750,true)&&!is_dir($dir))throw new RuntimeException('Die Artikelliste konnte nicht gespeichert werden.');
+    return $dir;
+}
+
+/** Prüft die hochgeladene Artikelliste; null, wenn keine gewählt wurde. */
+function yw_inquiry_attachment_check(?array $file): ?array {
+    if(!$file||(int)($file['error']??UPLOAD_ERR_NO_FILE)===UPLOAD_ERR_NO_FILE)return null;
+    if((int)$file['error']!==UPLOAD_ERR_OK)throw new RuntimeException(function_exists('upload_error_message')?upload_error_message((int)$file['error'],'Artikelliste'):'Der Upload der Artikelliste ist fehlgeschlagen.');
+    $tmp=(string)($file['tmp_name']??'');$size=(int)($file['size']??0);
+    if($tmp===''||!is_uploaded_file($tmp))throw new RuntimeException('Die Artikelliste wurde nicht als gültiger Upload erkannt.');
+    if($size<=0||$size>4*1024*1024)throw new RuntimeException('Die Artikelliste darf höchstens 4 MB groß sein.');
+    $ext=strtolower((string)pathinfo((string)($file['name']??''),PATHINFO_EXTENSION));
+    $mime=(string)(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
+    if(!isset(YW_INQUIRY_ATTACHMENT_TYPES[$ext])||!in_array($mime,YW_INQUIRY_ATTACHMENT_TYPES[$ext],true))throw new RuntimeException('Bitte die Artikelliste als PDF, Excel, CSV, Word oder Bild hochladen.');
+    return ['tmp'=>$tmp,'ext'=>$ext==='jpeg'?'jpg':$ext];
+}
+
+function yw_inquiry_attachment_store(array $checked,int $inquiryId): string {
+    $path=yw_inquiry_attachment_dir().'/'.$inquiryId.'-'.bin2hex(random_bytes(12)).'.'.$checked['ext'];
+    if(!yw_move_upload($checked['tmp'],$path))throw new RuntimeException('Die Artikelliste konnte nicht gespeichert werden.');
+    @chmod($path,0640);
+    return $path;
+}
+
+/** Gespeicherte Artikelliste einer Anfrage (Pfad oder leer). */
+function yw_inquiry_attachment(int $inquiryId): string {
+    if($inquiryId<=0)return '';
+    try{$files=glob(yw_private_dir().'/anfragen/'.$inquiryId.'-*')?:[];}catch(Throwable $e){return '';}
+    foreach($files as $f)if(is_file($f)&&preg_match('/^\d+-[a-f0-9]{24}\.[a-z]{3,4}$/',basename($f)))return $f;
+    return '';
+}
+
+function yw_inquiry_attachment_delete(int $inquiryId): void { while(($f=yw_inquiry_attachment($inquiryId))!==''){if(!@unlink($f))break;} }
+
+/** Dateien zu nicht mehr vorhandenen Anfragen entfernen (läuft mit der täglichen Aufräumroutine). */
+function yw_inquiry_attachments_prune(): void {
+    try{
+        $dir=yw_private_dir().'/anfragen';if(!is_dir($dir))return;
+        $ids=array_map('intval',db()->query('SELECT id FROM inquiries')->fetchAll(PDO::FETCH_COLUMN));$ids=array_flip($ids);
+        foreach(glob($dir.'/*-*')?:[] as $f){$id=(int)strtok(basename($f),'-');if($id>0&&!isset($ids[$id]))@unlink($f);}
+    }catch(Throwable $e){error_log('WorkwearCenter inquiry attachments prune: '.$e->getMessage());}
+}
+
+/** Download der Artikelliste in der Verwaltung (nur angemeldete Administratoren). */
+function yw_inquiry_attachment_download(int $inquiryId): never {
+    require_admin();
+    $f=yw_inquiry_attachment($inquiryId);
+    if($f===''){http_response_code(404);simple_message('Datei nicht gefunden','Zu dieser Anfrage gibt es keine Artikelliste mehr.');exit;}
+    $ext=strtolower(pathinfo($f,PATHINFO_EXTENSION));
+    audit_log('inquiry.attachment_downloaded','inquiry',$inquiryId);
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="anfrage-'.$inquiryId.'-artikelliste.'.$ext.'"');
+    header('Content-Length: '.(string)filesize($f));
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: no-store');
+    readfile($f);exit;
 }
 
 function inquiry_page(): void {
@@ -684,8 +749,13 @@ function inquiry_page(): void {
             $email=strtolower(trim((string)($_POST['email']??'')));
             $phone=trim((string)($_POST['phone']??''));
             $employees=max(0,(int)($_POST['employees']??0));
-            $message=trim((string)($_POST['message']??''));
+            $message=trim(str_replace("\r",'',(string)($_POST['message']??'')));
             $privacy=!empty($_POST['privacy']);
+            // 10.23: Auswahlfelder nur mit bekannten Werten übernehmen; sie stehen vorn in der gespeicherten Nachricht.
+            $opt=yw_inquiry_options();
+            $industry=in_array((string)($_POST['industry']??''),$opt['industry'],true)?(string)$_POST['industry']:'';
+            $current=in_array((string)($_POST['current_wear']??''),$opt['current'],true)?(string)$_POST['current_wear']:'';
+            $features=array_values(array_intersect($opt['features'],array_map('strval',(array)($_POST['features']??[]))));
 
             if($error!==''){}
             elseif(!$company || mb_strlen($company)>190) $error='Bitte einen gültigen Firmennamen eingeben.';
@@ -693,35 +763,43 @@ function inquiry_page(): void {
             elseif(!filter_var($email,FILTER_VALIDATE_EMAIL)) $error='Bitte eine gültige E-Mail-Adresse eingeben.';
             elseif(mb_strlen($email)>190 || mb_strlen($phone)>80) $error='Eine Eingabe ist zu lang. Bitte prüfe deine Angaben.';
             elseif($employees>100000) $error='Die angegebene Mitarbeiterzahl ist ungültig.';
-            elseif(!$message || mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
+            elseif(mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
             elseif(!$privacy) $error='Bitte bestätige die Datenschutzhinweise.';
             else {
-                $logo='';
+                $details=array_filter(['Branche'=>$industry,'Arbeitskleidung vorhanden'=>$current,'Gewünschte Funktionen'=>implode(', ',$features)],fn($v)=>$v!=='');
+                $stored='';foreach($details as $k=>$v)$stored.=$k.': '.$v."\n";
+                $stored.=($stored!==''?"\n":'')."Nachricht:\n".($message!==''?$message:'(keine Nachricht)');
+                $logo='';$attachment='';
                 try{
+                    // Artikelliste zuerst prüfen: Ein ungültiges Format soll nichts speichern.
+                    $listFile=yw_inquiry_attachment_check($_FILES['article_list']??null);
                     // Optionales Logo: daraus entsteht ein persönlicher Probeshop (10.11).
                     $logo=yw_probeshop_store_logo($_FILES['logo']??null);
                     db()->beginTransaction();
                     $stmt=db()->prepare('INSERT INTO inquiries(company,name,email,phone,employees,message,status) VALUES(?,?,?,?,?,?,?)');
-                    $stmt->execute([$company,$name,$email,$phone,$employees,$message,'new']);
+                    $stmt->execute([$company,$name,$email,$phone,$employees,$stored,'new']);
                     $inquiryId=(int)db()->lastInsertId();
                     if($logo!=='')$probeshopToken=yw_probeshop_create($company,$logo,$inquiryId,'inquiry')['token'];
+                    if($listFile)$attachment=yw_inquiry_attachment_store($listFile,$inquiryId);
                     db()->commit();
                     $logo=''; // gehört jetzt zum gespeicherten Probeshop
+                    $hasAttachment=$attachment!=='';$attachment=''; // gehört jetzt zur gespeicherten Anfrage
                     // 10.15: Eingangsbestätigung höchstens 1× je Adresse in 24 h und 30× je Stunde, ohne Formulartext
                     $confirmation=yw_inquiry_confirmation_reserve($inquiryId,$email);
-                    audit_log('inquiry.created','inquiry',$inquiryId,($probeshopToken!==null?['probeshop'=>true]:[])+($confirmation!=='ok'?['confirmation'=>$confirmation]:[]));
+                    audit_log('inquiry.created','inquiry',$inquiryId,($probeshopToken!==null?['probeshop'=>true]:[])+($hasAttachment?['attachment'=>true]:[])+($confirmation!=='ok'?['confirmation'=>$confirmation]:[]));
                     send_inquiry_mail([
                         'company'=>$company,'name'=>$name,'email'=>$email,'phone'=>$phone,
-                        'employees'=>$employees,'message'=>$message,'probeshop'=>$probeshopToken,'confirmation'=>$confirmation
+                        'employees'=>$employees,'message'=>$stored,'probeshop'=>$probeshopToken,'confirmation'=>$confirmation,'attachment'=>$hasAttachment
                     ]);
                     if($confirmation==='ok')yw_inquiry_confirmation_mail($email,$probeshopToken);
                     $success=true;
                 }catch(Throwable $e){
                     if(db()->inTransaction())db()->rollBack();
                     if($logo!=='')yw_probeshop_delete_logo($logo);
+                    if($attachment!=='')@unlink($attachment);
                     $probeshopToken=null;
                     if($e instanceof RuntimeException && !$e instanceof PDOException){
-                        $error=$e->getMessage().' Du kannst die Anfrage auch ohne Logo absenden.';
+                        $error=$e->getMessage().' Du kannst die Anfrage auch ohne diese Datei absenden.';
                     }else{
                         error_log('Public inquiry: '.$e->getMessage());
                         $error='Deine Anfrage konnte gerade nicht gespeichert werden. Bitte versuche es später erneut oder schreibe uns per E-Mail.';
@@ -843,6 +921,17 @@ function render_trust_settings(): void {
     echo '<div class="editor-block"><h3>Dein Ansprechpartner <small class="muted">(leer: Inhaber aus dem Impressum)</small></h3><label>Foto<input type="file" name="trust_contact_photo" accept="image/png,image/jpeg,image/webp"></label>';
     if($c['contact']['photo']!=='')echo '<div class="editor-image-preview"><img src="/'.e($c['contact']['photo']).'" alt=""><label class="check"><input type="checkbox" name="remove_trust_contact_photo" value="1"><span>Foto löschen</span></label></div>';
     echo '<div class="grid2"><label>Name<input name="trust_contact_name" maxlength="120" value="'.$v('trust_contact_name').'"></label><label>Rolle<input name="trust_contact_role" maxlength="120" value="'.$v('trust_contact_role').'" placeholder="z. B. Inhaber, Yanik Textildruck"></label></div><label>Kurzer Satz<input name="trust_contact_text" maxlength="300" value="'.$v('trust_contact_text').'" placeholder="z. B. Ich berate dich persönlich, vom ersten Muster bis zur Lieferung."></label></div>';
+    // 10.23: Fallbeispiel auf der Startseite („Kunden, die WorkwearCenter einsetzen“).
+    $case=yw_case_study();$cv=fn(string $k)=>e(current_site_setting($k,''));
+    echo '<div class="editor-block"><h3>Fallbeispiel auf der Startseite</h3><p class="muted">Ohne den Haken „Kunde hat zugestimmt“ erscheint das Fallbeispiel ohne Firmennamen (Bezeichnung ohne Namen). Leere Felder zeigen den vorbereiteten Text in Grau.</p>';
+    echo '<label class="check"><input type="checkbox" name="case_show" value="1"'.($case['show']?' checked':'').'><span>Fallbeispiel auf der Startseite zeigen</span></label>';
+    echo '<label class="check"><input type="checkbox" name="case_named" value="1"'.($case['named']?' checked':'').'><span>Kunde hat zugestimmt: Firmennamen zeigen</span></label>';
+    echo '<div class="grid2"><label>Firmenname <small>nur mit Zustimmung sichtbar</small><input name="case_company" maxlength="160" value="'.$cv('case_company').'" placeholder="Pader Personal GmbH"></label><label>Bezeichnung ohne Namen<input name="case_anon" maxlength="160" value="'.$cv('case_anon').'" placeholder="Ein Personaldienstleister aus der Region"></label></div>';
+    echo '<label>Branche<input name="case_industry" maxlength="120" value="'.$cv('case_industry').'" placeholder="Zeitarbeit und Personaldienstleistung"></label>';
+    echo '<label>Ausgangssituation<textarea name="case_situation" rows="2" maxlength="600" placeholder="Viele Mitarbeitende benötigen regelmäßig Arbeitskleidung, oft kurzfristig und in wechselnden Größen.">'.$cv('case_situation').'</textarea></label>';
+    echo '<label>Lösung<textarea name="case_solution" rows="2" maxlength="600" placeholder="Ein eigener WorkwearCenter-Shop mit der abgestimmten Kollektion und dem Firmenlogo.">'.$cv('case_solution').'</textarea></label>';
+    echo '<label>Eingesetzte Funktionen <small>eine pro Zeile</small><textarea name="case_features" rows="4" maxlength="600" placeholder="Mitarbeiterzugänge&#10;Produktfreigaben&#10;Budgets&#10;Zentrale Bestellung">'.$cv('case_features').'</textarea></label>';
+    echo '<label>Ergebnis<textarea name="case_result" rows="2" maxlength="600" placeholder="Einfachere Nachbestellung und weniger Verwaltungsaufwand.">'.$cv('case_result').'</textarea></label></div>';
     echo '<button class="btn primary" type="submit">Vertrauensbereich speichern</button></div></details></form>';
 }
 
@@ -859,7 +948,8 @@ function yw_save_trust_settings(): void {
         if(mb_strlen($v)>$max)throw new RuntimeException('Der Inhalt im Feld „'.str_replace(['trust_','_'],['',' '],$k).'“ ist zu lang.');
         return $v;
     };
-    $fields=['trust_title'=>$text('trust_title',160),'trust_quote_text'=>$text('trust_quote_text',600),'trust_quote_name'=>$text('trust_quote_name',120),'trust_quote_company'=>$text('trust_quote_company',160),'trust_contact_name'=>$text('trust_contact_name',120),'trust_contact_role'=>$text('trust_contact_role',120),'trust_contact_text'=>$text('trust_contact_text',300)];
+    $fields=['trust_title'=>$text('trust_title',160),'trust_quote_text'=>$text('trust_quote_text',600),'trust_quote_name'=>$text('trust_quote_name',120),'trust_quote_company'=>$text('trust_quote_company',160),'trust_contact_name'=>$text('trust_contact_name',120),'trust_contact_role'=>$text('trust_contact_role',120),'trust_contact_text'=>$text('trust_contact_text',300),
+        'case_show'=>!empty($_POST['case_show'])?'1':'0','case_named'=>!empty($_POST['case_named'])?'1':'','case_company'=>$text('case_company',160),'case_anon'=>$text('case_anon',160),'case_industry'=>$text('case_industry',120),'case_situation'=>$text('case_situation',600),'case_solution'=>$text('case_solution',600),'case_features'=>$text('case_features',600),'case_result'=>$text('case_result',600)];
     $logos=[];$removed=[];$new=[];
     try{
         foreach(yw_trust_logos() as $i=>$logo){
