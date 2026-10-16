@@ -820,6 +820,7 @@ function handle_admin_action(): never {
         if ($action==='delete_inquiry') {
             $id=(int)($_POST['inquiry_id']??0);
             $stmt=db()->prepare('DELETE FROM inquiries WHERE id=?');$stmt->execute([$id]);
+            yw_inquiry_attachment_delete($id);
             if(!$stmt->rowCount())throw new RuntimeException('Anfrage wurde nicht gefunden.');
             $q=db()->prepare('SELECT id FROM yw_probeshops WHERE inquiry_id=?');$q->execute([$id]);
             foreach($q->fetchAll(PDO::FETCH_COLUMN) as $probeshopId)yw_probeshop_delete((int)$probeshopId);
@@ -1230,7 +1231,9 @@ function render_admin_inquiries(array $inquiries): void {
         if(!empty($i['phone'])) echo '<span><a href="tel:'.e($i['phone']).'">'.e($i['phone']).'</a></span>';
         if(!empty($i['employees'])) echo '<span>'.(int)$i['employees'].' Mitarbeitende</span>';
         echo '</div>';
-        echo '<div class="inquiry-message">'.e($i['message']).'</div></div>';
+        echo '<div class="inquiry-message">'.e($i['message']).'</div>';
+        if(yw_inquiry_attachment((int)$i['id'])!=='')echo '<p class="space-top"><a class="btn small" href="/admin/anfrage-datei/'.(int)$i['id'].'">Artikelliste herunterladen</a></p>';
+        echo '</div>';
         echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen (inklusive Probeshop und Logo)? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form>'.yw_probeshop_admin_box($probeshops[(int)$i['id']]??null,$i).'</div>';
         echo '</article>';
     }
@@ -1523,6 +1526,7 @@ function yw_audit_labels(): array {
         'admin.activated'=>'Administrator aktiviert',
         'company.status_toggled'=>'Firmen-Shop aktiviert/deaktiviert',
         'inquiry.deleted'=>'Anfrage gelöscht',
+        'inquiry.attachment_downloaded'=>'Artikelliste einer Anfrage heruntergeladen',
         'probeshop.created'=>'Probeshop erzeugt',
         'exchange.requested'=>'Umtausch/Rückgabe beantragt',
         'exchange.approved'=>'Umtausch/Rückgabe freigegeben',

@@ -77,5 +77,36 @@
     a.addEventListener('click', function () { var d = a.closest('details'); if (d) d.open = false; });
   });
 
+  // Ansichten aus dem Firmenshop als Reiter (ohne JS bleiben alle Bilder untereinander sichtbar).
+  document.querySelectorAll('[data-showcase]').forEach(function (box) {
+    var list = box.querySelector('.w-tabs');
+    if (!list) return;
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role=tab]'));
+    var show = function (tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+        var panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+      if (focus) tab.focus();
+    };
+    list.hidden = false;
+    box.classList.add('is-tabs');
+    tabs.forEach(function (tab, i) {
+      tab.addEventListener('click', function () { show(tab, false); });
+      tab.addEventListener('keydown', function (ev) {
+        var n = null;
+        if (ev.key === 'ArrowRight') n = tabs[(i + 1) % tabs.length];
+        else if (ev.key === 'ArrowLeft') n = tabs[(i - 1 + tabs.length) % tabs.length];
+        else if (ev.key === 'Home') n = tabs[0];
+        else if (ev.key === 'End') n = tabs[tabs.length - 1];
+        if (n) { ev.preventDefault(); show(n, true); }
+      });
+    });
+    show(tabs[0], false);
+  });
+
   onScroll();
 })();

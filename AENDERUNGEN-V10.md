@@ -2,6 +2,21 @@
 
 Stand: 16. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.23.0 – Website: Standort Salzkotten, B2B-Positionierung, SEO
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+- Standort überall korrigiert: Firma und Produktion sitzen in der Geseker Straße 19, 33154 Salzkotten. Paderborn erscheint nur noch als Region („Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL“).
+- Startseite neu aufgebaut: H1 „Dein Firmenshop für Arbeitskleidung.“, Unterzeile, fünf Vorteile, Knöpfe „Firmenshop anfragen“ und „Mustershop live testen“ (überall gleich). Danach: das Problem (Excel, WhatsApp, Zettel, falsche Größen und Logo-Positionen) gegen die Lösung, Ablauf in fünf Schritten, neun Funktionen jeweils mit dem Problem, das sie lösen, „Shop und Produktion aus einer Hand“ (Eigenentwicklung, eigene Auftragsverwaltung im Hintergrund, eigene Veredelung), Werkstatt, Branchen, Mustershop mit echten Shop-Ansichten als Reiter, Fallbeispiel, Ansprechpartner, 14 häufige Fragen.
+- Alle Website-Texte in „du“, ohne Floskeln. Datenschutzerklärung ebenfalls in „du“.
+- Neue Seiten mit eigenem Suchzweck und eigenem Inhalt: /branchen (Handwerk, Industrie, Zeitarbeit, Pflege, Kommunen, Feuerwehr, Dienstleister, Mittelstand), /arbeitskleidung-bestellsystem (Bestellweg, Freigaben, Budgetregeln, Vergleich mit Excel/E-Mail), /mitarbeitershop-arbeitskleidung (Bestellen am Handy, Mein Spind, Zugänge), /workwear-management (Verwaltung, Ein- und Austritte, Auswertungen). Diese Adressen sind als Firmen-Kurzname gesperrt.
+- So funktioniert’s, Leistungen und Über uns überarbeitet (Über uns: Problem, Idee, Entwicklung, Heute; Standort Salzkotten).
+- Fallbeispiel auf der Startseite (Ausgangssituation, Lösung, Funktionen, Ergebnis). Steht unter Verwaltung → Website & Design → Inhalte → „Startseite – Vertrauen“. Ohne Haken „Kunde hat zugestimmt“ erscheint es anonym („Ein Personaldienstleister aus der Region“).
+- Anfrageformular: Kontakt, Telefon (optional), Anzahl Mitarbeiter, Branche, vorhandene Arbeitskleidung, gewünschte Funktionen, Nachricht (optional), Logo und neu eine bestehende Artikelliste (PDF, Excel, CSV, Word oder Bild, max. 4 MB). Die Liste liegt im geschützten Ordner app/private/anfragen, ist nur für Admins herunterladbar (protokolliert) und wird mit der Anfrage gelöscht.
+- SEO: Seitentitel und Beschreibungen je Seite, Canonical, Sitemap aus derselben Liste, strukturierte Daten (LocalBusiness mit Anschrift Salzkotten, WebSite, BreadcrumbList, FAQPage, Service) nur mit echten Angaben, Teilen-Bild für Messenger und LinkedIn. Kundenlogin und 404-Seite nicht im Index.
+- Bilder: echte Shop-Ansichten und Werkstattfotos als WebP mit Alternativtexten und verzögertem Laden.
+- Nicht gefundene Seiten und unbekannte Firmenshops zeigen eine 404-Seite im Website-Design mit Wegen zurück.
+- Die tägliche Aufräumroutine (u. a. Anfragen nach 24 Monaten löschen) läuft jetzt auch ohne Cronjob einmal am Tag mit.
+
 ## 10.22.0 – Impressum und Datenschutzerklärung DSGVO-konform
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
 
@@ -36,7 +51,7 @@ Umsetzung des freigegebenen Konzepts, Paket 1 von 4 (Website). Firmenshops, Must
 - Startseite: großer Kopfbereich mit Werkstattfoto und schwebenden Karten (Freigabe, Veredelung, Budget, Status), Faktenband ohne Zahlen, Übersicht „Alles in einem Shop“, zwei Bestellwege, Werkstatt-Bereich mit Vorher-nachher-Regler (Shop-Vorschau gegen echten Stick), Ablauf in fünf Schritten mit Nahtlinie, die sich beim Scrollen füllt, Ansprechpartner, häufige Fragen, Abschluss mit Anfrage.
 - Kundenleiste „Diese Kunden vertrauen uns“ ganz unten: Unter Verwaltung → Website & Design → Inhalte → „Startseite – Vertrauen“ gibt es jetzt pro Kundenfirma einen Haken. Angehakte, aktive Firmen mit Logo erscheinen automatisch mit ihrem Shop-Logo; zusätzlich lassen sich weiter Logos hochladen. Ab drei Logos läuft die Leiste durch (anhaltbar), grau und beim Darüberfahren farbig. Ohne Logos bleibt die Leiste weg.
 - Kundenstimme erscheint nur, wenn sie in der Verwaltung gepflegt ist. Der Ansprechpartner zeigt ohne Eintrag den Inhaber aus dem Impressum.
-- Texte: Produktion in Paderborn genannt (Impressum-Anschrift bleibt wie eingetragen), keine Angaben zu Stichzahlen oder Motivgrößen, keine Kennzahlen.
+- Texte: Produktion in Paderborn genannt (in 10.23.0 korrigiert: Salzkotten), keine Angaben zu Stichzahlen oder Motivgrößen, keine Kennzahlen.
 - Technik: Die Website lädt nur noch eine Stylesheet-Datei (assets/web.css) und ein kleines Skript (assets/web.js) statt vier Stylesheets. Bewegungen werden bei „Bewegung reduzieren“ abgeschaltet; ohne JavaScript ist alles sichtbar.
 
 ## 10.19.2 – Befunde aus dem echten Shop und der Verwaltung
