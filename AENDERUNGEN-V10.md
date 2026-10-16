@@ -2,6 +2,14 @@
 
 Stand: 16. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.23.1 – Korrekturen Mustershop und Werkstattfotos
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+- Mustershop: Hinweisbalken oben hat wieder Innenabstand (Text klebte am Rand), die dunkle Linie an der oberen Kante des Shops ist weg.
+- Mustershop und Probeshop: Logo auf T-Shirt, Hoodie und Softshelljacke sitzt jetzt kleiner auf der linken Brust statt groß mitten auf der Brust.
+- Vorher-nachher-Regler: Logo in der Shop-Vorschau sitzt an derselben Stelle wie auf der echten Jacke (unter der Brusttasche).
+- Stollhans-Jacke korrekt als Druck bezeichnet: „Gedruckt in Salzkotten“, „Echt gedruckt“, Verfahren „Druck“, Alternativtexte angepasst.
+
 ## 10.23.0 – Website: Standort Salzkotten, B2B-Positionierung, SEO
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
 

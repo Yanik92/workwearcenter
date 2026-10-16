@@ -333,9 +333,9 @@ function landing_page(): void {
     echo '<p class="w-hero-note">Mustershop ohne Anmeldung testen · für Unternehmen aus Handwerk, Industrie, Zeitarbeit, Pflege und Verwaltung</p>';
     echo '</div><div class="w-stage">';
     echo w_shot('shop-start','Echter Firmenshop im WorkwearCenter: Startseite mit Jahresbudget, letzter Bestellung und Kollektion des Musterunternehmens KANTENWERK',1440,950,'workwearcenter.de/kantenwerk',true,'w-stage-shot');
-    echo '<figure class="w-stage-photo"><img src="/assets/media/work/jacke-brust.webp" alt="Gesticktes Firmenlogo auf der Brust einer Arbeitsjacke" width="800" height="800" loading="lazy" decoding="async"><figcaption>Gestickt in '.e($city).'</figcaption></figure>';
+    echo '<figure class="w-stage-photo"><img src="/assets/media/work/jacke-brust.webp" alt="Bedrucktes Firmenlogo auf der Brust einer Arbeitsjacke" width="800" height="800" loading="lazy" decoding="async"><figcaption>Gedruckt in '.e($city).'</figcaption></figure>';
     echo '<div class="w-float w-f-approve" aria-hidden="true"><span class="ic">'.w_icon('check').'</span><div><small>Freigabe erteilt</small><strong>Teamleitung Montage</strong><span>Bestellung von Lukas Becker</span></div></div>';
-    echo '<div class="w-float w-f-stitch" aria-hidden="true"><small>Hinterlegt</small><div class="row"><span>Verfahren</span><b>Stick</b></div><div class="row"><span>Position</span><b>Brust links</b></div></div>';
+    echo '<div class="w-float w-f-stitch" aria-hidden="true"><small>Hinterlegt</small><div class="row"><span>Verfahren</span><b>Druck</b></div><div class="row"><span>Position</span><b>Brust links</b></div></div>';
     echo '</div></div></section>';
 
     // Faktenband ohne Zahlen
@@ -448,10 +448,10 @@ function w_one_hand_section(): void {
 function w_workshop_section(): void {
     $city=w_city();
     echo '<section class="w-sec w-dark" id="veredelung"><div class="w-wrap">';
-    s_head('Wir veredeln selbst. Darum passt es.','Zieh den Regler: links die Logo-Vorschau aus dem Shop, rechts das gestickte Original. Die Platzierung stimmen wir vorher mit dir ab.','Aus unserer Werkstatt');
-    echo '<div class="w-craft"><div class="w-compare w-reveal" data-compare><img src="/assets/media/work/jacke-gesamt.webp" alt="Gesticktes Firmenlogo auf einer Arbeitsjacke" width="1100" height="825" loading="lazy" decoding="async"><div class="before" aria-hidden="true"><div class="pv"><img src="/assets/media/products/workwear-softshell.webp" alt="" loading="lazy"><img class="pv-logo" src="/assets/media/work/stollhans-logo.png" alt="" loading="lazy"></div></div><span class="lbl" style="left:20px">VORSCHAU IM SHOP</span><span class="lbl" style="right:20px">ECHT GESTICKT</span><div class="handle"><b>'.w_icon('swap').'</b></div><input type="range" min="0" max="100" value="48" aria-label="Vergleich zwischen Shop-Vorschau und gesticktem Original verschieben"></div>';
+    s_head('Wir veredeln selbst. Darum passt es.','Zieh den Regler: links die Logo-Vorschau aus dem Shop, rechts das bedruckte Original. Die Platzierung stimmen wir vorher mit dir ab.','Aus unserer Werkstatt');
+    echo '<div class="w-craft"><div class="w-compare w-reveal" data-compare><img src="/assets/media/work/jacke-gesamt.webp" alt="Bedrucktes Firmenlogo auf einer Arbeitsjacke" width="1100" height="825" loading="lazy" decoding="async"><div class="before" aria-hidden="true"><div class="pv"><img src="/assets/media/products/workwear-softshell.webp" alt="" loading="lazy"><img class="pv-logo" src="/assets/media/work/stollhans-logo.png" alt="" loading="lazy"></div></div><span class="lbl" style="left:20px">VORSCHAU IM SHOP</span><span class="lbl" style="right:20px">ECHT GEDRUCKT</span><div class="handle"><b>'.w_icon('swap').'</b></div><input type="range" min="0" max="100" value="48" aria-label="Vergleich zwischen Shop-Vorschau und bedrucktem Original verschieben"></div>';
     echo '<div class="w-techs">';
-    foreach([['needle','Stick','Hochwertig und waschfest, ideal für Jacken, Polos und Caps.',true],['print','Druck','Große Motive auf Rücken und T-Shirts, auch mehrfarbig.',false],['transfer','Transfer & Flex','Für feine Details, Namen, Nummern und kleine Auflagen.',false]] as [$ic,$t,$x,$on])echo '<div class="w-tech'.($on?' on':'').' w-reveal"><span class="ic">'.w_icon($ic).'</span><div><h3>'.e($t).'</h3><p>'.e($x).'</p></div></div>';
+    foreach([['needle','Stick','Hochwertig und waschfest, ideal für Jacken, Polos und Caps.',false],['print','Druck','Große Motive auf Rücken und T-Shirts, auch mehrfarbig, wie auf der Jacke links.',true],['transfer','Transfer & Flex','Für feine Details, Namen, Nummern und kleine Auflagen.',false]] as [$ic,$t,$x,$on])echo '<div class="w-tech'.($on?' on':'').' w-reveal"><span class="ic">'.w_icon($ic).'</span><div><h3>'.e($t).'</h3><p>'.e($x).'</p></div></div>';
     echo '<div class="w-place w-reveal">'.w_icon('pin').'<div><b>Produktion in '.e($city).'</b><p>Muster anfassen? Komm nach Absprache vorbei oder wir schicken sie dir.</p></div></div>';
     echo '</div></div></div></section>';
 }
@@ -525,7 +525,7 @@ function services_page(): void {
     foreach($rows as $i=>[$img,$product,$title,$text,$items]){
         echo '<article class="w-row'.($i%2?' rev':'').' w-reveal"><div class="w-row-img'.($product?' product':'').($img==='shot'?' shot':'').'">';
         if($img==='shot')echo w_shot('shop-artikel','Produktansicht im Firmenshop mit Größenwahl, hinterlegter Veredelung und Preisaufteilung',1440,900,'workwearcenter.de/kantenwerk/produkte');
-        else echo '<img src="'.e($img).'" loading="lazy" decoding="async" alt="'.e($product?'Graphitfarbener Hoodie, Beispiel aus der Kollektion':'Gesticktes Logo im Detail').'">';
+        else echo '<img src="'.e($img).'" loading="lazy" decoding="async" alt="'.e($product?'Graphitfarbener Hoodie, Beispiel aus der Kollektion':'Gedrucktes Firmenlogo im Detail').'">';
         echo '</div><div class="w-row-copy"><small>0'.($i+1).'</small><h2>'.e($title).'</h2><p>'.e($text).'</p><ul class="w-ticks">';
         foreach($items as $item)echo '<li>'.e($item).'</li>';
         echo '</ul>'.($img==='shot'?'<a class="w-link" href="/so-funktionierts">So funktioniert der Firmenshop'.w_icon('arrow').'</a>':'').'</div></article>';
@@ -608,7 +608,7 @@ function about_page(): void {
     echo '<li><h3>Heute</h3><p>WorkwearCenter verbindet Shop, Mitarbeitende, Budgets, Freigaben, Arbeitskleidung, Textilveredelung und Produktion. Im Hintergrund arbeitet unsere eigene Auftragsverwaltung, die Anfrage, Auftrag, Korrekturabzug, Produktion und Versand zusammenführt.</p></li>';
     echo '</ol>';
     echo '<div class="w-owner"><i aria-hidden="true">'.e(mb_strtoupper(mb_substr($o['owner'],0,1))).'</i><div><b>'.e($o['owner']).'</b><span>Inhaber, '.e($o['company']).'</span></div></div></div>';
-    echo '<div class="w-mosaic w-reveal"><figure><img src="/assets/media/work/jacke-brust.webp" width="800" height="800" loading="lazy" decoding="async" alt="Arbeitsjacke mit gesticktem Firmenlogo auf der Brust"></figure><figure><img src="'.e(s_img('about_image','assets/media/work/polo-wappen.webp')).'" loading="lazy" decoding="async" alt="Poloshirt mit gesticktem Wappen und Namensstick"></figure><figure><img src="'.e(s_img('section3_image','assets/media/work/stick-detail.webp')).'" loading="lazy" decoding="async" alt="Gesticktes Logo im Detail"></figure></div></div></section>';
+    echo '<div class="w-mosaic w-reveal"><figure><img src="/assets/media/work/jacke-brust.webp" width="800" height="800" loading="lazy" decoding="async" alt="Arbeitsjacke mit bedrucktem Firmenlogo auf der Brust"></figure><figure><img src="'.e(s_img('about_image','assets/media/work/polo-wappen.webp')).'" loading="lazy" decoding="async" alt="Poloshirt mit gesticktem Wappen und Namensstick"></figure><figure><img src="'.e(s_img('section3_image','assets/media/work/stick-detail.webp')).'" loading="lazy" decoding="async" alt="Gedrucktes Firmenlogo im Detail"></figure></div></div></section>';
 
     echo '<section class="w-sec w-white"><div class="w-wrap">';
     s_head('Worauf du dich verlassen kannst','Hinter dem System steht ein echter Textilveredler mit eigener Produktion, keine anonyme Softwarefirma.','Unser Versprechen');

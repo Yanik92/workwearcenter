@@ -13,9 +13,9 @@ function mustershop_page(): void {
     if(!$embedded)w_header(); // 10.21: gleicher Kopf wie die Website
     $products=[];
     foreach([
-        ['T-Shirt Classic','T-Shirts','Ein schlichtes Teamshirt für Arbeit und Alltag.',2490,'WC-TS01','Navy','XS–5XL',['XS','S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-tshirt.webp',['x'=>62,'y'=>30,'w'=>18],'T-SHIRT'],
-        ['Hoodie Team','Hoodies','Eine zusätzliche Schicht für kühle Arbeitstage.',5490,'WC-HD02','Graphit','XS–4XL',['XS','S','M','L','XL','2XL','3XL','4XL'],'assets/media/products/workwear-hoodie.webp',['x'=>62,'y'=>36,'w'=>17],'HOODIE'],
-        ['Softshelljacke','Jacken','Eine Jacke für den Einsatz im Freien.',8490,'WC-SJ03','Schwarz','S–5XL',['S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-softshell.webp',['x'=>63,'y'=>39,'w'=>17],'SOFTSHELL'],
+        ['T-Shirt Classic','T-Shirts','Ein schlichtes Teamshirt für Arbeit und Alltag.',2490,'WC-TS01','Navy','XS–5XL',['XS','S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-tshirt.webp',['x'=>60,'y'=>27,'w'=>9],'T-SHIRT'],
+        ['Hoodie Team','Hoodies','Eine zusätzliche Schicht für kühle Arbeitstage.',5490,'WC-HD02','Graphit','XS–4XL',['XS','S','M','L','XL','2XL','3XL','4XL'],'assets/media/products/workwear-hoodie.webp',['x'=>63,'y'=>30,'w'=>9],'HOODIE'],
+        ['Softshelljacke','Jacken','Eine Jacke für den Einsatz im Freien.',8490,'WC-SJ03','Schwarz','S–5XL',['S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-softshell.webp',['x'=>61,'y'=>36,'w'=>9],'SOFTSHELL'],
     ] as [$name,$category,$detail,$cents,$sku,$color,$sizes,$sizeOptions,$image,$zone,$code]){
         $views=[['view'=>'front','label'=>'Vorderseite','image'=>$image,'layers'=>[['src'=>'assets/media/demo/kantenwerk-mark.svg','x'=>$zone['x'],'y'=>$zone['y'],'w'=>$zone['w'],'method'=>'embroidery','label'=>'KANTENWERK · Brust links']]]];
         $visual=yw_mockup_html($views,$name.' in '.$color.' mit Logo-Vorschau',false,'demo-mockup');
@@ -95,9 +95,9 @@ function yw_demo_pro_css(): string {
     return <<<'CSS'
 body.w-body main.demo{--demo-ink:#121b24;--demo-line:#e0e3de;--demo-hero:color-mix(in srgb,var(--demo-forest,#294238) 62%,#0c1a2a);--demo-hero-2:color-mix(in srgb,var(--demo-forest,#294238) 30%,#08121d);background:var(--paper,#f4f5f2);font-family:var(--f-body)}
 body.w-body main.demo h1,body.w-body main.demo h2,body.w-body main.demo h3{font-family:var(--f-display);font-stretch:86%}
-body.w-body main.demo .demo-notice{border-radius:16px;border:1px dashed #ffb27f;background:#fff4eb}
+body.w-body main.demo .demo-notice{border-radius:14px;border:1px dashed #ffb27f;background:#fff4eb;padding:12px 20px;margin:0 0 18px;line-height:1.45}
 body.w-body main.demo .demo-app{border-radius:28px;border:1px solid var(--demo-line);box-shadow:0 2px 6px rgba(8,18,29,.08),0 30px 60px -20px rgba(8,18,29,.3)}
-body.w-body main.demo .demo-shopbar{border-bottom:1px solid var(--demo-line);box-shadow:inset 0 3px 0 var(--demo-forest,#294238)}
+body.w-body main.demo .demo-shopbar{border-bottom:1px solid var(--demo-line);border-radius:28px 28px 0 0;box-shadow:none}
 body.w-body main.demo .demo-shopbar-label{font-family:var(--f-mono);color:var(--orange-deep,#c94c00)}
 body.w-body main.demo .demo-cart{border-radius:999px;background:var(--navy-900,#0c1a2a);color:#fff;border:0;padding:10px 16px;font-weight:800}
 body.w-body main.demo .demo-cart span{display:inline-block;min-width:22px;padding:2px 7px;background:var(--orange,#ff6a13);color:#fff;border-radius:999px;text-align:center}

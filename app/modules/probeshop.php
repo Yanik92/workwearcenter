@@ -183,9 +183,9 @@ function yw_probeshop_cleanup(): int {
 /** Musterartikel mit Druckzone „Brust links“ (Prozentwerte wie im Druckzonen-Editor). */
 function yw_probeshop_products(): array {
     return [
-        ['name'=>'Premium Workwear T-Shirt','category'=>'T-Shirts','method'=>'dtf','price'=>2490,'sku'=>'YW-TS01','color'=>'Navy','color_light'=>'Hellgrau','sizes'=>'XS–5XL','image'=>'assets/media/products/workwear-tshirt.webp','w'=>1226,'h'=>1283,'zone'=>['x'=>62,'y'=>30,'w'=>17]],
-        ['name'=>'Heavy Workwear Hoodie','category'=>'Hoodies','method'=>'embroidery','price'=>5490,'sku'=>'YW-HD02','color'=>'Graphit','color_light'=>'Hellgrau meliert','sizes'=>'XS–4XL','image'=>'assets/media/products/workwear-hoodie.webp','w'=>1312,'h'=>1199,'zone'=>['x'=>62,'y'=>36,'w'=>15]],
-        ['name'=>'Softshelljacke Performance','category'=>'Jacken','method'=>'embroidery','price'=>8490,'sku'=>'YW-SJ03','color'=>'Schwarz','color_light'=>'Steingrau','sizes'=>'S–5XL','image'=>'assets/media/products/workwear-softshell.webp','w'=>1222,'h'=>1287,'zone'=>['x'=>63,'y'=>39,'w'=>15]],
+        ['name'=>'Premium Workwear T-Shirt','category'=>'T-Shirts','method'=>'dtf','price'=>2490,'sku'=>'YW-TS01','color'=>'Navy','color_light'=>'Hellgrau','sizes'=>'XS–5XL','image'=>'assets/media/products/workwear-tshirt.webp','w'=>1226,'h'=>1283,'zone'=>['x'=>60,'y'=>27,'w'=>12]],
+        ['name'=>'Heavy Workwear Hoodie','category'=>'Hoodies','method'=>'embroidery','price'=>5490,'sku'=>'YW-HD02','color'=>'Graphit','color_light'=>'Hellgrau meliert','sizes'=>'XS–4XL','image'=>'assets/media/products/workwear-hoodie.webp','w'=>1312,'h'=>1199,'zone'=>['x'=>63,'y'=>31,'w'=>12]],
+        ['name'=>'Softshelljacke Performance','category'=>'Jacken','method'=>'embroidery','price'=>8490,'sku'=>'YW-SJ03','color'=>'Schwarz','color_light'=>'Steingrau','sizes'=>'S–5XL','image'=>'assets/media/products/workwear-softshell.webp','w'=>1222,'h'=>1287,'zone'=>['x'=>61,'y'=>37,'w'=>12]],
     ];
 }
 
