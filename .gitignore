@@ -7,3 +7,6 @@ uploads/branding/*
 uploads/katalog/*
 config.php
 app/private/
+
+# Impeccable-Engine (21 MB) wird beim ersten Aufruf geprueft heruntergeladen
+.claude/skills/impeccable/scripts/bin/
