@@ -85,7 +85,7 @@ function yw_demo_catalog_products(): array {
             'name'=>$name,
             'category'=>(string)($p['category']??'')!==''?(string)$p['category']:'Kollektion',
             'detail'=>$detail,
-            'cents'=>gross_from_net((int)$p['price_cents'],product_vat_rate($p)),
+            'cents'=>yw_demo_price_cents($p), // 10.25.1: runde Beispielpreise statt der echten Verkaufspreise
             'sku'=>(string)($p['sku']??'')!==''?(string)$p['sku']:'P'.(int)$p['id'],
             'color'=>$color!==''?$color:'Wie abgebildet',
             'sizes'=>$sizes?($sizes[0].(count($sizes)>1?'–'.$sizes[count($sizes)-1]:'')):'Einheitsgröße',
@@ -96,6 +96,22 @@ function yw_demo_catalog_products(): array {
         ];
     }
     return $out;
+}
+
+/** 10.25.1: Öffentlicher Mustershop zeigt keine echten Preise, sondern runde Beispielpreise je Artikelart (brutto, Cent). */
+function yw_demo_price_cents(array $product): int {
+    $text=mb_strtolower((string)($product['category']??'').' '.(string)($product['name']??''));
+    foreach([
+        '/(schuh|stiefel|sandale)/u'=>6990,
+        '/(softshell|jacke|parka|mantel)/u'=>7990,
+        '/(weste)/u'=>5990,
+        '/(hose|shorts|bermuda|latz)/u'=>5490,
+        '/(hoodie|sweat|fleece|pullover|troyer)/u'=>4490,
+        '/(polo)/u'=>2690,
+        '/(t-shirt|shirt|tee)/u'=>1990,
+        '/(cap|mütze|beanie)/u'=>1490,
+    ] as $pattern=>$cents)if(preg_match($pattern,$text))return $cents;
+    return 2990;
 }
 
 /**

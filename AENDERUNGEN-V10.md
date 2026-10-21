@@ -2,6 +2,12 @@
 
 Stand: 21. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.25.1 – Logo unter der Brusttasche, keine echten Preise im Mustershop
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Automatisch erkannte Druckzonen werden neu berechnet; von Hand gesetzte bleiben.
+
+- Hat ein Oberteil an der linken Brust eine Tasche mit Reißverschluss (z. B. Workwear Jacket und Vest STRONG), sitzt das Logo jetzt darunter statt auf dem Reißverschluss. Ohne solche Tasche bleibt es an der üblichen Stelle.
+- Mustershop zeigt keine echten Verkaufspreise mehr, sondern runde Beispielpreise je Artikelart (z. B. T-Shirt 19,90 €, Polo 26,90 €, Hose 54,90 €, Weste 59,90 €, Jacke 79,90 €).
+
 ## 10.25.0 – Musterfirma „Hanseatic Haustechnik“ statt KANTENWERK
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Die alten Dateien `assets/media/demo/kantenwerk-logo.svg` und `kantenwerk-mark.svg` werden nicht mehr gebraucht und können gelöscht werden.
 

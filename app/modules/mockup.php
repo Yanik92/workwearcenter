@@ -85,7 +85,7 @@ function yw_product_zones_are_auto(array $product): bool {
     return !is_array($decoded)||isset($decoded['_auto'])||!yw_zones_sanitize($decoded);
 }
 
-const YW_ZONE_AUTO_VERSION='2'; // 2: Brust links am Rumpf statt am Gesamtumriss, Schuhe ohne Zonen
+const YW_ZONE_AUTO_VERSION='3'; // 2: Brust links am Rumpf, Schuhe ohne Zonen; 3: Logo unter die Brusttasche mit Reißverschluss
 
 function yw_zone_auto_signature(array $product): string {
     return md5(YW_ZONE_AUTO_VERSION.'|'.($product['image_path']??'').'|'.($product['image_back_path']??'').'|'.($product['image_sleeve_path']??'').'|'.mb_strtolower((string)($product['category']??'')));
@@ -197,7 +197,9 @@ function yw_zone_image_shape(string $file): ?array {
     if($t===null||$b-$t<$sh*0.2||$r-$l<$sw*0.2)return null;
     $coverage=$count/($sw*$sh);
     if($coverage<0.06||$coverage>0.95)return null; // nichts erkannt bzw. Hintergrund nicht trennbar
-    return ['w'=>$sw,'h'=>$sh,'l'=>$l,'r'=>$r,'t'=>$t,'b'=>$b,'runs'=>$runs];
+    // 10.25.1: Helligkeit je Pixel, um Brusttaschen mit Reißverschluss zu erkennen
+    $lum=[];for($y=0;$y<$sh;$y++)for($x=0;$x<$sw;$x++){$c=$px[$y][$x];$lum[$y][$x]=$isGarment($c)?(int)(0.3*(($c>>16)&255)+0.59*(($c>>8)&255)+0.11*($c&255)):-1;}
+    return ['w'=>$sw,'h'=>$sh,'l'=>$l,'r'=>$r,'t'=>$t,'b'=>$b,'runs'=>$runs,'lum'=>$lum];
 }
 
 /** Zonen einer Ansicht aus dem Umriss ableiten (Ergebnis in Prozent). */
@@ -248,14 +250,39 @@ function yw_zone_from_shape(array $s,string $view,string $type): array {
         ];
     }
     // Brust links: gut die halbe Strecke von der Rumpfmitte zur Seitennaht, knapp ein Fünftel unter der Schulter
-    $chestY=$py($shoulder+$hb*0.18);$logoW=$px(min($tw*0.24,$bw*0.15));
+    $logoW=min($tw*0.24,$bw*0.15);
+    $chestY=$shoulder+$hb*0.18;
     return [
-        'chest_left'=>['x'=>$px($tc+$tw*0.27),'y'=>$chestY,'w'=>$logoW],   // Brust links = vom Betrachter aus rechts
-        'chest_right'=>['x'=>$px($tc-$tw*0.27),'y'=>$chestY,'w'=>$logoW],
+        'chest_left'=>['x'=>$px($tc+$tw*0.27),'y'=>$py(yw_zone_below_pocket($s,$tc+$tw*0.27,$chestY,$logoW,$hb)),'w'=>$px($logoW)],   // Brust links = vom Betrachter aus rechts
+        'chest_right'=>['x'=>$px($tc-$tw*0.27),'y'=>$py(yw_zone_below_pocket($s,$tc-$tw*0.27,$chestY,$logoW,$hb)),'w'=>$px($logoW)],
         'sleeve_left'=>['x'=>$px($at(0.9)),'y'=>$py($shoulder+$hb*0.2),'w'=>$px($bw*0.08)],
         'sleeve_right'=>['x'=>$px($at(0.1)),'y'=>$py($shoulder+$hb*0.2),'w'=>$px($bw*0.08)],
         'other'=>['x'=>$px($tc),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($tw*0.45)],
     ];
+}
+
+/**
+ * 10.25.1: Brusttasche mit Reißverschluss erkennen: In der Spalte des Logos wird um die übliche Höhe nach einer
+ * waagerechten Kante gesucht (Reißverschluss, Taschenpatte, Reflexstreifen). Gibt es eine, kommt das Logo darunter.
+ * Rückgabe: y der Logomitte in Pixeln des verkleinerten Bilds.
+ */
+function yw_zone_below_pocket(array $s,float $x0,float $y0,float $logoW,float $hb): float {
+    $lum=$s['lum']??null;if(!$lum)return $y0;
+    $half=max(3,(int)round($logoW*0.4));// sichtbares Logo ist etwa 80 % der Zonenbreite
+    $edge=static function(int $y) use($lum,$x0,$half): float {
+        $e=0;$n=0;
+        for($x=(int)round($x0-$half*1.2);$x<=(int)round($x0+$half*1.2);$x++){
+            $a=$lum[$y][$x]??-1;$b=$lum[$y+1][$x]??-1;
+            if($a<0||$b<0)continue;$e+=abs($a-$b);$n++;
+        }
+        return $n?$e/$n:0.0;
+    };
+    $bandEnd=null;
+    for($y=(int)round($y0-$hb*0.12);$y<=(int)round($y0+$hb*0.22);$y++){
+        if($edge($y)>=12)$bandEnd=$y;
+        elseif($bandEnd!==null&&$y-$bandEnd>3)break; // erste zusammenhängende Kante genügt
+    }
+    return $bandEnd===null?$y0:max($y0,$bandEnd+$half+5);
 }
 
 function yw_zones_sanitize(array $input): array {
