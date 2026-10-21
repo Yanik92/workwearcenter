@@ -1,6 +1,26 @@
 # WorkwearCenter 10 – Änderungen
 
-Stand: 16. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+Stand: 21. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+
+## 10.25.1 – Logo unter der Brusttasche, keine echten Preise im Mustershop
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Automatisch erkannte Druckzonen werden neu berechnet; von Hand gesetzte bleiben.
+
+- Hat ein Oberteil an der linken Brust eine Tasche mit Reißverschluss (z. B. Workwear Jacket und Vest STRONG), sitzt das Logo jetzt darunter statt auf dem Reißverschluss. Ohne solche Tasche bleibt es an der üblichen Stelle.
+- Mustershop zeigt keine echten Verkaufspreise mehr, sondern runde Beispielpreise je Artikelart (z. B. T-Shirt 19,90 €, Polo 26,90 €, Hose 54,90 €, Weste 59,90 €, Jacke 79,90 €).
+
+## 10.25.0 – Musterfirma „Hanseatic Haustechnik“ statt KANTENWERK
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Die alten Dateien `assets/media/demo/kantenwerk-logo.svg` und `kantenwerk-mark.svg` werden nicht mehr gebraucht und können gelöscht werden.
+
+- Mustershop: Die Musterfirma heißt jetzt Hanseatic Haustechnik GmbH (Sanitär, Heizung, Klima) und hat ein neues Logo. Auf der Kleidung sitzt das Haus-Zeichen als Stick-Logo.
+- Mustershop in Dunkelblau passend zum Logo statt Waldgrün.
+- Website: Alle Shop-Ansichten (Start, Artikel, Freigaben, Bestellstatus, Mein Spind, Mitarbeiter, Handy) und das Vorschaubild zum Teilen sind neu aufgenommen, mit Hanseatic Haustechnik statt KANTENWERK. Die Adresse in den Ansichten lautet workwearcenter.de/hanseatic.
+
+## 10.24.0 – Logo sitzt richtig, Schuhe ohne Logo
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Die automatisch erkannten Druckzonen werden beim nächsten Aufruf bzw. Cronjob neu berechnet; von Hand gesetzte Zonen bleiben unverändert.
+
+- Schuhe, Stiefel, Sandalen usw. bekommen kein Logo mehr ins Bild und im Mustershop keinen Hinweis „Logo · Brust links“. Wer doch eins will, setzt die Druckzone im Editor von Hand.
+- Brust links wird jetzt am Rumpf gemessen statt am ganzen Umriss mit Ärmeln: Bei Jacken, Softshells, Westen und Polos sitzt das Logo nicht mehr am Reißverschluss bzw. an der Knopfleiste, sondern auf der linken Brust (gegenüber der Brusttasche) und etwas höher.
+- Hosen: „Bein oben“ liegt in der Mitte des linken Hosenbeins am Oberschenkel statt an der Hüfte neben dem Hosenschlitz.
 
 ## 10.23.2 – Mustershop mit deinen Produkten, keine Besuche
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.

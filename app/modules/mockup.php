@@ -74,21 +74,27 @@ function yw_product_zones(array $product): array {
     return $zones;
 }
 
+/** 10.24: Bekommt der Artikel ein Logo ins Bild? Schuhe nicht – außer jemand hat im Editor bewusst Zonen gesetzt. */
+function yw_product_decoratable(array $product): bool {
+    return yw_zone_garment_type($product)!=='none'||!yw_product_zones_are_auto($product);
+}
+
 /** Sind die Zonen des Produkts automatisch erkannt (true) oder von Hand gesetzt (false)? */
 function yw_product_zones_are_auto(array $product): bool {
     $decoded=json_decode(trim((string)($product['print_zones_json']??'')),true);
     return !is_array($decoded)||isset($decoded['_auto'])||!yw_zones_sanitize($decoded);
 }
 
-const YW_ZONE_AUTO_VERSION='1';
+const YW_ZONE_AUTO_VERSION='3'; // 2: Brust links am Rumpf, Schuhe ohne Zonen; 3: Logo unter die Brusttasche mit Reißverschluss
 
 function yw_zone_auto_signature(array $product): string {
     return md5(YW_ZONE_AUTO_VERSION.'|'.($product['image_path']??'').'|'.($product['image_back_path']??'').'|'.($product['image_sleeve_path']??'').'|'.mb_strtolower((string)($product['category']??'')));
 }
 
-/** Art des Artikels aus Kategorie und Name: top (Shirts, Jacken …), head (Caps, Mützen), legs (Hosen), flat (Handtuch, Decke, Schürze …). */
+/** Art des Artikels aus Kategorie und Name: top (Shirts, Jacken …), head (Caps, Mützen), legs (Hosen), flat (Handtuch, Decke, Schürze …), none (Schuhe – werden nicht veredelt). */
 function yw_zone_garment_type(array $product): string {
     $text=mb_strtolower((string)($product['category']??'').' '.(string)($product['name']??''));
+    if(preg_match('/((?<!hand)schuh|stiefel|sandale|clog|pantolette|sneaker|boots?\b|footwear|einlegesohle|schnürsenkel)/u',$text))return 'none';
     if(preg_match('/\b(cap|caps|mütze|muetze|beanie|hut|hüte|huete|sunvisor|visor|stirnband)/u',$text))return 'head';
     if(preg_match('/\b(hose|hosen|shorts|jeans|bermuda|latzhose)/u',$text))return 'legs';
     if(preg_match('/\b(handtuch|frottier|decke|decken|schal|schals|tuch|tücher|schürze|schuerze|tasche|beutel|socken|handschuh|schweissband|point of sale)/u',$text))return 'flat';
@@ -103,6 +109,7 @@ function yw_zone_garment_type(array $product): string {
  */
 function yw_zone_auto_detect(array $product): array {
     $type=yw_zone_garment_type($product);$zones=[];
+    if($type==='none')return [];
     foreach(yw_product_views($product) as $view=>$path){
         $shape=yw_zone_image_shape(dirname(__DIR__,2).'/'.$path);
         if(!$shape){ // z. B. weißes Teil auf weißem Grund: Zonen einer anderen Farbe desselben Artikels übernehmen
@@ -190,7 +197,9 @@ function yw_zone_image_shape(string $file): ?array {
     if($t===null||$b-$t<$sh*0.2||$r-$l<$sw*0.2)return null;
     $coverage=$count/($sw*$sh);
     if($coverage<0.06||$coverage>0.95)return null; // nichts erkannt bzw. Hintergrund nicht trennbar
-    return ['w'=>$sw,'h'=>$sh,'l'=>$l,'r'=>$r,'t'=>$t,'b'=>$b,'runs'=>$runs];
+    // 10.25.1: Helligkeit je Pixel, um Brusttaschen mit Reißverschluss zu erkennen
+    $lum=[];for($y=0;$y<$sh;$y++)for($x=0;$x<$sw;$x++){$c=$px[$y][$x];$lum[$y][$x]=$isGarment($c)?(int)(0.3*(($c>>16)&255)+0.59*(($c>>8)&255)+0.11*($c&255)):-1;}
+    return ['w'=>$sw,'h'=>$sh,'l'=>$l,'r'=>$r,'t'=>$t,'b'=>$b,'runs'=>$runs,'lum'=>$lum];
 }
 
 /** Zonen einer Ansicht aus dem Umriss ableiten (Ergebnis in Prozent). */
@@ -209,29 +218,71 @@ function yw_zone_from_shape(array $s,string $view,string $type): array {
     // (gerade und leicht gedreht) gegen von Hand gesetzte Zonen abgeglichen.
     $at=static fn(float $f)=>$s['l']+$bw*$f;
     if($type==='legs'){
-        $z=['x'=>$px($at(0.66)),'y'=>$py($s['t']+$bh*0.25),'w'=>$px($bw*0.18)];
+        // Bein oben = linkes Bein des Trägers, vom Betrachter aus das rechte: Mitte des rechten Hosenbeins, oberer Oberschenkel
+        $legY=(int)round($s['t']+$bh*0.6);$runs=$s['runs'][$legY]??[];
+        $leg=$runs?$runs[count($runs)-1]:null;
+        $legX=$leg&&count($runs)>1?($leg[0]+$leg[1])/2:$at(0.75);
+        $legW=$leg&&count($runs)>1?$leg[1]-$leg[0]:$bw*0.45;
+        $z=['x'=>$px($legX),'y'=>$py($s['t']+$bh*0.3),'w'=>$px($legW*0.4)];
         return $view==='back'?['back_top'=>['x'=>$px($at(0.5)),'y'=>$py($s['t']+$bh*0.08),'w'=>$px($bw*0.3)],'other'=>$z]:['other'=>$z,'chest_left'=>$z];
     }
-    // Schulterlinie: erste Zeile, die mindestens 60 % so breit ist wie das ganze Teil (Kragen/Kapuze sind schmaler)
+    // 10.24: Rumpf statt Gesamtumriss messen. Gesucht wird in der unteren Hälfte die schmalste Zeile um die Mitte –
+    // dort liegen bei Jacken die Ärmel abgesetzt daneben (am Saum wachsen sie oft mit dem Rumpf zusammen), bei T-Shirts
+    // stehen sie oben ab. Vorher landete das Logo bei Jacken und Westen fast auf dem Reißverschluss.
+    $torsoL=$s['l']+$bw*0.19;$torsoR=$s['r']-$bw*0.19;$narrow=null;
+    for($f=0.5;$f<=0.92;$f+=0.02){
+        $best=null;
+        foreach($s['runs'][(int)round($s['t']+$bh*$f)]??[] as $run)if($best===null||abs(($run[0]+$run[1])/2-$cx)<abs(($best[0]+$best[1])/2-$cx))$best=$run;
+        if($best&&$best[1]-$best[0]>=$bw*0.4&&($narrow===null||$best[1]-$best[0]<$narrow[1]-$narrow[0]))$narrow=$best;
+    }
+    if($narrow)[$torsoL,$torsoR]=$narrow;
+    $tw=$torsoR-$torsoL;$tc=($torsoL+$torsoR)/2;
+    // Schulterlinie: erste Zeile, die 90 % so breit ist wie der Rumpf (Kragen und Kapuze sind schmaler)
     $shoulder=$s['t'];
-    for($y=$s['t'];$y<=$s['b'];$y++){$runs=$s['runs'][$y]??[];if(!$runs)continue;if($runs[count($runs)-1][1]-$runs[0][0]>=$bw*0.6){$shoulder=$y;break;}}
+    for($y=$s['t'];$y<=$s['b'];$y++){$runs=$s['runs'][$y]??[];if(!$runs)continue;if($runs[count($runs)-1][1]-$runs[0][0]>=$tw*0.9){$shoulder=$y;break;}}
     $hb=max(1,$s['b']-$shoulder);
     if($view==='back'){
         return [
-            'neck'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.03),'w'=>$px($bw*0.1)],
-            'back_top'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.13),'w'=>$px($bw*0.34)],
-            'back_large'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.34),'w'=>$px($bw*0.48)],
-            'other'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($bw*0.3)],
+            'neck'=>['x'=>$px($tc),'y'=>$py($shoulder+$hb*0.03),'w'=>$px($tw*0.15)],
+            'back_top'=>['x'=>$px($tc),'y'=>$py($shoulder+$hb*0.13),'w'=>$px($tw*0.5)],
+            'back_large'=>['x'=>$px($tc),'y'=>$py($shoulder+$hb*0.34),'w'=>$px($tw*0.7)],
+            'other'=>['x'=>$px($tc),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($tw*0.45)],
         ];
     }
-    $chestY=$py($shoulder+$hb*0.235);$logoW=$px($bw*0.19);
+    // Brust links: gut die halbe Strecke von der Rumpfmitte zur Seitennaht, knapp ein Fünftel unter der Schulter
+    $logoW=min($tw*0.24,$bw*0.15);
+    $chestY=$shoulder+$hb*0.18;
     return [
-        'chest_left'=>['x'=>$px($at(0.64)),'y'=>$chestY,'w'=>$logoW],   // Brust links = vom Betrachter aus rechts
-        'chest_right'=>['x'=>$px($at(0.36)),'y'=>$chestY,'w'=>$logoW],
+        'chest_left'=>['x'=>$px($tc+$tw*0.27),'y'=>$py(yw_zone_below_pocket($s,$tc+$tw*0.27,$chestY,$logoW,$hb)),'w'=>$px($logoW)],   // Brust links = vom Betrachter aus rechts
+        'chest_right'=>['x'=>$px($tc-$tw*0.27),'y'=>$py(yw_zone_below_pocket($s,$tc-$tw*0.27,$chestY,$logoW,$hb)),'w'=>$px($logoW)],
         'sleeve_left'=>['x'=>$px($at(0.9)),'y'=>$py($shoulder+$hb*0.2),'w'=>$px($bw*0.08)],
         'sleeve_right'=>['x'=>$px($at(0.1)),'y'=>$py($shoulder+$hb*0.2),'w'=>$px($bw*0.08)],
-        'other'=>['x'=>$px($at(0.5)),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($bw*0.3)],
+        'other'=>['x'=>$px($tc),'y'=>$py($shoulder+$hb*0.4),'w'=>$px($tw*0.45)],
     ];
+}
+
+/**
+ * 10.25.1: Brusttasche mit Reißverschluss erkennen: In der Spalte des Logos wird um die übliche Höhe nach einer
+ * waagerechten Kante gesucht (Reißverschluss, Taschenpatte, Reflexstreifen). Gibt es eine, kommt das Logo darunter.
+ * Rückgabe: y der Logomitte in Pixeln des verkleinerten Bilds.
+ */
+function yw_zone_below_pocket(array $s,float $x0,float $y0,float $logoW,float $hb): float {
+    $lum=$s['lum']??null;if(!$lum)return $y0;
+    $half=max(3,(int)round($logoW*0.4));// sichtbares Logo ist etwa 80 % der Zonenbreite
+    $edge=static function(int $y) use($lum,$x0,$half): float {
+        $e=0;$n=0;
+        for($x=(int)round($x0-$half*1.2);$x<=(int)round($x0+$half*1.2);$x++){
+            $a=$lum[$y][$x]??-1;$b=$lum[$y+1][$x]??-1;
+            if($a<0||$b<0)continue;$e+=abs($a-$b);$n++;
+        }
+        return $n?$e/$n:0.0;
+    };
+    $bandEnd=null;
+    for($y=(int)round($y0-$hb*0.12);$y<=(int)round($y0+$hb*0.22);$y++){
+        if($edge($y)>=12)$bandEnd=$y;
+        elseif($bandEnd!==null&&$y-$bandEnd>3)break; // erste zusammenhängende Kante genügt
+    }
+    return $bandEnd===null?$y0:max($y0,$bandEnd+$half+5);
 }
 
 function yw_zones_sanitize(array $input): array {
@@ -409,6 +460,7 @@ function yw_mockup_views(array $product,array $motifsById): array {
         $result[$view]=['view'=>$view,'label'=>$labels[$view],'image'=>$image,'layers'=>[],'custom'=>false];
     }
     $available=array_keys(array_filter($result,fn($v)=>!$v['custom']));
+    if(!yw_product_decoratable($product))$decorations=[];
     foreach($decorations as $d){
         $motif=$motifsById[(int)($d['motif_id']??0)]??null;
         if(!$motif)continue;
@@ -529,6 +581,7 @@ function yw_auto_print_zones_action(): never {
 /** Veredelungen, die im Bild nicht gezeigt werden können – mit Grund (für Admin-Hinweise). */
 function yw_mockup_missing(array $product,array $motifsById): array {
     $views=yw_product_views($product);$zones=yw_product_zones($product);$missing=[];
+    if(!yw_product_decoratable($product))return company_product_decorations($product)?['Schuhe werden im Bild ohne Logo gezeigt (Druckzone bei Bedarf von Hand setzen)']:[];
     foreach(company_product_decorations($product) as $d){
         $label=decoration_position_label((string)($d['position']??''));
         $motif=$motifsById[(int)($d['motif_id']??0)]??null;

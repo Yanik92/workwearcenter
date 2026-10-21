@@ -331,11 +331,11 @@ html body .cp-foot{border-top-color:var(--cp-line);color:var(--cp-muted)}
 html body .cp-tabbar{background:#ffffff;border-top:1px solid var(--cp-line);backdrop-filter:none}
 html body .cp-tab.active{color:var(--cp-primary-ink)}
 
-/* The sample is KANTENWERK's own shop identity, distinct from the platform. */
+/* The sample is Hanseatic Haustechnik's own shop identity, distinct from the platform. */
 html body .demo:not(.demo-probe) .demo-app{border-radius:4px;box-shadow:0 8px 24px rgba(48,40,34,.055)}
-html body .demo:not(.demo-probe) .demo-hero{background:#f0f0e9}
+html body .demo:not(.demo-probe) .demo-hero{background:#e9eef4}
 html body .demo:not(.demo-probe) .demo-product{border-radius:4px}
-html body .demo:not(.demo-probe) .demo-visual{border-radius:4px;background:#eeede6}
+html body .demo:not(.demo-probe) .demo-visual{border-radius:4px;background:#edf0f4}
 html body .demo:not(.demo-probe) .demo-product:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(48,40,34,.08)}
 
 @media(max-width:1240px){html body .s-nav,html body .s-header-end{display:none}html body .s-menu{display:block}}
