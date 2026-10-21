@@ -71,8 +71,8 @@ function yw_demo_catalog_products(): array {
         $views=yw_product_views($p);
         if(!isset($views['front']))continue;
         $zones=yw_product_zones($p);
-        $found=yw_zone_for($zones,'chest_left',['front']);
         $type=yw_zone_garment_type($p);
+        $found=yw_product_decoratable($p)?yw_zone_for($zones,'chest_left',['front']):null;
         $layers=[];
         if($found){$z=$found['zone'];$layers[]=['src'=>'assets/media/demo/kantenwerk-mark.svg','x'=>$z['x'],'y'=>$z['y'],'w'=>round(max(5.0,min(14.0,(float)$z['w']*0.8)),1),'method'=>'embroidery','label'=>'KANTENWERK'];}
         $sizes=json_decode((string)($p['sizes']??''),true);$sizes=is_array($sizes)?array_values(array_filter(array_map('strval',$sizes),'strlen')):[];
@@ -91,7 +91,7 @@ function yw_demo_catalog_products(): array {
             'sizes'=>$sizes?($sizes[0].(count($sizes)>1?'–'.$sizes[count($sizes)-1]:'')):'Einheitsgröße',
             'size_options'=>$sizes?:['Einheitsgröße'],
             'code'=>mb_strtoupper((string)($p['category']??'Artikel')),
-            'logo_caption'=>['head'=>'Logo · vorne','legs'=>'Logo · Bein oben','flat'=>'Logo · mittig'][$type]??'Logo · Brust links',
+            'logo_caption'=>$layers?(['head'=>'Logo · vorne','legs'=>'Logo · Bein oben','flat'=>'Logo · mittig'][$type]??'Logo · Brust links'):'',
             'visual'=>yw_mockup_html([['view'=>'front','label'=>'Vorderseite','image'=>$views['front'],'layers'=>$layers]],$name.($color!==''?' in '.$color:'').' mit Logo-Vorschau',false,'demo-mockup'),
         ];
     }
@@ -125,7 +125,7 @@ function yw_demo_shop_render(array $o): void {
         foreach($o['products'] as $p){
             $sizeOptions='';
             foreach(($p['size_options']??[]) as $size)$sizeOptions.='<option value="'.e((string)$size).'">'.e((string)$size).'</option>';
-            echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)($p['code']??$p['category'])).'</span>'.$p['visual'].'<span class="demo-logo-caption"><span class="demo-mark-dot" aria-hidden="true"></span> '.e((string)($p['logo_caption']??'Logo · Brust links')).'</span></div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h3>'.e((string)$p['name']).'</h3><p>'.e((string)$p['detail']).'</p><div class="demo-product-foot"><span><i class="demo-color-dot" aria-hidden="true"></i> '.e((string)$p['color']).'</span><span>Größen <b>'.e((string)$p['sizes']).'</b></span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><span>Beispielpreis <b>je Stück</b></span></div><div class="demo-order-row"><label class="demo-size-label">Größe<select class="demo-size" aria-label="Größe für '.e((string)$p['name']).'"><option value="">Größe wählen</option>'.$sizeOptions.'</select></label><label class="demo-size-label">Anzahl<input class="demo-quantity" type="number" min="1" max="20" value="1" aria-label="Anzahl für '.e((string)$p['name']).'"></label><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-sku="'.e((string)$p['sku']).'" data-name="'.e((string)$p['name']).'" disabled><span>Größe wählen</span><span aria-hidden="true">+</span></button></div></div></article>';
+            echo '<article class="demo-product" data-category="'.e((string)$p['category']).'"><div class="demo-visual"><span class="demo-product-code">'.e((string)($p['code']??$p['category'])).'</span>'.$p['visual'].(($p['logo_caption']??null)===''?'':'<span class="demo-logo-caption"><span class="demo-mark-dot" aria-hidden="true"></span> '.e((string)($p['logo_caption']??'Logo · Brust links')).'</span>').'</div><div class="demo-product-body"><span class="demo-cat">'.e((string)$p['category']).'</span><h3>'.e((string)$p['name']).'</h3><p>'.e((string)$p['detail']).'</p><div class="demo-product-foot"><span><i class="demo-color-dot" aria-hidden="true"></i> '.e((string)$p['color']).'</span><span>Größen <b>'.e((string)$p['sizes']).'</b></span></div><div class="demo-buy"><strong>'.money((int)$p['cents']).'</strong><span>Beispielpreis <b>je Stück</b></span></div><div class="demo-order-row"><label class="demo-size-label">Größe<select class="demo-size" aria-label="Größe für '.e((string)$p['name']).'"><option value="">Größe wählen</option>'.$sizeOptions.'</select></label><label class="demo-size-label">Anzahl<input class="demo-quantity" type="number" min="1" max="20" value="1" aria-label="Anzahl für '.e((string)$p['name']).'"></label><button class="demo-add" type="button" data-price="'.(int)$p['cents'].'" data-sku="'.e((string)$p['sku']).'" data-name="'.e((string)$p['name']).'" disabled><span>Größe wählen</span><span aria-hidden="true">+</span></button></div></div></article>';
         }
         echo '</div><p class="demo-sample-note">Alle Artikel, Preise und das Guthaben dienen nur zur Demonstration. Dein echter Firmenshop wird mit deinen Produkten, Farben und Regeln gestaltet.</p></div></div></section><div class="demo-toast" id="demo-toast" role="status"></div></main>';
         return;
