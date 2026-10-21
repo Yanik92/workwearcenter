@@ -9,7 +9,7 @@ require_once __DIR__.'/probeshop.php';
 function mustershop_page(): void {
     $embedded=(string)($_GET['embed']??'')==='1';
     if($embedded)header('X-Robots-Tag: noindex, nofollow');
-    render_head('KANTENWERK Mustershop – Firmenshop live ausprobieren | WorkwearCenter');
+    render_head('Mustershop – Firmenshop live ausprobieren | WorkwearCenter');
     if(!$embedded)w_header(); // 10.21: gleicher Kopf wie die Website
     // 10.23.2: Artikel aus dem eigenen Produktkatalog (Verwaltung → Produkte); nur ohne Katalog die drei Beispielartikel.
     $products=yw_demo_catalog_products();
@@ -18,16 +18,16 @@ function mustershop_page(): void {
         ['Hoodie Team','Hoodies','Eine zusätzliche Schicht für kühle Arbeitstage.',5490,'WC-HD02','Graphit','XS–4XL',['XS','S','M','L','XL','2XL','3XL','4XL'],'assets/media/products/workwear-hoodie.webp',['x'=>63,'y'=>30,'w'=>9],'HOODIE'],
         ['Softshelljacke','Jacken','Eine Jacke für den Einsatz im Freien.',8490,'WC-SJ03','Schwarz','S–5XL',['S','M','L','XL','2XL','3XL','4XL','5XL'],'assets/media/products/workwear-softshell.webp',['x'=>61,'y'=>36,'w'=>9],'SOFTSHELL'],
     ] as [$name,$category,$detail,$cents,$sku,$color,$sizes,$sizeOptions,$image,$zone,$code]){
-        $views=[['view'=>'front','label'=>'Vorderseite','image'=>$image,'layers'=>[['src'=>'assets/media/demo/kantenwerk-mark.svg','x'=>$zone['x'],'y'=>$zone['y'],'w'=>$zone['w'],'method'=>'embroidery','label'=>'KANTENWERK · Brust links']]]];
+        $views=[['view'=>'front','label'=>'Vorderseite','image'=>$image,'layers'=>[['src'=>'assets/media/demo/hanseatic-mark.png','x'=>$zone['x'],'y'=>$zone['y'],'w'=>$zone['w'],'method'=>'embroidery','label'=>'Hanseatic Haustechnik · Brust links']]]];
         $visual=yw_mockup_html($views,$name.' in '.$color.' mit Logo-Vorschau',false,'demo-mockup');
         $products[]=['name'=>$name,'category'=>$category,'detail'=>$detail,'cents'=>$cents,'sku'=>$sku,'color'=>$color,'sizes'=>$sizes,'size_options'=>$sizeOptions,'code'=>$code,'visual'=>$visual];
     }
     $notice=$embedded
-        ?'<span><strong>KANTENWERK · Musterunternehmen</strong> · Preise, Budget und Auswahl sind Beispieldaten. Es wird keine Bestellung übertragen.</span>'
-        :'<span><strong>KANTENWERK · Musterunternehmen</strong> · Preise, Budget und Auswahl sind Beispieldaten. Es wird keine Bestellung übertragen.</span><a href="/anfrage">Eigenen Firmenshop besprechen →</a>';
+        ?'<span><strong>Hanseatic Haustechnik · Musterunternehmen</strong> · Preise, Budget und Auswahl sind Beispieldaten. Es wird keine Bestellung übertragen.</span>'
+        :'<span><strong>Hanseatic Haustechnik · Musterunternehmen</strong> · Preise, Budget und Auswahl sind Beispieldaten. Es wird keine Bestellung übertragen.</span><a href="/anfrage">Eigenen Firmenshop besprechen →</a>';
     yw_demo_shop_render([
-        'company'=>'KANTENWERK',
-        'mark'=>'<img src="/assets/media/demo/kantenwerk-logo.svg" alt="KANTENWERK – Industrie und Service">',
+        'company'=>'Hanseatic Haustechnik GmbH',
+        'mark'=>'<img src="/assets/media/demo/hanseatic-logo.png" alt="Hanseatic Haustechnik – Sanitär, Heizung, Klima" width="900" height="299">',
         'notice'=>$notice,
         'products'=>$products,
     ]);
@@ -44,7 +44,7 @@ function yw_demo_product_ids(): array {
 /**
  * 10.23.2: Artikel für den Mustershop aus dem Stammkatalog. Angehakte Artikel in ihrer Reihenfolge,
  * sonst automatisch bis zu neun aktive Artikel mit Foto, abwechselnd aus den Kategorien.
- * Das KANTENWERK-Zeichen sitzt in der erkannten bzw. von Hand gesetzten Druckzone „Brust links“ –
+ * Das Hanseatic-Zeichen sitzt in der erkannten bzw. von Hand gesetzten Druckzone „Brust links“ –
  * dieselbe Zone, die auch in den echten Firmenshops gilt.
  */
 function yw_demo_catalog_products(): array {
@@ -74,7 +74,7 @@ function yw_demo_catalog_products(): array {
         $type=yw_zone_garment_type($p);
         $found=yw_product_decoratable($p)?yw_zone_for($zones,'chest_left',['front']):null;
         $layers=[];
-        if($found){$z=$found['zone'];$layers[]=['src'=>'assets/media/demo/kantenwerk-mark.svg','x'=>$z['x'],'y'=>$z['y'],'w'=>round(max(5.0,min(14.0,(float)$z['w']*0.8)),1),'method'=>'embroidery','label'=>'KANTENWERK'];}
+        if($found){$z=$found['zone'];$layers[]=['src'=>'assets/media/demo/hanseatic-mark.png','x'=>$z['x'],'y'=>$z['y'],'w'=>round(max(5.0,min(14.0,(float)$z['w']*0.8)),1),'method'=>'embroidery','label'=>'Hanseatic Haustechnik'];}
         $sizes=json_decode((string)($p['sizes']??''),true);$sizes=is_array($sizes)?array_values(array_filter(array_map('strval',$sizes),'strlen')):[];
         $color=trim((string)($p['color']??''));
         $name=(string)$p['name'];
@@ -117,8 +117,8 @@ function yw_demo_shop_render(array $o): void {
     echo '<div class="demo-notice">'.$o['notice'].'</div>';
     if(!$probe){
         $categories=array_values(array_unique(array_column($o['products'],'category')));
-        echo '<section class="demo-app" aria-label="KANTENWERK Muster-Firmenshop"><header class="demo-shopbar"><a class="demo-brand" href="#demo-kollektion" aria-label="KANTENWERK Firmenshop">'.$o['mark'].'</a><div class="demo-shopbar-actions"><span class="demo-shopbar-label"><i aria-hidden="true"></i> MUSTER-FIRMENSHOP</span><button class="demo-cart" type="button" aria-controls="demo-selection" aria-expanded="false">Deine Auswahl <span id="demo-count" aria-live="polite">0</span></button></div></header><div class="demo-main">';
-        echo '<section class="demo-hero" aria-labelledby="demo-hero-title"><div class="demo-hero-copy"><span class="demo-eyebrow">KANTENWERK · INDUSTRIE &amp; SERVICE</span><h1 id="demo-hero-title">Arbeitskleidung für unser Team.</h1><p>Wähle die passende Kleidung, Größe und Menge aus der KANTENWERK-Kollektion.</p><a class="demo-hero-link" href="#demo-kollektion">Kollektion ansehen <span aria-hidden="true">→</span></a><div class="demo-assurances"><span><i aria-hidden="true">✓</i> KANTENWERK-Logo auf der Kleidung</span><span><i aria-hidden="true">✓</i> Auswahl nach Größe und Menge</span></div></div><aside class="demo-budget" aria-label="Beispielbudget"><span class="demo-budget-kicker">MUSTERBUDGET</span><span class="demo-budget-title">Verfügbar für die Ausstattung</span><strong id="demo-budget-value">218,70&nbsp;€</strong><div class="demo-progress" role="progressbar" aria-label="Verbleibendes Beispielbudget" aria-valuemin="0" aria-valuemax="30000" aria-valuenow="21870"><span id="demo-progress"></span></div><small>von 300,00&nbsp;€ · Beispieldaten</small><div class="demo-budget-foot"><span aria-hidden="true">●</span> Nur Vorschau – keine Bestellung</div></aside><span class="demo-hero-mark" aria-hidden="true"></span></section>';
+        echo '<section class="demo-app" aria-label="Hanseatic Haustechnik Muster-Firmenshop"><header class="demo-shopbar"><a class="demo-brand" href="#demo-kollektion" aria-label="Hanseatic Haustechnik Firmenshop">'.$o['mark'].'</a><div class="demo-shopbar-actions"><span class="demo-shopbar-label"><i aria-hidden="true"></i> MUSTER-FIRMENSHOP</span><button class="demo-cart" type="button" aria-controls="demo-selection" aria-expanded="false">Deine Auswahl <span id="demo-count" aria-live="polite">0</span></button></div></header><div class="demo-main">';
+        echo '<section class="demo-hero" aria-labelledby="demo-hero-title"><div class="demo-hero-copy"><span class="demo-eyebrow">HANSEATIC HAUSTECHNIK · SANITÄR · HEIZUNG · KLIMA</span><h1 id="demo-hero-title">Arbeitskleidung für unser Team.</h1><p>Wähle die passende Kleidung, Größe und Menge aus der Hanseatic-Kollektion.</p><a class="demo-hero-link" href="#demo-kollektion">Kollektion ansehen <span aria-hidden="true">→</span></a><div class="demo-assurances"><span><i aria-hidden="true">✓</i> Firmenlogo auf der Kleidung</span><span><i aria-hidden="true">✓</i> Auswahl nach Größe und Menge</span></div></div><aside class="demo-budget" aria-label="Beispielbudget"><span class="demo-budget-kicker">MUSTERBUDGET</span><span class="demo-budget-title">Verfügbar für die Ausstattung</span><strong id="demo-budget-value">218,70&nbsp;€</strong><div class="demo-progress" role="progressbar" aria-label="Verbleibendes Beispielbudget" aria-valuemin="0" aria-valuemax="30000" aria-valuenow="21870"><span id="demo-progress"></span></div><small>von 300,00&nbsp;€ · Beispieldaten</small><div class="demo-budget-foot"><span aria-hidden="true">●</span> Nur Vorschau – keine Bestellung</div></aside><span class="demo-hero-mark" aria-hidden="true"></span></section>';
         echo '<div class="demo-content" id="demo-kollektion"><section class="demo-tools" aria-label="Kollektion filtern"><div class="demo-tools-title"><div><span class="demo-eyebrow">DIE KOLLEKTION</span><h2>Für jeden Einsatz.</h2></div><span class="demo-item-count">'.count($o['products']).' Artikel in der Kollektion</span></div><div class="demo-filters"><button class="demo-filter active" data-filter="Alle" type="button" aria-pressed="true">Alle Artikel</button>';
         foreach($categories as $category)echo '<button class="demo-filter" data-filter="'.e($category).'" type="button" aria-pressed="false">'.e($category).'</button>';
         echo '</div></section><section class="demo-selection" id="demo-selection" hidden aria-labelledby="demo-selection-title"><div class="demo-selection-head"><div><span class="demo-eyebrow">NUR IN DIESER VORSCHAU</span><h2 id="demo-selection-title">Deine Auswahl</h2></div><button class="demo-clear" id="demo-clear" type="button">Auswahl leeren</button></div><ul id="demo-selection-items"></ul><p id="demo-selection-empty">Noch keine Artikel ausgewählt.</p><div class="demo-selection-total"><span>Verbleibendes Beispielbudget</span><strong id="demo-selection-budget">218,70&nbsp;€</strong></div></section><div class="demo-products" id="demo-produkte">';
@@ -263,16 +263,16 @@ function yw_demo_shop_css(): string {
 @media(max-width:1050px){.demo-person{display:none}.demo-nav button{padding:0 8px;font-size:.82rem}}
 @media(max-width:760px){.demo-side{height:auto;flex-wrap:wrap;gap:6px;padding:12px 16px 10px}.demo-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:100%;height:auto;overflow:visible;align-self:auto;margin:8px 0 0}.demo-nav button{justify-content:center;min-height:42px;padding:0 10px;border-radius:8px;white-space:normal}.demo-nav button.active{background:#eef2f6;color:#101828}.demo-nav button.active:after{left:14px;right:14px;bottom:2px}.demo-content{padding:18px 14px}.demo-welcome{padding:20px}.demo-products{gap:20px 12px}.demo-visual{height:auto}}
 @media(max-width:500px){.demo-products{grid-template-columns:1fr 1fr}.demo-buy{flex-direction:column;align-items:stretch;gap:8px}.demo-product p{display:none}}
-/* KANTENWERK: ruhige, eigenständige Markenwelt mit klarer Bestelloberfläche */
+/* Hanseatic Haustechnik: ruhige, eigenständige Markenwelt mit klarer Bestelloberfläche */
 .demo:not(.demo-probe){
-  --demo-forest:#294238;
-  --demo-forest-deep:#20352d;
-  --demo-lime:#b68b5b;
-  --demo-ink:#24322d;
-  --demo-muted:#65736b;
-  --demo-paper:#f4f2ed;
-  --demo-line:#dedfd9;
-  background:#f2f1ec;
+  --demo-forest:#1f3864;
+  --demo-forest-deep:#162a4d;
+  --demo-lime:#4f86c6;
+  --demo-ink:#1c2533;
+  --demo-muted:#5f6b7a;
+  --demo-paper:#f3f5f8;
+  --demo-line:#dde2ea;
+  background:#eef1f5;
   color:var(--demo-ink);
   min-height:100vh;
   font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -286,7 +286,7 @@ function yw_demo_shop_css(): string {
 .demo:not(.demo-probe) .demo-app{display:block;min-height:0;overflow:hidden;border:1px solid #dcddd7;border-radius:3px;background:#fff;box-shadow:0 6px 22px rgba(32,45,38,.045)}
 .demo:not(.demo-probe) .demo-shopbar{min-height:76px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:10px clamp(18px,3vw,34px);border-bottom:1px solid #e5e6e1;background:#fff}
 .demo:not(.demo-probe) .demo-brand{display:flex;align-items:center;max-width:55%;color:var(--demo-forest);text-decoration:none}
-.demo:not(.demo-probe) .demo-brand img{display:block;width:min(244px,100%);height:52px;object-fit:contain;object-position:left center}
+.demo:not(.demo-probe) .demo-brand img{display:block;width:min(200px,100%);height:60px;object-fit:contain;object-position:left center}
 .demo:not(.demo-probe) .demo-shopbar-actions{display:flex;align-items:center;gap:22px}
 .demo:not(.demo-probe) .demo-shopbar-label{display:flex;align-items:center;gap:8px;color:#6c7771;font-size:.64rem;font-weight:720;letter-spacing:.105em}
 .demo:not(.demo-probe) .demo-shopbar-label i{width:7px;height:7px;border-radius:50%;background:#758e7d}
@@ -379,7 +379,7 @@ function yw_demo_shop_css(): string {
 .demo:not(.demo-probe) .demo-sample-note{margin:16px 0 0;color:#737d75;font-size:.67rem;line-height:1.55}
 .demo:not(.demo-probe) .demo-toast{position:fixed;right:22px;bottom:22px;z-index:99;max-width:min(410px,calc(100vw - 32px));padding:12px 15px;border:1px solid rgba(255,255,255,.14);border-radius:3px;background:var(--demo-forest-deep);color:#fff;box-shadow:0 8px 25px rgba(0,0,0,.17);font-size:.78rem;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .18s,transform .18s}
 .demo:not(.demo-probe) .demo-toast.show{opacity:1;transform:none}
-.demo:not(.demo-probe) :focus-visible{outline:3px solid #b68b5b;outline-offset:3px}
+.demo:not(.demo-probe) :focus-visible{outline:3px solid #4f86c6;outline-offset:3px}
 .demo-probe .demo-nav a{position:relative;display:flex;align-items:center;padding:0 12px;color:#5b6678;font-size:.86rem;font-weight:700;text-decoration:none;white-space:nowrap}
 .demo-probe .demo-nav a.active{color:#101828}
 .demo-probe .demo-nav a.active:after{position:absolute;right:12px;bottom:-1px;left:12px;height:2px;border-radius:2px;background:var(--demo-navy);content:""}

@@ -617,7 +617,7 @@ test_ok(!str_contains($adminSrc,"'hero_title'=>trim("),'Admin Inhalte: wirkungsl
 // 10.20: neue Website und Kundenleiste
 $siteSrc20=(string)file_get_contents(dirname(__DIR__).'/app/modules/site.php');
 $publicSrc20=(string)file_get_contents(dirname(__DIR__).'/app/modules/public.php');
-test_ok(yw_is_website_path('/')&&yw_is_website_path('/zugang')&&!yw_is_website_path('/admin')&&!yw_is_website_path('/kantenwerk'),'Website: neues Design nur auf den Website-Seiten, nicht in Verwaltung und Firmenshops');
+test_ok(yw_is_website_path('/')&&yw_is_website_path('/zugang')&&!yw_is_website_path('/admin')&&!yw_is_website_path('/hanseatic'),'Website: neues Design nur auf den Website-Seiten, nicht in Verwaltung und Firmenshops');
 test_ok(str_contains($publicSrc20,"WHERE active=1 AND id IN (")&&str_contains($publicSrc20,"array_map('intval',(array)(\$_POST['trust_company_ids']??[]))"),'Kundenleiste: nur aktive Firmen, Haken werden als Zahlen geprüft');
 test_ok(!preg_match('/\b\d{1,3}\.?\d{3}\s*(?:Stiche|Teile)|\d+\+/u',$siteSrc20),'Website: keine erfundenen Kennzahlen (Stiche, Teile, Firmen)');
 test_ok(str_contains($siteSrc20,"if(!\$c['logos'])return;"),'Kundenleiste erscheint nur mit freigegebenen Logos');

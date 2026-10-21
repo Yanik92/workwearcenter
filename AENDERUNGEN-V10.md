@@ -2,6 +2,13 @@
 
 Stand: 21. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.25.0 – Musterfirma „Hanseatic Haustechnik“ statt KANTENWERK
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Die alten Dateien `assets/media/demo/kantenwerk-logo.svg` und `kantenwerk-mark.svg` werden nicht mehr gebraucht und können gelöscht werden.
+
+- Mustershop: Die Musterfirma heißt jetzt Hanseatic Haustechnik GmbH (Sanitär, Heizung, Klima) und hat ein neues Logo. Auf der Kleidung sitzt das Haus-Zeichen als Stick-Logo.
+- Mustershop in Dunkelblau passend zum Logo statt Waldgrün.
+- Website: Alle Shop-Ansichten (Start, Artikel, Freigaben, Bestellstatus, Mein Spind, Mitarbeiter, Handy) und das Vorschaubild zum Teilen sind neu aufgenommen, mit Hanseatic Haustechnik statt KANTENWERK. Die Adresse in den Ansichten lautet workwearcenter.de/hanseatic.
+
 ## 10.24.0 – Logo sitzt richtig, Schuhe ohne Logo
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Die automatisch erkannten Druckzonen werden beim nächsten Aufruf bzw. Cronjob neu berechnet; von Hand gesetzte Zonen bleiben unverändert.
 

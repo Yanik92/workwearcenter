@@ -259,7 +259,7 @@ function s_trust_section(bool $embedded=false): void {
 }
 
 /** Browserrahmen mit einem echten Bildschirmfoto aus einem Firmenshop. */
-function w_shot(string $file,string $alt,int $w,int $h,string $url='workwearcenter.de/kantenwerk',bool $eager=false,string $class=''): string {
+function w_shot(string $file,string $alt,int $w,int $h,string $url='workwearcenter.de/hanseatic',bool $eager=false,string $class=''): string {
     return '<figure class="w-shot'.($class!==''?' '.$class:'').'"><div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>'.e($url).'</span></div><img src="/assets/media/screens/'.e($file).'.webp" alt="'.e($alt).'" width="'.$w.'" height="'.$h.'"'.($eager?' fetchpriority="high"':' loading="lazy"').' decoding="async"></figure>';
 }
 
@@ -268,14 +268,14 @@ function w_phone(string $file,string $alt,bool $lazy=true): string {
     return '<figure class="w-phone"><img src="/assets/media/screens/'.e($file).'.webp" alt="'.e($alt).'" width="390" height="844"'.($lazy?' loading="lazy"':'').' decoding="async"></figure>';
 }
 
-/** Ansichten aus dem Firmenshop (echte Oberfläche mit Beispieldaten des Musterunternehmens KANTENWERK). */
+/** Ansichten aus dem Firmenshop (echte Oberfläche mit Beispieldaten des Musterunternehmens Hanseatic Haustechnik). */
 function w_shop_views(): array {
     return [
-        ['start','Start & Budget','shop-start',950,'Startseite eines Firmenshops: persönliche Begrüßung, verfügbares Jahresbudget, letzte Bestellung mit Status und die Firmenkollektion','Jede Person sieht nach der Anmeldung ihr verfügbares Budget, die letzte Bestellung und die freigegebene Kollektion.','workwearcenter.de/kantenwerk'],
-        ['artikel','Artikel & Größe','shop-artikel',900,'Produktansicht im Firmenshop: Hoodie mit Größenwahl, Menge, Stick Brust links und Aufteilung des Preises in Firmenanteil und Eigenanteil','Größe wählen, Menge festlegen, fertig. Logo-Position und Veredelung sind fest hinterlegt, der Preis zeigt Firmen- und Eigenanteil.','workwearcenter.de/kantenwerk/produkte'],
-        ['freigabe','Freigabe','shop-freigabe',1549,'Freigabeseite für Verantwortliche: offene Bestellungen mit Artikeln, Größen und Beträgen, Knöpfe zum Freigeben oder Ablehnen','Verantwortliche sehen alle offenen Bestellungen mit Person, Größen und Betrag und geben mit einem Klick frei oder lehnen mit Hinweis ab.','workwearcenter.de/kantenwerk/freigaben'],
-        ['status','Bestellstatus','shop-status',766,'Bestellübersicht mit Statusleiste: freigegeben, in Produktion, fertig, versendet','Freigegeben, in Produktion, fertig, versendet: Der Status wird aus unserer Produktion heraus aktualisiert.','workwearcenter.de/kantenwerk/bestellungen'],
-        ['spind','Mein Spind','shop-spind',830,'Mein Spind: erhaltene Kleidung mit Größe und Datum, Knöpfe zum Nachbestellen und Größe tauschen','Im Spind steht, was jemand schon bekommen hat. Nachbestellen in der bekannten Größe oder Umtausch beantragen geht von hier aus.','workwearcenter.de/kantenwerk/spind'],
+        ['start','Start & Budget','shop-start',950,'Startseite eines Firmenshops: persönliche Begrüßung, verfügbares Jahresbudget, letzte Bestellung mit Status und die Firmenkollektion','Jede Person sieht nach der Anmeldung ihr verfügbares Budget, die letzte Bestellung und die freigegebene Kollektion.','workwearcenter.de/hanseatic'],
+        ['artikel','Artikel & Größe','shop-artikel',900,'Produktansicht im Firmenshop: Hoodie mit Größenwahl, Menge, Stick Brust links und Aufteilung des Preises in Firmenanteil und Eigenanteil','Größe wählen, Menge festlegen, fertig. Logo-Position und Veredelung sind fest hinterlegt, der Preis zeigt Firmen- und Eigenanteil.','workwearcenter.de/hanseatic/produkte'],
+        ['freigabe','Freigabe','shop-freigabe',1549,'Freigabeseite für Verantwortliche: offene Bestellungen mit Artikeln, Größen und Beträgen, Knöpfe zum Freigeben oder Ablehnen','Verantwortliche sehen alle offenen Bestellungen mit Person, Größen und Betrag und geben mit einem Klick frei oder lehnen mit Hinweis ab.','workwearcenter.de/hanseatic/freigaben'],
+        ['status','Bestellstatus','shop-status',766,'Bestellübersicht mit Statusleiste: freigegeben, in Produktion, fertig, versendet','Freigegeben, in Produktion, fertig, versendet: Der Status wird aus unserer Produktion heraus aktualisiert.','workwearcenter.de/hanseatic/bestellungen'],
+        ['spind','Mein Spind','shop-spind',830,'Mein Spind: erhaltene Kleidung mit Größe und Datum, Knöpfe zum Nachbestellen und Größe tauschen','Im Spind steht, was jemand schon bekommen hat. Nachbestellen in der bekannten Größe oder Umtausch beantragen geht von hier aus.','workwearcenter.de/hanseatic/spind'],
     ];
 }
 
@@ -332,7 +332,7 @@ function landing_page(): void {
     echo w_cta_buttons(true);
     echo '<p class="w-hero-note">Mustershop ohne Anmeldung testen · für Unternehmen aus Handwerk, Industrie, Zeitarbeit, Pflege und Verwaltung</p>';
     echo '</div><div class="w-stage">';
-    echo w_shot('shop-start','Echter Firmenshop im WorkwearCenter: Startseite mit Jahresbudget, letzter Bestellung und Kollektion des Musterunternehmens KANTENWERK',1440,950,'workwearcenter.de/kantenwerk',true,'w-stage-shot');
+    echo w_shot('shop-start','Echter Firmenshop im WorkwearCenter: Startseite mit Jahresbudget, letzter Bestellung und Kollektion des Musterunternehmens Hanseatic Haustechnik',1440,950,'workwearcenter.de/hanseatic',true,'w-stage-shot');
     echo '<figure class="w-stage-photo"><img src="/assets/media/work/jacke-brust.webp" alt="Bedrucktes Firmenlogo auf der Brust einer Arbeitsjacke" width="800" height="800" loading="lazy" decoding="async"><figcaption>Gedruckt in '.e($city).'</figcaption></figure>';
     echo '<div class="w-float w-f-approve" aria-hidden="true"><span class="ic">'.w_icon('check').'</span><div><small>Freigabe erteilt</small><strong>Teamleitung Montage</strong><span>Bestellung von Lukas Becker</span></div></div>';
     echo '<div class="w-float w-f-stitch" aria-hidden="true"><small>Hinterlegt</small><div class="row"><span>Verfahren</span><b>Druck</b></div><div class="row"><span>Position</span><b>Brust links</b></div></div>';
@@ -376,7 +376,7 @@ function landing_page(): void {
     echo '<section class="w-sec w-dark w-demo-sec" id="mustershop"><div class="w-wrap">';
     s_head('Mustershop live testen','Keine Prospektbilder: So sieht ein echter Firmenshop aus. Probier ihn selbst aus, ohne Anmeldung.','Selbst ausprobieren');
     w_showcase();
-    echo '<div class="w-demo-cta w-reveal"><div><b>So sieht dein Firmenshop aus.</b><span>Die Ansichten stammen aus dem Firmenshop, mit Beispieldaten des Musterunternehmens KANTENWERK. Im Mustershop wählst du selbst Artikel, Größe und Menge.</span></div>'.w_cta_buttons(true,'w-cta-tight').'</div>';
+    echo '<div class="w-demo-cta w-reveal"><div><b>So sieht dein Firmenshop aus.</b><span>Die Ansichten stammen aus dem Firmenshop, mit Beispieldaten des Musterunternehmens Hanseatic Haustechnik. Im Mustershop wählst du selbst Artikel, Größe und Menge.</span></div>'.w_cta_buttons(true,'w-cta-tight').'</div>';
     echo '</div></section>';
 
     w_customers_section();
@@ -524,7 +524,7 @@ function services_page(): void {
     ];
     foreach($rows as $i=>[$img,$product,$title,$text,$items]){
         echo '<article class="w-row'.($i%2?' rev':'').' w-reveal"><div class="w-row-img'.($product?' product':'').($img==='shot'?' shot':'').'">';
-        if($img==='shot')echo w_shot('shop-artikel','Produktansicht im Firmenshop mit Größenwahl, hinterlegter Veredelung und Preisaufteilung',1440,900,'workwearcenter.de/kantenwerk/produkte');
+        if($img==='shot')echo w_shot('shop-artikel','Produktansicht im Firmenshop mit Größenwahl, hinterlegter Veredelung und Preisaufteilung',1440,900,'workwearcenter.de/hanseatic/produkte');
         else echo '<img src="'.e($img).'" loading="lazy" decoding="async" alt="'.e($product?'Graphitfarbener Hoodie, Beispiel aus der Kollektion':'Gedrucktes Firmenlogo im Detail').'">';
         echo '</div><div class="w-row-copy"><small>0'.($i+1).'</small><h2>'.e($title).'</h2><p>'.e($text).'</p><ul class="w-ticks">';
         foreach($items as $item)echo '<li>'.e($item).'</li>';
