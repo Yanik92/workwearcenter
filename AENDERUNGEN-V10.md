@@ -2,6 +2,13 @@
 
 Stand: 26. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
 
+## 10.26.1 – Startseite mit Werkstattfoto und Anfragefeld
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
+
+- Startseite oben: rechts randlos das Foto der Stollhans-Softshelljacke aus der eigenen Werkstatt, darauf der Firmenshop auf dem Handy.
+- Statt zwei Knöpfen ein Anfragefeld: Firmenname eintippen, „Shop anfragen“ klicken. Die Seite springt zum Kurzformular unten, der Firmenname ist schon eingetragen. Darunter der Link zum Beispiel-Shop.
+- Neuer Abschnitt „Shop und Produktion aus einer Hand“ mit drei echten Werkstattfotos und den vier Schritten von der Anfrage bis zur Lieferung.
+
 ## 10.26.0 – Website hell und sachlich, neue Startseite
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Firmenshops, Mustershop-Inhalt und Admin bleiben unverändert.
 
