@@ -58,7 +58,7 @@ function global_footer(): void {
     $mail=s_mail();
     echo '<footer class="s-footer"><div class="s-wrap"><div class="s-footer-grid">';
     echo '<div class="s-footer-brand">'.s_public_brand_html(false).'<p>Firmenshop für Arbeitskleidung mit Stick und Druck aus eigener Produktion in Salzkotten.</p></div>';
-    echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/leistungen">Leistungen</a><a href="/so-funktionierts">Firmenshop & Ablauf</a><a href="/mustershop">Mustershop ansehen</a><a href="/anfrage">Firmenshop anfragen</a></nav></div>';
+    echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/leistungen">Leistungen</a><a href="/so-funktionierts">Firmenshop & Ablauf</a><a href="/mustershop">Mustershop ansehen</a><a href="/anfrage">Shop anfragen</a></nav></div>';
     echo '<div><h2>Yanik Textildruck</h2><nav aria-label="Unternehmen"><a href="/ueber-uns">Über uns</a><a href="/kontakt">Kontakt</a><a href="/zugang">Kundenportal</a></nav></div>';
     echo '<div><h2>Kontakt</h2><p>'.e($company).'<br>'.e($street).'<br>'.e($city).'</p><p><a href="mailto:'.e($mail).'">'.e($mail).'</a></p></div>';
     echo '</div><div class="s-footer-bottom"><span>© '.date('Y').' '.e(yw_text('footer_text')).'</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
@@ -108,16 +108,21 @@ function w_icon(string $name): string {
         'briefcase'=>'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V4h6v3M3 13h18"/>',
         'upload'=>'<path d="M12 16V4M7 9l5-5 5 5M4 16v4h16v-4"/>',
         'link'=>'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7L11.5 6.8M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/>',
+        'euro'=>'<path d="M17 6.5A7 7 0 1 0 17 17.5M4 10h9M4 14h9"/>',
+        'box'=>'<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
+        'shop'=>'<path d="M4 9l1.5-5h13L20 9M4 9h16v11H4zM9 20v-6h6v6"/>',
+        'shirt'=>'<path d="M8 3 3 6l2 5 3-1v11h8V10l3 1 2-5-5-3a4 4 0 0 1-8 0z"/>',
+        'doc'=>'<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/>',
         'eye'=>'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     ];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'.($paths[$name]??'').'</svg>';
 }
 
-/** Logo für dunkle Flächen (Kopf und Fuß der Website). */
+/** Logo für helle Flächen (ab 10.26 sind Kopf und Fuß der Website hell): dunkles „Workwear“, oranges „Center“. */
 function w_logo_path(): string {
-    $logo=yw_site_logo_path(true);
+    $logo=yw_site_logo_path(false);
     $defaults=['assets/media/workwearcenter-logo.png','assets/media/workwearcenter-logo-dunkel.png','assets/media/workwearcenter-logo-anthrazit.png','assets/media/workwearcenter-logo-ice.svg','assets/media/workwearcenter-logo-warm.svg'];
-    return in_array($logo,$defaults,true)?'assets/media/workwearcenter-logo.png':$logo;
+    return in_array($logo,$defaults,true)?'assets/media/workwearcenter-logo-dunkel.png':$logo;
 }
 
 /** Ort aus der Impressumsanschrift („33154 Salzkotten“ → „Salzkotten“). */
@@ -126,38 +131,38 @@ function w_city(): string {
     return trim((string)preg_replace('/^\d{4,5}\s+/u','',$city))?:'Salzkotten';
 }
 
-/** Die beiden Handlungsaufforderungen der ganzen Website (10.23: überall gleich benannt). */
-function w_cta_buttons(bool $onDark=true,string $class=''): string {
-    return '<div class="w-cta'.($class!==''?' '.$class:'').'"><a class="w-btn w-btn-o" href="/anfrage">Firmenshop anfragen'.w_icon('arrow').'</a><a class="w-btn '.($onDark?'w-btn-ghost':'w-btn-line').'" href="/mustershop">'.w_icon('play').'Mustershop live testen</a></div>';
+/** Die beiden Handlungsaufforderungen der ganzen Website (10.26: „Unverbindlich Shop anfragen“ und Beispiel-Shop). */
+function w_cta_buttons(bool $onDark=false,string $class=''): string {
+    return '<div class="w-cta'.($class!==''?' '.$class:'').'"><a class="w-btn w-btn-o" href="/anfrage">Unverbindlich Shop anfragen'.w_icon('arrow').'</a><a class="w-btn '.($onDark?'w-btn-ghost':'w-btn-line').'" href="/mustershop">Beispiel-Shop ansehen</a></div>';
 }
 
+/** Kopf der Website (10.26): hell, wenige Punkte, Kunden-Login rechts abgetrennt. Keine Telefonnummer. */
 function w_header(): void {
-    $path=path_only();$mail=s_mail();$o=yw_operator();
-    $links=['/so-funktionierts'=>'So funktioniert’s','/leistungen'=>'Leistungen','/branchen'=>'Branchen','/mustershop'=>'Mustershop','/ueber-uns'=>'Über uns','/kontakt'=>'Kontakt'];
+    $path=path_only();$home=$path==='/';
+    $links=['/so-funktionierts'=>'So funktioniert’s','/leistungen'=>'Leistungen','/#referenzen'=>'Referenzen','/#faq'=>'FAQ'];
     $nav='';foreach($links as $href=>$label)$nav.='<li><a href="'.$href.'"'.($path===$href?' aria-current="page"':'').'>'.e($label).'</a></li>';
-    $tel=yw_tel_href($o['phone']);
+    $ask=$home?'#anfrage':'/anfrage';
     echo '<a class="w-skip" href="#inhalt">Zum Inhalt springen</a>';
-    echo '<div class="w-topline"><div class="w-wrap"><span><i class="dot"></i>Firmenshop + eigene Stickerei und Druckerei in '.e(w_city()).'</span><span>'.($tel!==''?'<a href="'.e($tel).'">'.e($o['phone']).'</a> · ':'').'<a href="mailto:'.e($mail).'">'.e($mail).'</a></span></div></div>';
     echo '<header class="w-nav"><div class="w-wrap">';
-    echo '<a class="w-brand" href="/" aria-label="WorkwearCenter Startseite"><img src="/'.e(w_logo_path()).'" alt="WorkwearCenter" width="200" height="30"></a>';
-    echo '<nav aria-label="Hauptnavigation" style="display:contents"><ul class="w-menu">'.$nav.'</ul></nav>';
-    echo '<a class="w-login" href="/zugang"'.($path==='/zugang'?' aria-current="page"':'').'>'.w_icon('user').'Login</a>';
-    echo '<a class="w-btn w-btn-o w-btn-sm" href="/anfrage"><span><span class="w-hide-xs">Firmenshop </span>anfragen</span></a>';
+    echo '<a class="w-brand" href="/" aria-label="WorkwearCenter Startseite"><img src="/'.e(w_logo_path()).'" alt="WorkwearCenter" width="252" height="32"></a>';
+    echo '<nav aria-label="Hauptnavigation" class="w-menu-nav"><ul class="w-menu">'.$nav.'</ul></nav>';
+    echo '<div class="w-nav-end"><a class="w-login" href="/zugang"'.($path==='/zugang'?' aria-current="page"':'').'>'.w_icon('user').'Kunden-Login</a>';
+    echo '<a class="w-btn w-btn-o w-btn-sm" href="'.$ask.'">Shop anfragen</a></div>';
     echo '<details class="w-burger"><summary aria-label="Menü öffnen"><span></span><span></span><span></span></summary><nav aria-label="Mobile Navigation"><a href="/">Startseite</a>';
-    foreach($links as $href=>$label)echo '<a href="'.$href.'"'.($path===$href?' aria-current="page"':'').'>'.e($label).'</a>';
-    echo '<a href="/zugang">Kundenlogin</a><a class="w-btn w-btn-o" href="/anfrage">Firmenshop anfragen</a><a class="w-btn w-btn-ghost" href="/mustershop">Mustershop live testen</a></nav></details>';
+    foreach($links+['/branchen'=>'Branchen','/mustershop'=>'Beispiel-Shop','/ueber-uns'=>'Über uns','/kontakt'=>'Kontakt'] as $href=>$label)echo '<a href="'.$href.'"'.($path===$href?' aria-current="page"':'').'>'.e($label).'</a>';
+    echo '<a class="w-btn w-btn-o" href="'.$ask.'">Unverbindlich Shop anfragen</a><a class="w-burger-login" href="/zugang">'.w_icon('user').'Kunden-Login für bestehende Kunden</a></nav></details>';
     echo '</div></header>';
 }
 
 function w_footer(): void {
-    $o=yw_operator();$mail=s_mail();$tel=yw_tel_href($o['phone']);
+    $o=yw_operator();$mail=s_mail();
     echo '<footer class="w-footer"><div class="w-wrap"><div class="w-fgrid">';
-    echo '<div><img src="/'.e(w_logo_path()).'" alt="WorkwearCenter" width="190" height="28" loading="lazy"><p>Der Firmenshop für Arbeitskleidung mit Logo. Eine Eigenentwicklung von '.e($o['company']).', mit Stick und Druck aus eigener Produktion in '.e(w_city()).'.</p>';
-    echo '<address class="w-faddr"><strong>'.e($o['company']).'</strong><br>'.e($o['street']).'<br>'.e($o['city']).'<br>'.($tel!==''?'<a href="'.e($tel).'">'.e($o['phone']).'</a><br>':'').'<a href="mailto:'.e($mail).'">'.e($mail).'</a></address></div>';
-    echo '<div><h2>Firmenshop</h2><nav aria-label="Firmenshop"><a href="/so-funktionierts">So funktioniert’s</a><a href="/mustershop">Mustershop live testen</a><a href="/arbeitskleidung-bestellsystem">Bestellsystem &amp; Freigaben</a><a href="/mitarbeitershop-arbeitskleidung">Mitarbeitershop</a><a href="/workwear-management">Workwear Management</a></nav></div>';
-    echo '<div><h2>Leistungen</h2><nav aria-label="Leistungen"><a href="/leistungen">Kleidung &amp; Veredelung</a><a href="/branchen">Branchen</a><a href="/#faq">Häufige Fragen</a><a href="/anfrage">Firmenshop anfragen</a></nav></div>';
-    echo '<div><h2>Unternehmen</h2><nav aria-label="Unternehmen"><a href="/ueber-uns">Über uns</a><a href="/kontakt">Kontakt</a><a href="/zugang">Kundenlogin</a><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></nav></div>';
-    echo '</div><div class="w-fbottom"><span>© '.date('Y').' WorkwearCenter · '.e($o['company']).', '.e(w_city()).' · Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL.</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
+    echo '<div><img src="/'.e(w_logo_path()).'" alt="WorkwearCenter" width="220" height="28" loading="lazy"><p>Der Firmenshop für Arbeitskleidung. Ein Angebot von '.e($o['company']).', mit Stick und Druck aus eigener Produktion.</p>';
+    echo '<address class="w-faddr">'.e($o['company']).'<br>'.e($o['street']).'<br>'.e($o['city']).'<br><a href="mailto:'.e($mail).'">'.e($mail).'</a></address></div>';
+    echo '<div><h2>WorkwearCenter</h2><nav aria-label="WorkwearCenter"><a href="/so-funktionierts">So funktioniert’s</a><a href="/leistungen">Leistungen</a><a href="/#referenzen">Referenzen</a><a href="/mustershop">Beispiel-Shop</a><a href="/#faq">Häufige Fragen</a></nav></div>';
+    echo '<div><h2>Themen</h2><nav aria-label="Themen"><a href="/branchen">Branchen</a><a href="/arbeitskleidung-bestellsystem">Bestellsystem &amp; Freigaben</a><a href="/mitarbeitershop-arbeitskleidung">Mitarbeitershop</a><a href="/workwear-management">Workwear Management</a></nav></div>';
+    echo '<div><h2>Unternehmen</h2><nav aria-label="Unternehmen"><a href="/ueber-uns">Über uns</a><a href="/kontakt">Kontakt</a><a href="/anfrage">Shop anfragen</a><a href="/zugang">Kunden-Login</a></nav></div>';
+    echo '</div><div class="w-fbottom"><span>© '.date('Y').' WorkwearCenter · '.e($o['company']).', '.e(w_city()).'</span><span><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></span></div></div></footer>';
 }
 
 function hp_check_icon(): string { return w_icon('check'); }
@@ -171,15 +176,15 @@ function hp_page_start(string $documentTitle=''): void {
 
 function hp_page_end(): void { echo '</main>'; w_footer(); render_foot(); }
 
-/** Kopf einer Unterseite: Navy-Band mit Brotkrumen und Nahtkante. $actions=true zeigt die zwei Standard-Knöpfe. */
+/** Kopf einer Unterseite: heller Bereich mit Brotkrumen. $actions=true zeigt die zwei Standard-Knöpfe. */
 function hp_page_hero(string $label,string $title,string $introHtml,array|bool $actions=[],bool $compact=false,string $eyebrow=''): void {
     echo '<section class="w-pagehead'.($compact?' compact':'').'"><div class="w-wrap"><nav class="w-crumbs" aria-label="Brotkrumen"><a href="/">Start</a><span aria-hidden="true">/</span><span aria-current="page">'.e($label).'</span></nav>';
-    if($eyebrow!=='')echo '<span class="w-eyebrow on-dark w-pagehead-eyebrow">'.e($eyebrow).'</span>';
+    if($eyebrow!=='')echo '<span class="w-eyebrow w-pagehead-eyebrow">'.e($eyebrow).'</span>';
     echo '<h1>'.e($title).'</h1>';
     if($introHtml!=='')echo '<div class="w-lead">'.$introHtml.'</div>';
-    if($actions===true)echo w_cta_buttons(true);
-    elseif(is_array($actions)&&$actions){echo '<div class="w-cta">';foreach($actions as [$text,$href,$primary])echo '<a class="w-btn '.($primary?'w-btn-o':'w-btn-ghost').'" href="'.e($href).'">'.e($text).($primary?w_icon('arrow'):'').'</a>';echo '</div>';}
-    echo '</div><span class="seam" aria-hidden="true"></span></section>';
+    if($actions===true)echo w_cta_buttons();
+    elseif(is_array($actions)&&$actions){echo '<div class="w-cta">';foreach($actions as [$text,$href,$primary])echo '<a class="w-btn '.($primary?'w-btn-o':'w-btn-line').'" href="'.e($href).'">'.e($text).($primary?w_icon('arrow'):'').'</a>';echo '</div>';}
+    echo '</div></section>';
 }
 
 /** Abschnittskopf: Augenbraue, Überschrift und kurzer Text. */
@@ -187,11 +192,11 @@ function s_head(string $title,string $text='',string $eyebrow='',string $id=''):
     echo '<div class="w-head w-reveal"><div>'.($eyebrow!==''?'<span class="w-eyebrow">'.e($eyebrow).'</span>':'').'<h2'.($id!==''?' id="'.e($id).'"':'').'>'.e($title).'</h2></div>'.($text!==''?'<p>'.e($text).'</p>':'').'</div>';
 }
 
-/** Abschluss jeder Seite: dunkle Karte mit den zwei Standard-Knöpfen. */
-function hp_cta_band(string $title='Dein Firmenshop für Arbeitskleidung.',string $text='Schick uns die Eckdaten, gern mit Logo. Wir melden uns persönlich mit einem Vorschlag für Kollektion, Veredelung und Shop. Oder du schaust dir vorher den Mustershop an.'): void {
+/** Abschluss jeder Unterseite: navyblauer Kasten mit den zwei Standard-Knöpfen. */
+function hp_cta_band(string $title='Dein Firmenshop für Arbeitskleidung.',string $text='Schick uns die Eckdaten, gern mit Logo. Wir melden uns per E-Mail mit einem Vorschlag für Kollektion und Veredelung. Der Shop ist für dein Unternehmen kostenfrei.'): void {
     $mail=s_mail();
-    echo '<section class="w-final"><div class="w-wrap"><div class="box w-reveal"><div style="position:relative;z-index:1"><span class="w-eyebrow on-dark">Nächster Schritt</span><h2>'.e($title).'</h2><p>'.e($text).'</p></div>';
-    echo '<div class="actions"><a class="w-btn w-btn-o" href="/anfrage">Firmenshop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-ghost" href="/mustershop">'.w_icon('play').'Mustershop live testen</a><small>Unverbindlich · Antwort persönlich per E-Mail · <a class="mail" href="mailto:'.e($mail).'">'.e($mail).'</a></small></div>';
+    echo '<section class="w-final"><div class="w-wrap"><div class="box"><div><h2>'.e($title).'</h2><p>'.e($text).'</p></div>';
+    echo '<div class="actions"><a class="w-btn w-btn-o" href="/anfrage">Unverbindlich Shop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-ghost" href="/mustershop">Beispiel-Shop ansehen</a><small>Kostenfrei und unverbindlich · <a class="mail" href="mailto:'.e($mail).'">'.e($mail).'</a></small></div>';
     echo '</div></div></section>';
 }
 
@@ -209,8 +214,8 @@ function w_faq_list(array $faqs): void {
 }
 
 /** FAQ-Abschnitt mit Einleitung links. */
-function w_faq_section(array $faqs,string $title,string $intro='Preise, Mengen und Liefertermine nennen wir dir verbindlich im Angebot.',bool $white=true): void {
-    echo '<section class="w-sec'.($white?' w-white':'').'" id="faq" aria-labelledby="w-faq-title"><div class="w-wrap w-faq-grid"><div class="w-faq-intro"><span class="w-eyebrow">Häufig gestellte Fragen</span><h2 id="w-faq-title">'.e($title).'</h2><p>'.e($intro).'</p><a class="w-btn w-btn-dark w-btn-sm" href="/anfrage">Firmenshop anfragen</a></div>';
+function w_faq_section(array $faqs,string $title,string $intro='Deine Frage ist nicht dabei? Schreib uns eine E-Mail.',bool $white=true): void {
+    echo '<section class="w-sec'.($white?' w-white':'').'" id="faq" aria-labelledby="w-faq-title"><div class="w-wrap w-faq-grid"><div class="w-faq-intro"><h2 id="w-faq-title">'.e($title).'</h2><p>'.e($intro).'</p><a class="w-btn w-btn-o w-btn-sm" href="'.(path_only()==='/'?'#anfrage':'/anfrage').'">Shop anfragen</a></div>';
     w_faq_list($faqs);
     echo '</div></section>';
 }
@@ -225,8 +230,7 @@ function w_voice_section(): void {
     $name=$p['name']!==''?$p['name']:$o['owner'];
     $role=$p['role']!==''?$p['role']:'Inhaber, '.$o['company'];
     $text=$p['text']!==''?$p['text']:'Ich berate dich persönlich, vom ersten Muster bis zur Lieferung. Kein Callcenter, keine Warteschleife.';
-    $tel=yw_tel_href($o['phone']);
-    echo '<section class="w-sec w-sec-flush"><div class="w-wrap"><div class="w-voice'.($c['has_quote']?'':' single').' w-reveal">';
+    echo '<section class="w-sec w-sec-flush"><div class="w-wrap"><div class="w-voice'.($c['has_quote']?'':' single').'">';
     if($c['has_quote']){
         $q=$c['quote'];
         $initials=implode('',array_map(fn($w)=>mb_strtoupper(mb_substr($w,0,1)),array_slice(preg_split('/\s+/u',trim($q['name']))?:[],0,2)));
@@ -235,8 +239,8 @@ function w_voice_section(): void {
         echo '</figure>';
     }
     echo '<aside class="w-person"><div class="av">'.($p['photo']!==''?'<img src="/'.e($p['photo']).'" alt="'.e($name).'" width="96" height="96" loading="lazy" decoding="async">':e(mb_strtoupper(mb_substr($name,0,1)))).'</div>';
-    echo '<div class="w-person-copy"><span class="w-eyebrow">Dein Ansprechpartner</span><h3>'.e($name).'</h3><p style="font-weight:700;color:var(--ink)">'.e($role).' · '.e(w_city()).'</p><p>'.e($text).'</p></div>';
-    echo '<div class="row"><a class="w-btn w-btn-dark w-btn-sm" href="/anfrage">Firmenshop anfragen</a>'.($tel!==''?'<a class="w-btn w-btn-line w-btn-sm" href="'.e($tel).'">'.w_icon('phone').e($o['phone']).'</a>':'').'<a class="w-btn w-btn-line w-btn-sm" href="mailto:'.e($mail).'">'.w_icon('mail').'E-Mail</a></div></aside>';
+    echo '<div class="w-person-copy"><span class="w-eyebrow">Dein Ansprechpartner</span><h3>'.e($name).'</h3><p class="role">'.e($role).' · '.e(w_city()).'</p><p>'.e($text).'</p></div>';
+    echo '<div class="row"><a class="w-btn w-btn-o w-btn-sm" href="/anfrage">Shop anfragen</a><a class="w-btn w-btn-line w-btn-sm" href="mailto:'.e($mail).'">'.w_icon('mail').'E-Mail</a></div></aside>';
     echo '</div></div></section>';
 }
 
@@ -293,117 +297,171 @@ function w_showcase(bool $withPhone=true): void {
 
 /* ---------- Startseite ---------- */
 
-/** Häufige Fragen der Startseite (auch als FAQPage in den strukturierten Daten). */
+/** Häufige Fragen der Startseite (auch als FAQPage in den strukturierten Daten). 10.26: Reihenfolge und Antworten nach Jens’ Briefing. */
 function w_home_faqs(): array {
-    $o=yw_operator();
     return [
-        ['Was ist WorkwearCenter?','WorkwearCenter ist ein eigener, geschützter Firmenshop für die Arbeitskleidung deines Unternehmens. Darin sind eure freigegebenen Artikel mit Logo und Veredelung hinterlegt, Mitarbeitende bestellen mit eigenem Zugang und Verantwortliche geben frei. Die Kleidung besticken, bedrucken und liefern wir als '.$o['company'].' aus '.w_city().' selbst.'],
-        ['Was unterscheidet WorkwearCenter von einem normalen Onlineshop für Arbeitskleidung?','Ein normaler Onlineshop verkauft an alle. Dein Firmenshop zeigt nur eure abgestimmte Kollektion mit eurem Logo, kennt eure Mitarbeitenden, Budgets und Freigaben und gibt jede freigegebene Bestellung direkt an unsere Produktion weiter.'],
-        ['Warum ist das besser als Excel-Listen, E-Mails oder einzelne Bestellungen?','Weil niemand mehr Größen einsammeln, abtippen und nachfragen muss. Jede Person wählt selbst aus dem, was für sie freigegeben ist, der Shop prüft Budget und Stücklimits, Verantwortliche geben frei und alle sehen den aktuellen Stand der Bestellung.'],
-        ['Für welche Unternehmen ist WorkwearCenter gedacht?','Für Unternehmen, die regelmäßig einheitliche Arbeits- oder Firmenkleidung brauchen: Handwerksbetriebe, Industrie, Zeitarbeit, Pflegedienste, Kommunen, Feuerwehren und Dienstleister, vom kleinen Team bis zum Mittelständler mit mehreren Abteilungen und Standorten.'],
-        ['Kann ich den Shop vorher testen?','Ja. Im Mustershop probierst du ohne Anmeldung aus, wie ein Firmenshop aussieht: Kollektion mit Logo, Größenwahl, Beispielbudget und Preise. Lädst du bei der Anfrage dein Logo hoch, bekommst du zusätzlich eine unverbindliche Vorschau mit deinem Logo auf Musterartikeln.'],
-        ['Was brauchst du von mir für den Start?','Dein Firmenlogo, die gewünschten Artikel oder Einsatzbereiche und eine Kontaktperson. Hilfreich sind außerdem die ungefähre Teamgröße und wer Bestellungen freigeben soll. Eine bestehende Artikelliste kannst du direkt bei der Anfrage hochladen.'],
-        ['Kann eine Person für die ganze Belegschaft bestellen?','Ja. Eine berechtigte Person kann Artikel, Größen und Mengen für Beschäftigte erfassen, zum Beispiel für Kolleginnen und Kollegen ohne eigenen Zugang. Ein Sammelvorgang umfasst bis zu 20 Personen, größere Teams werden in mehreren Durchgängen erfasst. Jede Auswahl bleibt der jeweiligen Person zugeordnet.'],
-        ['Wer gibt die Bestellungen frei?','Die Personen, die ihr dafür festlegt, zum Beispiel Teamleitung, Einkauf oder Geschäftsführung. Freigeben geht im Shop oder direkt aus der E-Mail. Auf Wunsch brauchen größere Bestellungen eine zweite Freigabe.'],
-        ['Was kosten der Firmenshop und die Kleidung?','Die Preise hängen von Artikel, Veredelung und Menge ab. Nach deiner Anfrage bekommst du ein konkretes Angebot mit allen Preisen.'],
-        ['Wie lange dauern Einrichtung und Lieferung?','Das hängt vom Umfang der Kollektion, der Abstimmung der Entwürfe, der Verfügbarkeit der Ware und der Veredelung ab. Den Zeitplan und den voraussichtlichen Liefertermin nennen wir dir im Angebot und bei jedem Auftrag.'],
-        ['Gibt es eine Mindestbestellmenge?','Das stimmen wir je Artikel und Veredelung im Angebot mit dir ab.'],
-        ['Wie laufen Abrechnung und Lieferscheine?','Freigegebene Bestellungen gehen direkt in unsere eigene Auftragsverwaltung. Dort laufen Produktion, Lieferscheine und Rechnung. Du bekommst die Kleidung nach Personen sortiert und eine Rechnung wie gewohnt.'],
-        ['Brauchen Mitarbeitende eine App?','Nein. Der Firmenshop läuft im Browser auf Computer, Tablet und Smartphone, auf Wunsch in sechs Sprachen.'],
-        ['Wo sitzt WorkwearCenter?','WorkwearCenter ist ein Angebot von '.$o['company'].', '.$o['street'].', '.$o['city'].'. Dort sticken und bedrucken wir die Kleidung. Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL.'],
+        ['Was kostet der Shop?','Nichts. Einrichtung und Betrieb sind für dein Unternehmen kostenfrei. Du bezahlst nur die Kleidung, die bestellt wird.'],
+        ['Gibt es Mindestmengen?','Nein, bei Standardware nicht. Auch ein einzelnes Teil kann nachbestellt werden. Bei Sonderanfertigungen oder individuellen Artikeln stimmen wir den Ablauf vorher mit dir ab.'],
+        ['Wie lange dauert die Einrichtung?','Sobald du die Designs freigegeben hast, steht dein Shop innerhalb eines Werktags.'],
+        ['Wer bezahlt, Mitarbeiter oder Firma?','Das legst du fest. Meist zahlt die Firma und bekommt eine Rechnung. Du kannst pro Person ein Jahresbudget vergeben und auf Wunsch einen Eigenanteil festlegen, der über die Lohnabrechnung läuft.'],
+        ['Wie läuft die Freigabe der Designs ab?','Bevor wir den Shop einrichten, bekommst du für jeden Artikel einen Entwurf mit Logo, Position und Verfahren. Erst nach deiner Freigabe kommt der Artikel in den Shop. Auf Wunsch schicken wir dir vorher ein Musterteil.'],
+        ['Wie lange sind die Lieferzeiten?','Das hängt von Artikel, Veredelung und Menge ab. Den voraussichtlichen Liefertermin nennen wir dir bei jedem Auftrag, den Stand siehst du jederzeit im Shop.'],
     ];
 }
 
+/** Startseite (10.26): hell und sachlich, in der Reihenfolge der Fragen eines Entscheiders. */
 function landing_page(): void {
     $faqs=w_home_faqs();
     yw_jsonld_faq($faqs);
-    yw_jsonld_service('Firmenshop für Arbeitskleidung','Eigener, geschützter Firmenshop für Arbeitskleidung mit Firmenlogo, Mitarbeiterzugängen, Budgets, Freigaben und Bestellstatus. Veredelung (Stick, Druck, Transfer) und Lieferung durch Yanik Textildruck.','Firmenshop für Arbeitskleidung');
+    yw_jsonld_service('Firmenshop für Arbeitskleidung','Eigener, kostenfreier Firmenshop für die Arbeitskleidung eines Unternehmens: mit Firmenlogo, festen Artikeln, Mitarbeiterzugängen und zentraler Bestellung. Veredelung (Stick, Druck, Transfer) und Lieferung durch Yanik Textildruck.','Firmenshop für Arbeitskleidung');
     hp_page_start();
-    $city=w_city();
+    $city=w_city();$o=yw_operator();$mail=s_mail();
 
-    // Kopfbereich: Was ist es, für wen, welches Problem, welcher Vorteil
-    echo '<section class="w-hero w-dark"><div class="w-wrap w-hero-grid"><div class="w-hero-copy">';
-    echo '<span class="w-claim">Arbeitskleidung, die dein Team <span class="w-stitch-word">stolz<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path d="M2 12 C 50 2, 150 2, 198 12" fill="none" stroke="#ff6a13" stroke-width="4" stroke-linecap="round"/></svg></span> trägt.</span>';
-    echo '<h1>Dein Firmenshop für Arbeitskleidung.</h1>';
-    echo '<p class="w-lead">Arbeitskleidung mit Firmenlogo verwalten, freigeben und nachbestellen, mit Mitarbeiterzugängen, Budgets und eigener Textilveredelung.</p>';
-    echo '<ul class="w-hero-list">';
-    foreach(['Eigener Shop pro Unternehmen','Budgets &amp; Freigaben','Stick &amp; Druck aus eigener Produktion','Persönlicher Ansprechpartner','Einfache Nachbestellungen'] as $item)echo '<li>'.w_icon('check').$item.'</li>';
-    echo '</ul>';
-    echo w_cta_buttons(true);
-    echo '<p class="w-hero-note">Mustershop ohne Anmeldung testen · für Unternehmen aus Handwerk, Industrie, Zeitarbeit, Pflege und Verwaltung</p>';
-    echo '</div><div class="w-stage">';
-    echo w_shot('shop-start','Echter Firmenshop im WorkwearCenter: Startseite mit Jahresbudget, letzter Bestellung und Kollektion des Musterunternehmens Hanseatic Haustechnik',1440,950,'workwearcenter.de/hanseatic',true,'w-stage-shot');
-    echo '<figure class="w-stage-photo"><img src="/assets/media/work/jacke-brust.webp" alt="Bedrucktes Firmenlogo auf der Brust einer Arbeitsjacke" width="800" height="800" loading="lazy" decoding="async"><figcaption>Gedruckt in '.e($city).'</figcaption></figure>';
-    echo '<div class="w-float w-f-approve" aria-hidden="true"><span class="ic">'.w_icon('check').'</span><div><small>Freigabe erteilt</small><strong>Teamleitung Montage</strong><span>Bestellung von Lukas Becker</span></div></div>';
-    echo '<div class="w-float w-f-stitch" aria-hidden="true"><small>Hinterlegt</small><div class="row"><span>Verfahren</span><b>Druck</b></div><div class="row"><span>Position</span><b>Brust links</b></div></div>';
+    // 1. Was ist WorkwearCenter?
+    echo '<section class="w-hh"><div class="w-wrap w-hh-grid"><div class="w-hh-copy">';
+    echo '<span class="w-tag"><i aria-hidden="true"></i>Firmenshop für Arbeitskleidung</span>';
+    echo '<h1>Ein eigener Online-Shop für die Arbeitskleidung deines Unternehmens.</h1>';
+    echo '<p class="w-hh-lead">Mit eurem Logo und euren festen Artikeln. Deine Mitarbeiter bestellen selbst, oder der Einkauf bestellt zentral für alle. Druck, Stick und Versand übernehmen wir in '.e($city).'.</p>';
+    echo '<ul class="w-hh-facts"><li>'.w_icon('check').'Kostenfrei für dein Unternehmen</li><li>'.w_icon('check').'Keine Mindestmengen bei Standardware</li></ul>';
+    echo '<div class="w-cta"><a class="w-btn w-btn-o" href="#anfrage">Unverbindlich Shop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-line" href="#beispiel">Beispiel-Shop ansehen</a></div>';
+    echo '<p class="w-hh-meta"><span>'.w_icon('clock').'Shop in 1 Werktag eingerichtet</span><span>'.w_icon('pin').'Produktion in '.e($city).'</span></p>';
+    echo '</div><div class="w-hh-stage">';
+    echo w_shot('shop-start','Startseite eines Firmenshops im WorkwearCenter mit Jahresbudget, letzter Bestellung und eigener Kleidung (Beispieldaten)',1440,950,'workwearcenter.de/hanseatic',true,'w-hh-desk');
+    echo '<figure class="w-hh-phone"><img src="/assets/media/screens/shop-handy-start.webp" alt="Derselbe Firmenshop auf dem Handy" width="390" height="844" decoding="async"></figure>';
+    echo '<figure class="w-hh-photo"><img src="/assets/media/work/jacke-brust.webp" alt="Arbeitsjacke mit gedrucktem Firmenlogo auf der Brust" width="800" height="800" loading="lazy" decoding="async"><figcaption>Logo im Druck</figcaption></figure>';
     echo '</div></div></section>';
 
-    // Faktenband ohne Zahlen
-    echo '<section class="w-facts" aria-label="Das Wichtigste in Kürze"><div class="w-wrap">';
+    // Vorteilsleiste: die zwei häufigsten Einwände zuerst
+    echo '<section class="w-facts" aria-label="Das Wichtigste in Kürze"><div class="w-wrap"><ul>';
     foreach([
-        ['lock','Eigener Shop pro Firma','Geschützt, mit deinem Logo, deiner Kollektion und deinen Regeln.'],
-        ['factory','Shop und Produktion aus einer Hand','Wir sticken und drucken selbst, in unserer Werkstatt in '.$city.'.'],
-        ['globe','Mehrsprachig','Dein Team bestellt auf Deutsch, Englisch, Polnisch, Türkisch, Russisch oder Rumänisch.'],
-        ['user','Persönlich erreichbar','Ein fester Ansprechpartner statt Hotline.'],
-    ] as [$ic,$t,$x])echo '<div class="w-fact"><span class="ic">'.w_icon($ic).'</span><div><b>'.e($t).'</b><span>'.e($x).'</span></div></div>';
+        ['euro','Kostenfrei für dein Unternehmen','Keine Einrichtungs- oder Monatsgebühr',true],
+        ['box','Keine Mindestmengen bei Standardware','Auch ein einzelnes Polo nachbestellen',true],
+        ['needle','Druck und Stick im eigenen Haus','Produktion in '.$city,false],
+        ['user','Ein fester Ansprechpartner','Von der Anfrage bis zur Rechnung',false],
+    ] as [$ic,$t,$x,$key])echo '<li'.($key?' class="key"':'').'><span class="w-icb">'.w_icon($ic).'</span><div><b>'.e($t).'</b><span>'.e($x).'</span></div></li>';
+    echo '</ul></div></section>';
+
+    // 2. Für wen?
+    echo '<section class="w-sec" id="fuer-wen"><div class="w-wrap">';
+    w_sec_head('Für Unternehmen, die ihr Team einheitlich einkleiden','Vom Handwerksbetrieb mit zehn Leuten bis zum Mittelständler mit mehreren Standorten.');
+    echo '<div class="w-who-grid">';
+    foreach([
+        ['handwerk','hammer','Handwerk','Arbeitshosen, Jacken und Polos für Baustelle und Werkstatt.'],
+        ['zeitarbeit','swap','Zeitarbeit','Viele neue Mitarbeiter, wechselnde Größen, schnelle Nachbestellung.'],
+        ['industrie','factory','Industrie und Produktion','Feste Kollektion je Abteilung, Bestellung über den Einkauf.'],
+        ['pflege','heart','Pflege und soziale Dienste','Einheitliche Kleidung für Teams im Schichtdienst.'],
+        ['dienstleister','briefcase','Dienstleister','Gebäudeservice, Logistik, Gastronomie, Kundendienst.'],
+        ['kommunen','building','Kommunen und Feuerwehren','Bauhof, Verwaltung, Mannschaftsbekleidung mit Wappen.'],
+    ] as [$id,$ic,$t,$x])echo '<a class="w-card w-whocard" href="/branchen#'.e($id).'"><span class="w-icb">'.w_icon($ic).'</span><div><h3>'.e($t).'</h3><p>'.e($x).'</p></div></a>';
+    echo '</div></div></section>';
+
+    // 3. So funktioniert's
+    echo '<section class="w-sec w-alt" id="ablauf"><div class="w-wrap">';
+    w_sec_head('So funktioniert’s','Vier Schritte. Bevor der Shop online geht, gibst du jedes Design frei.');
+    echo '<ol class="w-steps4">';
+    foreach([
+        ['Abstimmung','Artikel und Veredelung festlegen','Wir stellen mit dir die Kollektion zusammen und legen fest, wo dein Logo sitzt und ob gedruckt oder gestickt wird.'],
+        ['1 Werktag','Shop wird eingerichtet','Du gibst die Entwürfe frei. Danach steht dein Shop mit Logo, Artikeln und Preisen innerhalb eines Werktags.'],
+        ['Bestellung','Mitarbeiter oder Einkauf bestellen','Jeder bestellt mit eigenem Zugang, oder eine Person bestellt zentral für das ganze Team.'],
+        ['Lieferung','Produktion, Veredelung, Versand','Wir veredeln in '.$city.', packen nach Personen und liefern an deine Adresse.'],
+    ] as $i=>[$k,$t,$x])echo '<li class="w-card"><div class="n"><b>'.($i+1).'</b><small>'.e($k).'</small></div><h3>'.e($t).'</h3><p>'.e($x).'</p></li>';
+    echo '</ol><p class="w-more"><a class="w-link" href="/so-funktionierts">Ablauf im Detail'.w_icon('arrow').'</a></p></div></section>';
+
+    // 4. Was ist enthalten?
+    echo '<section class="w-sec" id="leistungen"><div class="w-wrap w-incl"><div>';
+    w_sec_head('Was enthalten ist','Alles, was du für die Arbeitskleidung deines Teams brauchst, bei einem Anbieter.');
+    echo '<ul class="w-incl-list">';
+    foreach([
+        ['shop','Eigener Firmenshop','Geschützt, mit eurem Logo und nur euren Artikeln. Kostenfrei.'],
+        ['shirt','Textilien namhafter Marken','Polos, Shirts, Hoodies, Jacken, Hosen und Warnschutz.'],
+        ['needle','Veredelung','Stick, DTF-Druck, Textildruck und Flex, in eigener Produktion.'],
+        ['team','Mitarbeiter und Größen','Eigene Zugänge, gespeicherte Größen, neue Leute per E-Mail einladen.'],
+        ['refresh','Einfache Nachbestellung','Jeder sieht, was er schon hat, und bestellt in seiner Größe nach.'],
+        ['doc','Rechnung pro Firma','Eine Rechnung an das Unternehmen, auf Wunsch nach Kostenstelle.'],
+        ['shield','Budgets und Freigaben','Optional: Jahresbudget pro Person, Freigabe durch Teamleitung oder Einkauf.'],
+        ['globe','In sechs Sprachen','Deutsch, Englisch, Polnisch, Türkisch, Russisch, Rumänisch.'],
+    ] as [$ic,$t,$x])echo '<li><span class="w-icb">'.w_icon($ic).'</span><div><h3>'.e($t).'</h3><p>'.e($x).'</p></div></li>';
+    echo '</ul><p class="w-more"><a class="w-link" href="/leistungen">Alle Leistungen'.w_icon('arrow').'</a></p></div>';
+    echo '<div class="w-incl-media"><img class="big" src="/assets/media/work/jacke-gesamt.webp" alt="Arbeitsjacke mit Firmenlogo im Druck" width="1100" height="825" loading="lazy" decoding="async">';
+    echo '<img src="/assets/media/work/polo-wappen.webp" alt="Polo mit Wappen und Namen" width="800" height="800" loading="lazy" decoding="async">';
+    echo '<img src="'.e(s_img('about_image','/assets/media/work/stick-detail.webp')).'" alt="Firmenlogo im Detail aus unserer Produktion" width="800" height="800" loading="lazy" decoding="async"></div>';
     echo '</div></section>';
 
-    w_problem_section();
+    // 5. Vorteile
+    echo '<section class="w-sec w-alt" id="vorteile"><div class="w-wrap">';
+    w_sec_head('Was dein Unternehmen davon hat');
+    echo '<div class="w-adv-main">';
+    echo '<div class="w-card w-adv"><span class="w-icb o">'.w_icon('euro').'</span><div><h3>Der Shop kostet dich nichts</h3><p>Keine Einrichtungsgebühr, keine monatlichen Kosten. Du bezahlst nur die Kleidung, die bestellt wird.</p></div></div>';
+    echo '<div class="w-card w-adv"><span class="w-icb o">'.w_icon('box').'</span><div><h3>Keine Mindestmengen bei Standardware</h3><p>Fängt nächste Woche jemand neu an, bestellst du ein einzelnes Poloshirt nach. Mit Logo, in seiner Größe.</p></div></div>';
+    echo '</div><div class="w-adv-more">';
+    foreach([
+        ['tag','Einheitliches Auftreten','Dieselben Artikel, dieselbe Farbe, das Logo an derselben Stelle.'],
+        ['clock','Weniger Aufwand','Keine Größenlisten mehr einsammeln, abtippen und nachfragen.'],
+        ['link','Alles aus einer Hand','Shop, Ware, Veredelung, Versand und Rechnung von einem Anbieter.'],
+        ['pin','Ansprechpartner vor Ort','Wir sitzen in '.$city.' und kennen deinen Auftrag.'],
+    ] as [$ic,$t,$x])echo '<article class="w-card"><span class="w-icb">'.w_icon($ic).'</span><h3>'.e($t).'</h3><p>'.e($x).'</p></article>';
+    echo '</div></div></section>';
 
-    // So funktioniert's
-    echo '<section class="w-sec" id="ablauf"><div class="w-wrap">';
-    s_head('So funktioniert WorkwearCenter','Erst nach deiner Freigabe kommen die Artikel in den Shop. Danach bestellt dein Team, wir veredeln und liefern.','In fünf Schritten');
-    w_steps();
-    echo '<p class="w-more w-reveal"><a class="w-link" href="/so-funktionierts">Ablauf im Detail ansehen'.w_icon('arrow').'</a></p>';
+    // 6. Vertrauen
+    $trust=yw_trust_content();$case=yw_case_study();
+    echo '<section class="w-sec" id="referenzen"><div class="w-wrap">';
+    if($trust['logos']){
+        w_sec_head('Diese Unternehmen bestellen über WorkwearCenter');
+        echo '<ul class="w-logos" aria-label="Logos von Kundenunternehmen">';
+        foreach($trust['logos'] as $logo)echo '<li class="w-card"><img src="/'.e($logo['path']).'" alt="'.e($logo['name']!==''?'Logo '.$logo['name']:'Kundenlogo').'" loading="lazy" decoding="async"></li>';
+        echo '</ul>';
+    }else w_sec_head('Referenzen','Unternehmen aus der Region bestellen ihre Arbeitskleidung bereits über einen eigenen Firmenshop.');
+    if($case['show']){
+        echo '<article class="w-card w-case2"><div><span class="w-tag">'.e($case['industry']).'</span><h3>'.e($case['title']).'</h3></div><dl><div><dt>Ausgangslage</dt><dd>'.e($case['situation']).'</dd></div><div><dt>Lösung</dt><dd>'.e($case['solution']).'</dd></div><div><dt>Ergebnis</dt><dd>'.e($case['result']).'</dd></div></dl></article>';
+    }
+    if($trust['has_quote']){
+        $q=$trust['quote'];
+        echo '<figure class="w-card w-quote2"><blockquote><p>„'.nl2br(e(trim($q['text'],"„“\"' "))).'“</p></blockquote>'.($q['name']!==''||$q['company']!==''?'<figcaption><b>'.e($q['name']).'</b>'.($q['company']!==''?' · '.e($q['company']):'').'</figcaption>':'').'</figure>';
+    }
+    // Ohne Ansprechpartner-Foto (Admin → Inhalte) bleibt die Karte einspaltig, damit kein Werkstattbild doppelt erscheint.
+    $p=$trust['contact'];
+    echo '<div class="w-card w-about'.($p['photo']===''?' no-img':'').'">'.($p['photo']!==''?'<img src="/'.e($p['photo']).'" alt="'.e($p['name']?:$o['owner']).'" width="600" height="600" loading="lazy" decoding="async">':'').'<div class="w-about-copy">';
+    echo '<h3>Hinter WorkwearCenter steht '.e($o['company']).'</h3><ul class="w-pills"><li>Seit 2023</li><li>Eigene Stick- und Druckproduktion</li><li>'.e($city).'</li></ul>';
+    echo '<p>Seit 2023 besticken und bedrucken wir Kleidung für Unternehmen aus '.e($city).', Paderborn und ganz OWL. WorkwearCenter haben wir selbst entwickelt, weil wir Größenlisten und Nachbestellungen lange genug von Hand sortiert haben.</p>';
+    echo '<p class="sig">'.e($o['owner']).', Inhaber · '.e($o['company']).', '.e($o['street']).', '.e($o['city']).'</p><a class="w-link" href="/ueber-uns">Mehr über uns'.w_icon('arrow').'</a></div></div>';
     echo '</div></section>';
 
-    // Funktionen mit Nutzen
-    echo '<section class="w-sec w-white" id="funktionen"><div class="w-wrap">';
-    s_head('Alles, was dein Unternehmen für Arbeitskleidung braucht','Jede Funktion löst ein Problem, das wir aus dem Alltag unserer Firmenkunden kennen.','Funktionen');
-    w_features();
-    echo '</div></section>';
+    // 7. Beispiel-Shop
+    echo '<section class="w-sec w-alt" id="beispiel"><div class="w-wrap">';
+    w_sec_head('So sieht dein Shop aus','Ansichten aus einem echten Firmenshop mit Beispieldaten. Den Beispiel-Shop kannst du ohne Anmeldung selbst ausprobieren.',true);
+    echo '<div class="w-shots">';
+    echo '<figure>'.w_shot('shop-start','Startseite eines Firmenshops mit Budget und letzter Bestellung',1440,950).'<figcaption><b>Startseite</b>Budget, letzte Bestellung und die eigene Kleidung.</figcaption></figure>';
+    echo '<figure>'.w_shot('shop-artikel','Artikelseite mit Größenwahl und hinterlegter Veredelung',1440,900,'workwearcenter.de/hanseatic/produkte').'<figcaption><b>Artikel</b>Größe wählen, Logo und Veredelung sind hinterlegt.</figcaption></figure>';
+    echo '<figure>'.w_phone('shop-handy-start','Firmenshop auf dem Handy').'<figcaption><b>Auf dem Handy</b>Bestellen ohne App.</figcaption></figure>';
+    echo '</div><div class="w-center"><a class="w-btn w-btn-line" href="/mustershop">Beispiel-Shop öffnen'.w_icon('arrow').'</a></div></div></section>';
 
-    w_one_hand_section();
-    w_workshop_section();
+    // 8. FAQ
+    w_faq_section($faqs,'Häufige Fragen','Deine Frage ist nicht dabei? Schreib uns an '.$mail.'.');
 
-    // Branchen
-    echo '<section class="w-sec" id="branchen"><div class="w-wrap">';
-    s_head('Für welche Unternehmen eignet sich WorkwearCenter?','Überall, wo mehrere Menschen einheitliche Kleidung tragen und jemand den Überblick behalten muss.','Branchen');
-    w_industries_grid();
-    echo '</div></section>';
-
-    // Mustershop
-    echo '<section class="w-sec w-dark w-demo-sec" id="mustershop"><div class="w-wrap">';
-    s_head('Mustershop live testen','Keine Prospektbilder: So sieht ein echter Firmenshop aus. Probier ihn selbst aus, ohne Anmeldung.','Selbst ausprobieren');
-    w_showcase();
-    echo '<div class="w-demo-cta w-reveal"><div><b>So sieht dein Firmenshop aus.</b><span>Die Ansichten stammen aus dem Firmenshop, mit Beispieldaten des Musterunternehmens Hanseatic Haustechnik. Im Mustershop wählst du selbst Artikel, Größe und Menge.</span></div>'.w_cta_buttons(true,'w-cta-tight').'</div>';
-    echo '</div></section>';
-
-    w_customers_section();
-    w_voice_section();
-    w_faq_section($faqs,'Was du vor der Anfrage wissen solltest.');
-    hp_cta_band();
+    // 9. Anfrage
+    w_home_inquiry();
     hp_page_end();
 }
 
-/** „Schluss mit Excel, Zetteln und Einzelbestellungen“: Problem vor Funktion. */
-function w_problem_section(): void {
-    echo '<section class="w-sec w-white" id="problem"><div class="w-wrap">';
-    s_head('Schluss mit Excel, Zetteln und Einzelbestellungen','Kennst du das? Dann kennst du den Grund, warum es WorkwearCenter gibt.','Das Problem');
-    echo '<div class="w-versus w-reveal"><div class="w-vs-col bad"><h3>So läuft es heute oft</h3><ul>';
-    foreach(['Größenlisten in Excel, die nie aktuell sind','Bestellungen per WhatsApp, E-Mail und Zuruf','Zettelwirtschaft am Schwarzen Brett','Wiederholtes Nachfragen nach Größe und Menge','Falsche Artikel, falsche Größen, falsche Logo-Position','Kein Überblick, wie viel Budget schon weg ist','Freigaben, die niemand dokumentiert','Jede Nachbestellung fängt wieder von vorne an'] as $x)echo '<li>'.w_icon('x').e($x).'</li>';
-    echo '</ul></div><div class="w-vs-arrow" aria-hidden="true">'.w_icon('arrow').'</div><div class="w-vs-col good"><h3>Mit deinem Firmenshop</h3><ul>';
-    foreach(['Jede Person bestellt selbst mit eigenem Zugang','Alle Bestellungen an einem Ort, nichts geht verloren','Nur freigegebene Artikel mit fest hinterlegtem Logo','Größe wird gewählt, nicht weitergesagt','Logo, Position und Veredelung sind je Artikel festgelegt','Budget pro Person, automatisch mitgerechnet','Freigabe per Klick, nachvollziehbar gespeichert','Nachbestellen mit einem Klick in der bekannten Größe'] as $x)echo '<li>'.w_icon('check').e($x).'</li>';
-    echo '</ul></div></div>';
-    echo '<p class="w-versus-sum w-reveal"><strong>WorkwearCenter bündelt alles in einem zentralen Firmenshop:</strong> Kollektion, Mitarbeitende, Budgets, Freigaben, Bestellstatus und die Verbindung zu unserer Produktion.</p>';
-    echo '</div></section>';
+/** Abschnittskopf ohne Augenbraue (10.26). */
+function w_sec_head(string $title,string $text='',bool $center=false): void {
+    echo '<div class="w-sh'.($center?' c':'').'"><h2>'.e($title).'</h2>'.($text!==''?'<p>'.e($text).'</p>':'').'</div>';
 }
 
-/** Ablauf in fünf Schritten (Startseite). */
-function w_steps(): void {
-    echo '<ol class="w-steps" data-fill>';
-    foreach([['chat','Anfrage','Eckdaten senden, gern mit Logo und Artikelliste.'],['plus','Abstimmung','Kollektion, Logo-Position, Veredelung und Preise festlegen.'],['check','Freigabe','Du gibst den Entwurf frei, wir richten den Shop ein.'],['cart','Team bestellt','Jede Person selbst oder gesammelt, mit Freigabe.'],['truck','Lieferung','Wir veredeln, packen nach Personen und liefern.']] as $i=>[$ic,$t,$x])echo '<li class="w-step" data-fill-item><div class="n">'.w_icon($ic).'</div><small>SCHRITT '.($i+1).'</small><h3>'.e($t).'</h3><p>'.e($x).'</p></li>';
-    echo '</ol>';
+/** Kurzes Anfrageformular der Startseite (Firma, Ansprechpartner, Mitarbeiterzahl, E-Mail). Verarbeitung wie /anfrage. */
+function w_home_inquiry(): void {
+    $mail=s_mail();
+    echo '<section class="w-ask" id="anfrage"><div class="w-wrap"><div class="w-ask-box"><div>';
+    echo '<h2>Unverbindlich Shop anfragen</h2><p class="w-ask-lead">Schick uns vier Angaben. Wir melden uns per E-Mail mit einem Vorschlag für Kollektion und Veredelung.</p>';
+    echo '<ul><li>'.w_icon('check').'Kostenfrei und unverbindlich</li><li>'.w_icon('check').'Logo und Artikelliste kannst du später nachreichen</li><li>'.w_icon('check').'<span>Oder direkt an <a href="mailto:'.e($mail).'">'.e($mail).'</a></span></li></ul></div>';
+    echo '<form method="post" action="/anfrage" class="w-form w-ask-form">'.csrf_field();
+    echo '<div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>';
+    echo '<div class="row"><label>Firma<input name="company" autocomplete="organization" maxlength="190" required placeholder="Name des Unternehmens"></label><label>Ansprechpartner<input name="name" autocomplete="name" maxlength="190" required placeholder="Vor- und Nachname"></label></div>';
+    echo '<div class="row"><label><span>Anzahl Mitarbeiter <small>ungefähr</small></span><input type="number" name="employees" min="1" max="100000" inputmode="numeric" placeholder="z. B. 25"></label><label>E-Mail<input type="email" name="email" autocomplete="email" maxlength="190" required placeholder="name@firma.de"></label></div>';
+    echo '<label class="w-check"><input type="checkbox" name="privacy" value="1" required><span>Ich habe die <a href="/datenschutz#anfrage" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen. Meine Angaben werden nur zur Bearbeitung dieser Anfrage verwendet.</span></label>';
+    echo '<button class="w-btn w-btn-o" type="submit">Anfrage senden'.w_icon('arrow').'</button>';
+    echo '<p class="w-form-note">Mehr Angaben, Logo oder Artikelliste? <a href="/anfrage">Zum ausführlichen Formular</a></p></form>';
+    echo '</div></div></section>';
 }
 
 /** Funktionen: jeweils das Problem und die Lösung. */
@@ -428,32 +486,6 @@ function w_features(array $only=[]): void {
         echo '<article class="w-feat w-reveal"><span class="ic">'.w_icon($ic).'</span><small>'.e($instead).'</small><h3>'.e($t).'</h3><p>'.e($x).'</p></article>';
     }
     echo '</div>';
-}
-
-/** „Shop und Produktion aus einer Hand“ mit Eigenentwicklung und Auftragsverwaltung. */
-function w_one_hand_section(): void {
-    $o=yw_operator();$city=w_city();
-    echo '<section class="w-sec" id="aus-einer-hand"><div class="w-wrap">';
-    s_head('Shop und Produktion aus einer Hand','Wir richten deinen Firmenshop ein, hinterlegen deine Kollektion, veredeln die Textilien selbst und liefern direkt aus.','Der Unterschied');
-    echo '<div class="w-chain w-reveal"><div class="w-chain-row other"><span class="lbl">Sonst</span><ol><li>Shopsoftware</li><li>Textilhändler</li><li>Druckerei</li><li>Stickerei</li><li>Auftragsabwicklung</li></ol><p>Fünf Stellen, fünf Ansprechpartner, viele Übergaben.</p></div>';
-    echo '<div class="w-chain-row ours"><span class="lbl">Bei uns</span><div class="one"><b>'.e($o['company']).'</b><span>Shop · Ware · Stick · Druck · Versand · Rechnung</span></div><p>Ein Ansprechpartner, eine Produktion in '.e($city).'.</p></div></div>';
-    echo '<div class="w-pillars">';
-    echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('gear').'</span><h3>Eigenentwicklung aus der Praxis</h3><p>WorkwearCenter haben wir selbst entwickelt, direkt aus der Arbeit mit unseren Firmenkunden: Größenlisten, Nachbestellungen, Budgets und Freigaben haben wir jahrelang von Hand sortiert. Deshalb passt der Shop zu dem, wie Betriebe wirklich bestellen.</p><a class="w-link" href="/ueber-uns">Unsere Geschichte'.w_icon('arrow').'</a></article>';
-    echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('link').'</span><h3>Eigene Auftragsverwaltung im Hintergrund</h3><p>Hinter dem Shop arbeitet unsere eigene Auftragszentrale. Sie verbindet Anfrage, Auftrag, Korrekturabzug, Produktion und Versand. Freigegebene Bestellungen kommen dort ohne Abtippen an, der Status fließt zurück in deinen Shop.</p><a class="w-link" href="/arbeitskleidung-bestellsystem">Zum Bestellsystem'.w_icon('arrow').'</a></article>';
-    echo '<article class="w-pillar w-reveal"><span class="ic">'.w_icon('factory').'</span><h3>Eigene Veredelung in '.e($city).'</h3><p>Stick, Druck und Transfer machen wir in unserer eigenen Werkstatt. Wir prüfen jedes Teil, bevor es rausgeht, und auf Wunsch bekommst du vorher ein Muster.</p><a class="w-link" href="/leistungen">Kleidung &amp; Veredelung'.w_icon('arrow').'</a></article>';
-    echo '</div></div></section>';
-}
-
-/** Werkstatt mit Vorher-nachher-Regler. */
-function w_workshop_section(): void {
-    $city=w_city();
-    echo '<section class="w-sec w-dark" id="veredelung"><div class="w-wrap">';
-    s_head('Wir veredeln selbst. Darum passt es.','Zieh den Regler: links die Logo-Vorschau aus dem Shop, rechts das bedruckte Original. Die Platzierung stimmen wir vorher mit dir ab.','Aus unserer Werkstatt');
-    echo '<div class="w-craft"><div class="w-compare w-reveal" data-compare><img src="/assets/media/work/jacke-gesamt.webp" alt="Bedrucktes Firmenlogo auf einer Arbeitsjacke" width="1100" height="825" loading="lazy" decoding="async"><div class="before" aria-hidden="true"><div class="pv"><img src="/assets/media/products/workwear-softshell.webp" alt="" loading="lazy"><img class="pv-logo" src="/assets/media/work/stollhans-logo.png" alt="" loading="lazy"></div></div><span class="lbl" style="left:20px">VORSCHAU IM SHOP</span><span class="lbl" style="right:20px">ECHT GEDRUCKT</span><div class="handle"><b>'.w_icon('swap').'</b></div><input type="range" min="0" max="100" value="48" aria-label="Vergleich zwischen Shop-Vorschau und bedrucktem Original verschieben"></div>';
-    echo '<div class="w-techs">';
-    foreach([['needle','Stick','Hochwertig und waschfest, ideal für Jacken, Polos und Caps.',false],['print','Druck','Große Motive auf Rücken und T-Shirts, auch mehrfarbig, wie auf der Jacke links.',true],['transfer','Transfer & Flex','Für feine Details, Namen, Nummern und kleine Auflagen.',false]] as [$ic,$t,$x,$on])echo '<div class="w-tech'.($on?' on':'').' w-reveal"><span class="ic">'.w_icon($ic).'</span><div><h3>'.e($t).'</h3><p>'.e($x).'</p></div></div>';
-    echo '<div class="w-place w-reveal">'.w_icon('pin').'<div><b>Produktion in '.e($city).'</b><p>Muster anfassen? Auf Wunsch schicken wir dir Musterteile zu.</p></div></div>';
-    echo '</div></div></div></section>';
 }
 
 /** Branchenübersicht (Startseite und Leistungen) mit Sprung zur Branchenseite. */
@@ -491,22 +523,6 @@ function yw_case_study(): array {
         'features'=>$features,
         'result'=>$s('case_result','Einfachere Nachbestellung und weniger Verwaltungsaufwand.'),
     ];
-}
-
-/** „Kunden, die WorkwearCenter einsetzen“: Fallbeispiel, Logos und (nur bestätigtes) Zitat. */
-function w_customers_section(): void {
-    $case=yw_case_study();$trust=yw_trust_content();
-    if(!$case['show']&&!$trust['logos'])return;
-    echo '<section class="w-sec w-white" id="kunden"><div class="w-wrap">';
-    s_head('Kunden, die WorkwearCenter einsetzen','Unternehmen aus der Region bestellen ihre Arbeitskleidung bereits über einen eigenen Firmenshop.','Aus der Praxis');
-    if($case['show']){
-        echo '<article class="w-case w-reveal"><div class="w-case-head"><span class="w-eyebrow">Fallbeispiel · '.e($case['industry']).'</span><h3>'.e($case['title']).'</h3></div><div class="w-case-grid">';
-        echo '<div><h4>Ausgangssituation</h4><p>'.e($case['situation']).'</p></div><div><h4>Lösung</h4><p>'.e($case['solution']).'</p></div>';
-        echo '<div><h4>Eingesetzte Funktionen</h4><ul class="w-chips">';foreach($case['features'] as $f)echo '<li>'.e($f).'</li>';echo '</ul></div>';
-        echo '<div class="res"><h4>Ergebnis</h4><p>'.e($case['result']).'</p></div></div></article>';
-    }
-    if($trust['logos']){echo '<div class="w-trust-wrap">';s_trust_section(true);echo '</div>';}
-    echo '</div></section>';
 }
 
 /* ---------- Leistungen ---------- */
@@ -616,21 +632,20 @@ function about_page(): void {
     foreach([['Ein Ansprechpartner','Vom ersten Muster bis zur Lieferung sprichst du mit uns, nicht mit einer Hotline.'],['Ehrliche Beratung','Wir beurteilen dein Logo an Stickmaschine und Presse und sagen offen, was auf welchem Stoff gut aussieht.'],['Geprüfte Qualität','Jedes Teil geht vor der Auslieferung durch unsere Hände. Absprachen und Termine halten wir ein.']] as [$t,$x])echo '<article class="w-value w-reveal"><h3>'.e($t).'</h3><p>'.e($x).'</p></article>';
     echo '</div></div></section>';
 
-    $tel=yw_tel_href($o['phone']);
-    echo '<section class="w-sec"><div class="w-wrap w-visit"><div class="w-reveal"><span class="w-eyebrow">Standort</span><h2>Unsere Werkstatt in '.e($city).'.</h2><p>Hier sticken und bedrucken wir, hier sitzt dein Ansprechpartner. Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL. Dein Logo besprechen wir am Telefon oder per E-Mail, Muster schicken wir dir auf Wunsch zu.</p></div><address class="w-address w-reveal"><strong>'.e($o['company']).'</strong><span>WorkwearCenter</span><span>'.e($o['street']).'</span><span>'.e($o['city']).'</span>'.($tel!==''?'<a href="'.e($tel).'">'.e($o['phone']).'</a>':'').'<a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></address></div></section>';
+    echo '<section class="w-sec"><div class="w-wrap w-visit"><div class="w-reveal"><span class="w-eyebrow">Standort</span><h2>Unsere Werkstatt in '.e($city).'.</h2><p>Hier sticken und bedrucken wir, hier sitzt dein Ansprechpartner. Wir betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL. Dein Logo besprechen wir per E-Mail, Muster schicken wir dir auf Wunsch zu.</p></div><address class="w-address w-reveal"><strong>'.e($o['company']).'</strong><span>WorkwearCenter</span><span>'.e($o['street']).'</span><span>'.e($o['city']).'</span><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></address></div></section>';
     hp_cta_band();
     hp_page_end();
 }
 
 /* ---------- Kontakt ---------- */
 function contact_page(): void {
-    $o=yw_operator();$mail=s_mail();$city=w_city();$tel=yw_tel_href($o['phone']);
+    $o=yw_operator();$mail=s_mail();$city=w_city();
     hp_page_start();
-    hp_page_hero('Kontakt','Sprich mit uns über deinen Firmenshop.','<p>Du möchtest einen Shop für dein Team einrichten oder hast eine Frage zu einer bestehenden Bestellung? Schreib uns per Anfrageformular, E-Mail oder ruf an. Wir sitzen in '.e($city).' und betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL.</p>');
+    hp_page_hero('Kontakt','Sprich mit uns über deinen Firmenshop.','<p>Du möchtest einen Shop für dein Team einrichten oder hast eine Frage zu einer bestehenden Bestellung? Schreib uns über das Anfrageformular oder per E-Mail. Wir sitzen in '.e($city).' und betreuen Unternehmen aus Salzkotten, Paderborn und ganz OWL.</p>');
     echo '<section class="w-sec"><div class="w-wrap"><div class="w-contact">';
-    echo '<article class="w-ccard main w-reveal"><span class="w-eyebrow on-dark">Neu hier</span><h2>Du möchtest einen Firmenshop?</h2><p>Über das Anfrageformular sendest du uns die wichtigsten Eckdaten, gern mit Logo und Artikelliste. Wir melden uns persönlich per E-Mail.</p><div class="w-cta w-cta-tight"><a class="w-btn w-btn-o" href="/anfrage">Firmenshop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-ghost" href="/mustershop">'.w_icon('play').'Mustershop live testen</a></div></article>';
-    echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Direkt erreichen</span>'.($tel!==''?'<a class="big" href="'.e($tel).'">'.e($o['phone']).'</a>':'').'<a class="big small" href="mailto:'.e($mail).'">'.e($mail).'</a><p>Kontaktperson: '.e($o['owner']).'. Logo oder Wunschartikel kannst du direkt an die E-Mail hängen.</p></article>';
-    echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Anschrift &amp; Produktion</span><h2>'.e($o['company']).'</h2><address class="w-plain">'.e($o['street']).'<br>'.e($o['city']).'</address><p>Firmensitz und Produktion in '.e($city).'. Wir beraten dich am Telefon oder per E-Mail; Muster schicken wir dir auf Wunsch zu.</p></article>';
+    echo '<article class="w-ccard main w-reveal"><span class="w-eyebrow on-dark">Neu hier</span><h2>Du möchtest einen Firmenshop?</h2><p>Über das Anfrageformular sendest du uns die wichtigsten Eckdaten, gern mit Logo und Artikelliste. Wir melden uns persönlich per E-Mail.</p><div class="w-cta w-cta-tight"><a class="w-btn w-btn-o" href="/anfrage">Shop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-ghost" href="/mustershop">'.'Beispiel-Shop ansehen</a></div></article>';
+    echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Direkt erreichen</span><a class="big" href="mailto:'.e($mail).'">'.e($mail).'</a><p>Kontaktperson: '.e($o['owner']).'. Logo oder Wunschartikel kannst du direkt an die E-Mail hängen.</p></article>';
+    echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Anschrift &amp; Produktion</span><h2>'.e($o['company']).'</h2><address class="w-plain">'.e($o['street']).'<br>'.e($o['city']).'</address><p>Firmensitz und Produktion in '.e($city).'. Wir beraten dich per E-Mail, Muster schicken wir dir auf Wunsch zu.</p></article>';
     echo '<article class="w-ccard w-reveal"><span class="w-eyebrow">Schon Kunde?</span><h2>Zum eigenen Firmenshop</h2><p>Mitarbeitende und Verantwortliche melden sich direkt im eigenen Firmenshop an.</p><a class="w-btn w-btn-dark" href="/zugang">Zum Kundenlogin'.w_icon('arrow').'</a></article>';
     echo '</div></div></section>';
     hp_page_end();
@@ -668,7 +683,7 @@ function site_inquiry_render(bool $success,string $error,?string $probeshopToken
     if($success){
         echo '<div class="w-success"><span class="mark">'.hp_check_icon().'</span><h2>Danke für deine Anfrage.</h2><p>Wir haben deine Angaben erhalten und melden uns so schnell wie möglich per E-Mail.</p>';
         if($probeshopToken!==null)echo '<div class="w-probe"><strong>Deine unverbindliche Vorschau ist bereit.</strong><p>Sie zeigt dein Logo auf Musterartikeln und ist 30 Tage über diesen Link erreichbar. Sie enthält noch nicht die abgestimmte Firmenkollektion.</p><a class="w-btn w-btn-o" href="/probeshop/'.e($probeshopToken).'" rel="noreferrer">Vorschau ansehen'.w_icon('arrow').'</a></div>';
-        else echo '<a class="w-btn w-btn-dark" href="/mustershop">Mustershop live testen</a>';
+        else echo '<a class="w-btn w-btn-dark" href="/mustershop">Beispiel-Shop ansehen</a>';
         echo '</div>';
     }else{
         $opt=yw_inquiry_options();$post=fn(string $k)=>e((string)($_POST[$k]??''));
@@ -690,8 +705,7 @@ function site_inquiry_render(bool $success,string $error,?string $probeshopToken
         echo '<label class="w-check"><input type="checkbox" name="privacy" value="1" required><span>Ich habe die <a href="/datenschutz#anfrage" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen. Meine Angaben und hochgeladene Dateien werden nur zur Bearbeitung der Anfrage verwendet.</span></label>';
         echo '<button class="w-btn w-btn-o" type="submit">Anfrage senden'.w_icon('arrow').'</button><p class="w-form-note">Pflichtfelder: Firmenname, Ansprechpartner, E-Mail. Unverbindlich und kostenlos.</p></form>';
     }
-    $o=yw_operator();$tel=yw_tel_href($o['phone']);
-    echo '</div><aside class="w-side"><h2>Was nach deiner Anfrage passiert</h2><ol><li><div><strong>Wir prüfen deine Angaben</strong><span>Wir melden uns so schnell wie möglich persönlich per E-Mail.</span></div></li><li><div><strong>Wir stimmen den Entwurf ab</strong><span>Artikel, Logo, Position und Veredelung legen wir gemeinsam fest.</span></div></li><li><div><strong>Du gibst die Gestaltung frei</strong><span>Erst danach richten wir deinen Firmenshop ein und laden dein Team ein.</span></div></li></ol><p class="mail">Lieber direkt?<br>'.($tel!==''?'<a href="'.e($tel).'">'.e($o['phone']).'</a><br>':'').'<a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p><p class="mail">Erst ausprobieren? <a href="/mustershop">Mustershop live testen</a></p></aside></div></section>';
+    echo '</div><aside class="w-side"><h2>Was nach deiner Anfrage passiert</h2><ol><li><div><strong>Wir prüfen deine Angaben</strong><span>Wir melden uns so schnell wie möglich persönlich per E-Mail.</span></div></li><li><div><strong>Wir stimmen den Entwurf ab</strong><span>Artikel, Logo, Position und Veredelung legen wir gemeinsam fest.</span></div></li><li><div><strong>Du gibst die Gestaltung frei</strong><span>Erst danach richten wir deinen Firmenshop ein und laden dein Team ein.</span></div></li></ol><p class="mail">Lieber direkt?<br><a href="mailto:'.e(s_mail()).'">'.e(s_mail()).'</a></p><p class="mail">Erst ausprobieren? <a href="/mustershop">Beispiel-Shop ansehen</a></p></aside></div></section>';
     hp_page_end();
 }
 
@@ -716,7 +730,7 @@ function customer_access_page(): void {
     echo '<section class="w-access"><div class="w-wrap"><div class="w-access-card"><span class="w-eyebrow">Kundenlogin</span><h1>Zu deinem Firmenshop</h1><p>Jedes Unternehmen hat seinen eigenen, geschützten Shop. Gib den Kurznamen deines Shops ein, er steht in deiner Einladungs-E-Mail.</p>';
     echo '<form method="post" class="w-form">'.csrf_field();
     if($error)echo '<div class="flash error" role="alert">'.e($error).'</div>';
-    echo '<label>Kurzname oder Shop-Adresse<input name="shop" value="'.e($value).'" placeholder="z. B. musterbau" autocomplete="organization" required autofocus></label><button class="w-btn w-btn-o" type="submit">Weiter zur Anmeldung'.w_icon('arrow').'</button></form><p class="w-access-foot">Noch kein Firmenshop? <a href="/anfrage">Firmenshop anfragen</a> oder <a href="/mustershop">Mustershop live testen</a></p></div></div></section>';
+    echo '<label>Kurzname oder Shop-Adresse<input name="shop" value="'.e($value).'" placeholder="z. B. musterbau" autocomplete="organization" required autofocus></label><button class="w-btn w-btn-o" type="submit">Weiter zur Anmeldung'.w_icon('arrow').'</button></form><p class="w-access-foot">Noch kein Firmenshop? <a href="/anfrage">Shop anfragen</a> oder <a href="/mustershop">Beispiel-Shop ansehen</a></p></div></div></section>';
     hp_page_end();
 }
 
@@ -725,6 +739,6 @@ function website_not_found_page(bool $shop=false): void {
     $GLOBALS['yw_website_404']=true;
     render_head(($shop?'Firmenshop nicht gefunden':'Seite nicht gefunden').' – WorkwearCenter');
     w_header();
-    echo '<main id="inhalt"><section class="w-access"><div class="w-wrap"><div class="w-access-card"><span class="w-eyebrow">Fehler 404</span><h1>'.($shop?'Diesen Firmenshop finden wir nicht.':'Diese Seite gibt es nicht.').'</h1><p>'.($shop?'Prüf bitte die Shop-Adresse aus deiner Einladung oder such deinen Shop über den Kundenlogin.':'Vielleicht hat sich die Adresse geändert. Hier geht es weiter:').'</p><div class="w-cta w-cta-tight"><a class="w-btn w-btn-o" href="/">Zur Startseite'.w_icon('arrow').'</a><a class="w-btn w-btn-line" href="/mustershop">Mustershop live testen</a></div><p class="w-access-foot">Du suchst deinen Firmenshop? <a href="/zugang">Zum Kundenlogin</a></p></div></div></section></main>';
+    echo '<main id="inhalt"><section class="w-access"><div class="w-wrap"><div class="w-access-card"><span class="w-eyebrow">Fehler 404</span><h1>'.($shop?'Diesen Firmenshop finden wir nicht.':'Diese Seite gibt es nicht.').'</h1><p>'.($shop?'Prüf bitte die Shop-Adresse aus deiner Einladung oder such deinen Shop über den Kundenlogin.':'Vielleicht hat sich die Adresse geändert. Hier geht es weiter:').'</p><div class="w-cta w-cta-tight"><a class="w-btn w-btn-o" href="/">Zur Startseite'.w_icon('arrow').'</a><a class="w-btn w-btn-line" href="/mustershop">Beispiel-Shop ansehen</a></div><p class="w-access-foot">Du suchst deinen Firmenshop? <a href="/zugang">Zum Kundenlogin</a></p></div></div></section></main>';
     w_footer();render_foot();
 }

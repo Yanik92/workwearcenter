@@ -1,6 +1,17 @@
 # WorkwearCenter 10 – Änderungen
 
-Stand: 21. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+Stand: 26. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+
+## 10.26.0 – Website hell und sachlich, neue Startseite
+Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Firmenshops, Mustershop-Inhalt und Admin bleiben unverändert.
+
+- Website (alle öffentlichen Seiten): weißer Grund, Navy für Schrift, Orange nur noch für Handlungsknöpfe. Keine dunklen Flächen im Kopfbereich, keine Verläufe, keine Einblend-Animationen. Eine Schrift (Inter) statt drei.
+- Kopf: So funktioniert's · Leistungen · Referenzen · FAQ, rechts abgetrennt Kunden-Login und „Shop anfragen“. Logo in der dunklen Variante.
+- Keine Telefonnummer mehr auf der Website (Kopf, Kontakt, Über uns, Anfrage, strukturierte Daten). Kontakt über Formular und E-Mail. Nur Impressum und Datenschutzerklärung nennen die Nummer weiter, weil sie dort zu den Anbieterangaben gehört.
+- Neue Startseite: Was es ist, für wen, Ablauf in vier Schritten, was enthalten ist, Vorteile (kostenfrei, keine Mindestmengen bei Standardware), Referenzen, Beispiel-Shop, sechs häufige Fragen, kurzes Anfrageformular (Firma, Ansprechpartner, Mitarbeiterzahl, E-Mail). Die Anfrage landet wie bisher unter Anfragen im Admin.
+- Shop-Einrichtung „innerhalb eines Werktags nach Freigabe“, Yanik Textildruck „seit 2023“. Lieferzeit ohne feste Zahl, bis sie feststeht.
+- Ohne hochgeladenes Ansprechpartner-Foto (Admin → Inhalte) erscheint die „Über uns“-Karte ohne Bild.
+- „Mustershop live testen“ heißt jetzt „Beispiel-Shop ansehen“.
 
 ## 10.25.1 – Logo unter der Brusttasche, keine echten Preise im Mustershop
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5. Automatisch erkannte Druckzonen werden neu berechnet; von Hand gesetzte bleiben.
