@@ -323,12 +323,14 @@ function landing_page(): void {
     echo '<h1>Ein eigener Online-Shop für die Arbeitskleidung deines Unternehmens.</h1>';
     echo '<p class="w-hh-lead">Mit eurem Logo und euren festen Artikeln. Deine Mitarbeiter bestellen selbst, oder der Einkauf bestellt zentral für alle. Druck, Stick und Versand übernehmen wir in '.e($city).'.</p>';
     echo '<ul class="w-hh-facts"><li>'.w_icon('check').'Kostenfrei für dein Unternehmen</li><li>'.w_icon('check').'Keine Mindestmengen bei Standardware</li></ul>';
-    echo '<div class="w-cta"><a class="w-btn w-btn-o" href="#anfrage">Unverbindlich Shop anfragen'.w_icon('arrow').'</a><a class="w-btn w-btn-line" href="#beispiel">Beispiel-Shop ansehen</a></div>';
+    // 10.26.1: Anfrage direkt im Kopfbereich. Der Firmenname wird in das Kurzformular unten übernommen.
+    echo '<form class="w-hh-ask" method="get" action="/#anfrage"><input name="firma" aria-label="Name deines Unternehmens" autocomplete="organization" maxlength="190" placeholder="Name deines Unternehmens"><button class="w-btn w-btn-o" type="submit">Shop anfragen'.w_icon('arrow').'</button></form>';
+    echo '<p class="w-hh-alt">Erst schauen? <a href="#beispiel">Beispiel-Shop ansehen</a>, ohne Anmeldung.</p>';
     echo '<p class="w-hh-meta"><span>'.w_icon('clock').'Shop in 1 Werktag eingerichtet</span><span>'.w_icon('pin').'Produktion in '.e($city).'</span></p>';
     echo '</div><div class="w-hh-stage">';
-    echo w_shot('shop-start','Startseite eines Firmenshops im WorkwearCenter mit Jahresbudget, letzter Bestellung und eigener Kleidung (Beispieldaten)',1440,950,'workwearcenter.de/hanseatic',true,'w-hh-desk');
-    echo '<figure class="w-hh-phone"><img src="/assets/media/screens/shop-handy-start.webp" alt="Derselbe Firmenshop auf dem Handy" width="390" height="844" decoding="async"></figure>';
-    echo '<figure class="w-hh-photo"><img src="/assets/media/work/jacke-brust.webp" alt="Arbeitsjacke mit gedrucktem Firmenlogo auf der Brust" width="800" height="800" loading="lazy" decoding="async"><figcaption>Logo im Druck</figcaption></figure>';
+    echo '<img class="w-hh-bg" src="/assets/media/work/jacke-gesamt.webp" alt="Softshelljacke mit gedrucktem Firmenlogo, veredelt in unserer Werkstatt" width="1100" height="825" fetchpriority="high" decoding="async">';
+    echo '<figure class="w-hh-phone"><img src="/assets/media/screens/shop-handy-start.webp" alt="Ein Firmenshop auf dem Handy mit Jahresbudget und Bestellung (Beispieldaten)" width="390" height="844" decoding="async"></figure>';
+    echo '<p class="w-hh-tag"><b>Stollhans Reifentechnik</b><span>Softshelljacke · Druck · Brust links</span></p>';
     echo '</div></div></section>';
 
     // Vorteilsleiste: die zwei häufigsten Einwände zuerst
@@ -340,6 +342,15 @@ function landing_page(): void {
         ['user','Ein fester Ansprechpartner','Von der Anfrage bis zur Rechnung',false],
     ] as [$ic,$t,$x,$key])echo '<li'.($key?' class="key"':'').'><span class="w-icb">'.w_icon($ic).'</span><div><b>'.e($t).'</b><span>'.e($x).'</span></div></li>';
     echo '</ul></div></section>';
+
+    // 10.26.1: echte Werkstattfotos statt Symbolkacheln
+    echo '<section class="w-made"><div class="w-wrap w-made-grid"><div>';
+    echo '<h2>Shop und Produktion aus einer Hand</h2><p class="w-made-lead">Andere brauchen dafür Shopsoftware, Händler, Druckerei und Stickerei. Bei uns ist es ein Ansprechpartner, und jedes Teil entsteht in unserer Werkstatt in '.e($city).'.</p>';
+    echo '<ol class="w-made-steps">';
+    foreach([['Anfrage','Logo und Artikelliste schicken'],['Abstimmung','Kollektion, Logo-Position und Veredelung'],['Dein Team bestellt','Selbst oder zentral über den Einkauf'],['Lieferung','Veredelt und nach Person gepackt']] as $k=>[$t,$x])echo '<li><span aria-hidden="true">'.($k+1).'</span><div><b>'.e($t).'</b><small>'.e($x).'</small></div></li>';
+    echo '</ol></div><div class="w-made-pics">';
+    foreach([['stick-detail','Firmenlogo auf einem Shirt, veredelt in unserer Werkstatt','Aus unserer Werkstatt'],['polo-wappen','Polo mit zwei Wappen und Namen','Polo mit Wappen und Name'],['jacke-brust','Arbeitsjacke mit gedrucktem Logo auf der Brust','Logo im Druck']] as [$f,$alt,$cap])echo '<figure><img src="/assets/media/work/'.$f.'.webp" alt="'.e($alt).'" width="800" height="800" loading="lazy" decoding="async"><figcaption>'.e($cap).'</figcaption></figure>';
+    echo '</div></div></section>';
 
     // 2. Für wen?
     echo '<section class="w-sec" id="fuer-wen"><div class="w-wrap">';
@@ -456,7 +467,7 @@ function w_home_inquiry(): void {
     echo '<ul><li>'.w_icon('check').'Kostenfrei und unverbindlich</li><li>'.w_icon('check').'Logo und Artikelliste kannst du später nachreichen</li><li>'.w_icon('check').'<span>Oder direkt an <a href="mailto:'.e($mail).'">'.e($mail).'</a></span></li></ul></div>';
     echo '<form method="post" action="/anfrage" class="w-form w-ask-form">'.csrf_field();
     echo '<div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>';
-    echo '<div class="row"><label>Firma<input name="company" autocomplete="organization" maxlength="190" required placeholder="Name des Unternehmens"></label><label>Ansprechpartner<input name="name" autocomplete="name" maxlength="190" required placeholder="Vor- und Nachname"></label></div>';
+    echo '<div class="row"><label>Firma<input name="company" autocomplete="organization" maxlength="190" required placeholder="Name des Unternehmens" value="'.e(is_string($_GET['firma']??null)?mb_substr(trim($_GET['firma']),0,190):'').'"></label><label>Ansprechpartner<input name="name" autocomplete="name" maxlength="190" required placeholder="Vor- und Nachname"></label></div>';
     echo '<div class="row"><label><span>Anzahl Mitarbeiter <small>ungefähr</small></span><input type="number" name="employees" min="1" max="100000" inputmode="numeric" placeholder="z. B. 25"></label><label>E-Mail<input type="email" name="email" autocomplete="email" maxlength="190" required placeholder="name@firma.de"></label></div>';
     echo '<label class="w-check"><input type="checkbox" name="privacy" value="1" required><span>Ich habe die <a href="/datenschutz#anfrage" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen. Meine Angaben werden nur zur Bearbeitung dieser Anfrage verwendet.</span></label>';
     echo '<button class="w-btn w-btn-o" type="submit">Anfrage senden'.w_icon('arrow').'</button>';
