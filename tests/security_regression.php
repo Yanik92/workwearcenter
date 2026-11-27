@@ -9,6 +9,7 @@ require dirname(__DIR__).'/app/modules/public.php';
 require dirname(__DIR__).'/app/modules/corporate.php';
 require dirname(__DIR__).'/app/modules/admin_account.php';
 require dirname(__DIR__).'/app/modules/shop.php';
+require_once dirname(__DIR__).'/app/modules/spam_guard.php';
 if(!function_exists('app_version')){function app_version(): string {return 'test';}}
 
 function test_ok(bool $condition,string $message): void {
@@ -309,7 +310,7 @@ $lxCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/lexware.php');
 test_ok(str_contains($lxCode,"SET status='creating',last_error=NULL WHERE id=? AND status IN ('planned','failed')") && str_contains($lxCode,"SET status='failed',last_error=? WHERE id=? AND status='creating'"),'Teil wird nur von einer Anfrage gesendet; sicherer Fehler bleibt „fehlgeschlagen“ mit denselben Aufträgen (erneut sendbar, keine Doppelanlage)');
 test_ok(str_contains($lxCode,"\$doc['status']==='creating' && strtotime((string)\$doc['updated_at'])>=time()-300)throw") && !str_contains($lxCode,'Bitte „Je Kostenstelle eine eigene Rechnung“ wählen'),'Entwurf im Versand kann nicht freigegeben werden; alter Hinweis „je Kostenstelle wählen“ entfernt');
 $lxMig=(string)file_get_contents(dirname(__DIR__).'/app/migrations.php');
-test_ok(preg_match("/\/\/ 10\.15 – Lexware[^\n]*\n(?:[^\n]*\n)*?\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_no'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_count'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','line_grouping'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.15\.0'/u",$lxMig)===1 && str_contains((string)file_get_contents(dirname(__DIR__).'/app/functions.php'),"const YW_SCHEMA_REQUIRED='10.18.0';"),'Datenbank-Update 10.15: Teil-Spalten idempotent vor der Versionsmarke 10.15.0');
+test_ok(preg_match("/\/\/ 10\.15 – Lexware[^\n]*\n(?:[^\n]*\n)*?\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_no'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','part_count'[^\n]*\n\s*schema_add_column\(\\\$pdo,'yw_lexware_documents','line_grouping'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.15\.0'/u",$lxMig)===1 && str_contains((string)file_get_contents(dirname(__DIR__).'/app/functions.php'),"const YW_SCHEMA_REQUIRED='10.27.0';"),'Datenbank-Update 10.15: Teil-Spalten idempotent vor der Versionsmarke 10.15.0');
 // 10.18: Team-Bestellung merkt sich, wer bestellt hat; diese Person gibt den Auftrag nicht selbst frei, und es entsteht kein Eigenanteil
 test_ok(preg_match("/schema_add_column\(\\\$pdo,'orders','placed_by_account_id'[^\n]*\n\s*schema_mark_version\(\\\$pdo,'10\.18\.0'/u",$lxMig)===1,'Datenbank-Update 10.18: placed_by_account_id vor der Versionsmarke 10.18.0');
 $teamCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/corporate.php');$decideCode=(string)file_get_contents(dirname(__DIR__).'/app/modules/order_mail_actions.php');
@@ -641,5 +642,21 @@ test_ok(str_contains($publicSrc23,"\$dir=yw_private_dir().'/anfragen';")&&str_co
 test_ok(str_contains($publicSrc23,'is_uploaded_file($tmp)')&&!in_array('php',array_keys(YW_INQUIRY_ATTACHMENT_TYPES),true)&&!in_array('html',array_keys(YW_INQUIRY_ATTACHMENT_TYPES),true),'Anfrage: nur echte Uploads mit erlaubten Dateitypen');
 test_ok(!preg_match('/(Produktion|Werkstatt|Sitz|Standort)[^.<]{0,30}in Paderborn/u',$siteSrc23),'Website: Standort ist Salzkotten, Paderborn nur als Region');
 test_ok(!yw_public_pages()['/zugang']['index']&&yw_public_pages()['/']['index']&&yw_slug_reserved('branchen')&&yw_slug_reserved('workwear-management'),'Website: Login nicht im Index, neue Seiten-Adressen nicht als Firmen-Kurzname vergebbar');
+
+// 10.27: Spam-Schutz Anfrageformular – Ticket, Rechenaufgabe, Inhaltsprüfung (ohne Datenbank)
+$guardSolve=function(string $ticket): string {$p=explode('.',$ticket);$pl=implode('.',array_slice($p,0,4));for($i=0;;$i++)if(yw_guard_zero_bits(hash('sha256',$pl.':'.$i,true))>=(int)$p[3])return (string)$i;};
+preg_match('/name="yw_guard" value="([^"]+)"/',yw_guard_fields('inquiry'),$gm);$gt=$gm[1];$gn=$guardSolve($gt);$gts=(int)explode('.',$gt)[1];
+test_ok(str_contains(yw_guard_fields('inquiry'),'name="website"'),'Spam-Schutz: Honigtopf-Feld bleibt im Formular');
+test_ok(yw_guard_check('inquiry',['yw_guard'=>$gt,'yw_guard_n'=>$gn],$gts+10)===[],'Spam-Schutz: gelöste Rechenaufgabe nach 10 s ist in Ordnung');
+test_ok(yw_guard_check('inquiry',['yw_guard'=>$gt,'yw_guard_n'=>''],$gts+10)!==[],'Spam-Schutz: ohne gelöste Rechenaufgabe (kein JavaScript) = Verdacht');
+test_ok(yw_guard_check('inquiry',['yw_guard'=>$gt,'yw_guard_n'=>$gn],$gts+1)!==[],'Spam-Schutz: in 1 Sekunde abgeschickt = Verdacht');
+$gb=explode('.',$gt);$gb[3]='0';test_ok(yw_guard_check('inquiry',['yw_guard'=>implode('.',$gb),'yw_guard_n'=>'0'],$gts+10)!==[],'Spam-Schutz: herabgesetzte Schwierigkeit bricht die Signatur');
+test_ok(yw_guard_check('inquiry',[],$gts+10)!==[] && yw_guard_check('inquiry',['yw_guard'=>['a'],'yw_guard_n'=>['b']],$gts+10)!==[],'Spam-Schutz: fehlendes oder manipuliertes Ticket = Verdacht');
+test_ok(yw_spam_content_reasons(['company'=>'Müller Haustechnik GmbH','name'=>'Anna Müller','email'=>'a@mueller.de','phone'=>'','message'=>'20 Polos mit Stick, siehe www.mueller.de'],false)===[],'Spam-Schutz: normale Anfrage mit einem Link bleibt unauffällig');
+test_ok(yw_spam_content_reasons(['company'=>'SEO Pro','name'=>'John Smith','email'=>'j@x.com','message'=>'We rank your website on the first page of google'],false)!==[] && yw_spam_content_reasons(['company'=>'Test','name'=>'Max M','email'=>'m@yopmail.com','message'=>''],false)!==[],'Spam-Schutz: Spam-Wörter und Wegwerf-Adressen werden erkannt');
+// 10.27: individuelles Budget je Person
+test_ok(yw_budget_override_input('')===null && yw_budget_override_input(' 450,50 ')===45050 && yw_budget_override_input('0')===0,'Eigenes Budget: leer = Firmenstandard, 450,50 € und 0 € werden übernommen');
+test_ok((function(){foreach(['-5','abc','1e5','10000000'] as $v){try{yw_budget_override_input($v);return false;}catch(InvalidArgumentException $e){}}return true;})(),'Eigenes Budget: negative, ungültige und zu große Beträge werden abgelehnt');
+test_ok(yw_budget_limit(['budget_enabled'=>1,'annual_budget_company_cents'=>30000],['budget_override_cents'=>60000])===60000 && yw_budget_limit(['budget_enabled'=>1,'annual_budget_company_cents'=>30000],['budget_override_cents'=>null])===30000 && yw_budget_limit(['budget_enabled'=>0,'annual_budget_company_cents'=>30000],['budget_override_cents'=>60000])===null,'Eigenes Budget ersetzt den Firmenstandard; ausgeschaltetes Firmenbudget bleibt unbegrenzt');
 
 echo "\nAlle Sicherheits-Regressionstests bestanden.\n";

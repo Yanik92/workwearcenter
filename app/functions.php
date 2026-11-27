@@ -436,6 +436,7 @@ function yw_cleanup_expired_security_rows(): void {
         db()->exec("DELETE FROM yw_admin_password_resets WHERE created_at<DATE_SUB(NOW(),INTERVAL 7 DAY)");
         // Datensparsamkeit (DSGVO Art. 5): Anfragen nach 24 Monaten (10.22: unabhängig vom Status, so steht es in der Datenschutzerklärung).
         db()->exec("DELETE FROM inquiries WHERE created_at<DATE_SUB(NOW(),INTERVAL 24 MONTH)");
+        if(function_exists('yw_spam_prune'))yw_spam_prune(); // 10.27: Spam-Verdacht nach 30 Tagen, benutzte Formular-Tickets
         if(function_exists('yw_inquiry_attachments_prune'))yw_inquiry_attachments_prune(); // 10.23: Artikellisten gelöschter Anfragen
     } catch(Throwable $e) {
         error_log('WorkwearCenter security cleanup failed: '.$e->getMessage());
@@ -609,7 +610,7 @@ function yw_asset_integrity_notice(): string {
 }
 
 /** Letzter Datenbankstand, den dieses Programmpaket braucht (siehe app/migrations.php). */
-const YW_SCHEMA_REQUIRED='10.18.0';
+const YW_SCHEMA_REQUIRED='10.27.0';
 /**
  * Datenbankstand in einer Abfrage je Anfrage: Ist YW_SCHEMA_REQUIRED eingetragen (roter Hinweis), und für welche
  * Prüfliste wurde diese Datenbank zuletzt vollständig geprüft (Schnellweg in yw_schema_ready)? Fehlt eine Tabelle,

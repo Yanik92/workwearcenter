@@ -94,8 +94,10 @@ function yw_customer_section_people(array $c): void {
                         .'<option value="rejected" '.(((string)($account['registration_status']??'approved'))==='rejected'?'selected':'').'>Abgelehnt</option>'
                     .'</select></label>'
                     .yw_equipment_profile_select($equipmentProfiles,isset($account['equipment_profile_id'])?(int)$account['equipment_profile_id']:null)
+                    // 10.27: eigenes Budget direkt bei der Person (leer = Firmenstandard)
+                    .yw_budget_override_field($c,$account,['Eigenes Budget pro Jahr (€)','Leer = Firmenstandard {amount}.','Das Firmenbudget ist ausgeschaltet (unbegrenzt). Ein eigenes Budget wirkt erst, wenn es unter „Regeln & Budget“ aktiv ist.','Im laufenden Budgetjahr verbraucht: {used} von {limit}.'])
                     .'<div class="employee-role-actions"><label class="check"><input type="checkbox" name="active" value="1" '.((int)$account['active']===1?'checked':'').'><span>Aktiv</span></label>'
-                    .'<button class="btn small" type="submit">Rolle und Zugang speichern</button></div>'
+                    .'<button class="btn small" type="submit">Speichern</button></div>'
                     .'</form>'
                     .'<form method="post" class="employee-anonymize" data-confirm="Alle persönlichen Daten von '.e($account['name']).' endgültig entfernen? Bestellungen bleiben erhalten.">'.csrf_field().'<input type="hidden" name="action" value="employee_anonymize"><input type="hidden" name="return_tab" value="companies"><input type="hidden" name="company_id" value="'.(int)$c['id'].'"><input type="hidden" name="account_id" value="'.(int)$account['id'].'"><button class="btn small danger" type="submit">Daten löschen (DSGVO)</button></form>';
                 if((string)$account['registration_status']==='pending'){

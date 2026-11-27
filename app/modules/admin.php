@@ -111,7 +111,7 @@ function admin_page(): void {
         $q->execute([date('Y-m-d H:i:s',strtotime('-7 days'))]);$orders=$q->fetchAll();
     }
     if($tab==='inquiries'){
-        try{$inquiries=db()->query("SELECT * FROM inquiries ORDER BY FIELD(status,'new','contacted','done'), id DESC")->fetchAll();}
+        try{$inquiries=db()->query("SELECT * FROM inquiries ORDER BY FIELD(status,'new','contacted','done','spam'), id DESC")->fetchAll();}
         catch(Throwable $e){$inquiries=[];}
     }
     if($tab==='dashboard'){ // Übersicht zählt nur neue Anfragen
@@ -181,14 +181,27 @@ function handle_admin_action(): never {
         if ($action==='inquiry_status') {
             $id=(int)($_POST['inquiry_id']??0);
             $status=(string)($_POST['status']??'new');
-            if(!in_array($status,['new','contacted','done'],true)) {
+            // 10.27: „spam“ = in den Spam-Ordner verschieben (nach 30 Tagen gelöscht), zurück mit „new“.
+            if(!in_array($status,yw_spam_schema_ready()?['new','contacted','done','spam']:['new','contacted','done'],true)) {
                 throw new RuntimeException('Status ungültig.');
             }
             $stmt=db()->prepare('UPDATE inquiries SET status=? WHERE id=?');
             $stmt->execute([$status,$id]);
             if(!$stmt->rowCount())throw new RuntimeException('Anfrage wurde nicht gefunden oder war bereits in diesem Status.');
             audit_log('inquiry.status_updated','inquiry',$id,['status'=>$status]);
-            flash('success','Anfragestatus gespeichert.');
+            flash('success',match($status){'spam'=>'Anfrage in den Spam-Ordner verschoben. Sie wird nach '.YW_SPAM_KEEP_DAYS.' Tagen automatisch gelöscht.','new'=>'Anfrage steht wieder bei den neuen Anfragen.',default=>'Anfragestatus gespeichert.'});
+            redirect('/admin?tab=inquiries'.($status==='new'?'#anfrage-'.$id:''));
+        }
+        if ($action==='inquiry_spam_purge') {
+            $ids=yw_spam_schema_ready()?db()->query("SELECT id FROM inquiries WHERE status='spam'")->fetchAll(PDO::FETCH_COLUMN):[];
+            foreach($ids as $sid){
+                $q=db()->prepare('SELECT id FROM yw_probeshops WHERE inquiry_id=?');$q->execute([(int)$sid]);
+                foreach($q->fetchAll(PDO::FETCH_COLUMN) as $probeshopId)yw_probeshop_delete((int)$probeshopId);
+                yw_inquiry_attachment_delete((int)$sid);
+                db()->prepare("DELETE FROM inquiries WHERE id=? AND status='spam'")->execute([(int)$sid]);
+            }
+            audit_log('inquiry.spam_purged','inquiry',null,['count'=>count($ids)]);
+            flash('success',count($ids)===1?'1 Spam-Anfrage gelöscht.':count($ids).' Spam-Anfragen gelöscht.');
             redirect('/admin?tab=inquiries');
         }
 
@@ -509,12 +522,16 @@ function handle_admin_action(): never {
                 if(!(int)$managerCheck->fetchColumn())throw new RuntimeException('Der letzte aktuell zugangsberechtigte Verantwortliche kann nicht entfernt werden.');
             }
 
+            // 10.27: eigenes Budget (leer = Firmenstandard), vor dem Speichern prüfen
+            try{$budgetOverride=array_key_exists('budget_override',$_POST)?yw_budget_override_input($_POST['budget_override']):false;}
+            catch(InvalidArgumentException $e){throw new RuntimeException('Eigenes Budget: '.$e->getMessage());}
             $stmt=db()->prepare('UPDATE employee_accounts SET role=?,registration_status=?,active=?,equipment_profile_id=? WHERE id=? AND company_id=?');
             $stmt->execute([$role,$registrationStatus,$active,$profileId,$accountId,$companyId]);
+            if($budgetOverride!==false)yw_budget_override_save($companyId,$accountId,$budgetOverride,'admin');
             audit_log('employee.account_updated','employee',$accountId,['company_id'=>$companyId,'role'=>$role,'status'=>$registrationStatus,'active'=>$active]);
             yw_manager_change_audit($companyId,$accountId,$currentAccount,['role'=>$role,'registration_status'=>$registrationStatus,'active'=>$active]+$currentAccount,'admin'); // 10.15: Rollenwechsel still protokollieren
 
-            flash('success','Mitarbeiterrolle wurde gespeichert.');
+            flash('success','Mitarbeiter wurde gespeichert.');
             redirect(yw_customer_return_url($companyId,'mitarbeiter','person-'.$accountId));
         }
 
@@ -1226,17 +1243,23 @@ function render_admin_dashboard(array $companies,array $orders,array $inquiries)
 
 function render_admin_inquiries(array $inquiries): void {
     yw_probeshop_admin_panel();
-    if(!$inquiries){
-        echo '<div class="empty">Noch keine Anfragen vorhanden.</div>';
+    // 10.27: Spam-Verdacht getrennt und zugeklappt unten, die echten Anfragen oben.
+    $spam=array_values(array_filter($inquiries,fn($i)=>(string)($i['status']??'')==='spam'));
+    $inquiries=array_values(array_filter($inquiries,fn($i)=>(string)($i['status']??'')!=='spam'));
+    $stats=yw_spam_stats();
+    $guardInfo='<p class="muted space-top">Spam-Schutz aktiv: verstecktes Bot-Feld, Zeitprüfung, unsichtbare Rechenaufgabe im Browser und Inhaltsprüfung – ohne Captcha und ohne Fremddienst. Letzte '.YW_SPAM_KEEP_DAYS.' Tage: '.(int)$stats['blocked'].' Bot'.((int)$stats['blocked']===1?'':'s').' abgewiesen, '.(int)$stats['held'].' Anfrage'.((int)$stats['held']===1?'':'n').' als Spam-Verdacht zurückgehalten.'.(!yw_spam_schema_ready()?' <strong>Bitte den <a href="/update.php">Update-Assistenten</a> ausführen</strong>, damit der Spam-Ordner genutzt wird.':'').'</p>';
+    if(!$inquiries && !$spam){
+        echo '<div class="empty">Noch keine Anfragen vorhanden.</div>'.$guardInfo;
         return;
     }
     $probeshops=yw_probeshops_by_inquiry();
 
+    if(!$inquiries)echo '<div class="empty">Keine neuen Anfragen. Unten liegen nur Anfragen mit Spam-Verdacht.</div>';
     echo '<div class="inquiry-list">';
     foreach($inquiries as $i){
         $status=(string)($i['status']??'new');
         $label=['new'=>'Neu','contacted'=>'Kontaktiert','done'=>'Erledigt'][$status]??$status;
-        echo '<article class="inquiry-card '.e($status).'"><div>';
+        echo '<article class="inquiry-card '.e($status).'" id="anfrage-'.(int)$i['id'].'"><div>';
         echo '<div class="product-admin-head"><div><h3>'.e($i['company']).'</h3><span class="badge">'.e($label).'</span></div><strong>'.e(date('d.m.Y H:i',strtotime($i['created_at']))).'</strong></div>';
         echo '<div class="inquiry-meta"><span>'.e($i['name']).'</span><span><a href="mailto:'.e($i['email']).'">'.e($i['email']).'</a></span>';
         if(!empty($i['phone'])) echo '<span><a href="tel:'.e($i['phone']).'">'.e($i['phone']).'</a></span>';
@@ -1245,10 +1268,25 @@ function render_admin_inquiries(array $inquiries): void {
         echo '<div class="inquiry-message">'.e($i['message']).'</div>';
         if(yw_inquiry_attachment((int)$i['id'])!=='')echo '<p class="space-top"><a class="btn small" href="/admin/anfrage-datei/'.(int)$i['id'].'">Artikelliste herunterladen</a></p>';
         echo '</div>';
-        echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option></select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen (inklusive Probeshop und Logo)? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form>'.yw_probeshop_admin_box($probeshops[(int)$i['id']]??null,$i).'</div>';
+        echo '<div><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><label>Status<select name="status"><option value="new" '.($status==='new'?'selected':'').'>Neu</option><option value="contacted" '.($status==='contacted'?'selected':'').'>Kontaktiert</option><option value="done" '.($status==='done'?'selected':'').'>Erledigt</option>'.(yw_spam_schema_ready()?'<option value="spam">Spam (wird nach '.YW_SPAM_KEEP_DAYS.' Tagen gelöscht)</option>':'').'</select></label><button class="btn small" type="submit">Status speichern</button></form><form method="post" class="space-top" data-confirm="Anfrage endgültig löschen (inklusive Probeshop und Logo)? Das kann nicht rückgängig gemacht werden.">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen (DSGVO)</button></form>'.yw_probeshop_admin_box($probeshops[(int)$i['id']]??null,$i).'</div>';
         echo '</article>';
     }
     echo '</div>';
+    if($spam){
+        echo '<details class="card admin-toolbox space-top" id="spam"><summary>Spam-Verdacht <span class="muted">('.count($spam).')</span></summary><div class="admin-toolbox-body">';
+        echo '<p>Diese Anfragen hat der Spam-Schutz zurückgehalten: Du hast dazu keine E-Mail bekommen, der Absender keine Eingangsbestätigung, und es wurde kein Probeshop erstellt. Sie werden nach '.YW_SPAM_KEEP_DAYS.' Tagen automatisch gelöscht. Ist doch eine echte dabei, klick auf „Kein Spam“.</p>';
+        echo '<form method="post" data-confirm="Alle '.count($spam).' Anfragen mit Spam-Verdacht endgültig löschen?">'.csrf_field().'<input type="hidden" name="action" value="inquiry_spam_purge"><input type="hidden" name="return_tab" value="inquiries"><button class="btn small danger" type="submit">Alle löschen</button></form>';
+        foreach($spam as $i){
+            echo '<article class="inquiry-card spam space-top"><div><div class="product-admin-head"><div><h3>'.e($i['company']).'</h3><span class="badge">Spam-Verdacht</span></div><strong>'.e(date('d.m.Y H:i',strtotime($i['created_at']))).'</strong></div>';
+            echo '<div class="inquiry-meta"><span>'.e($i['name']).'</span><span>'.e($i['email']).'</span>'.(!empty($i['phone'])?'<span>'.e($i['phone']).'</span>':'').(!empty($i['employees'])?'<span>'.(int)$i['employees'].' Mitarbeitende</span>':'').'</div>';
+            if(!empty($i['spam_reason']))echo '<p class="flash info"><strong>Grund:</strong> '.e((string)$i['spam_reason']).'</p>';
+            echo '<div class="inquiry-message">'.e($i['message']).'</div></div>';
+            echo '<div><form method="post">'.csrf_field().'<input type="hidden" name="action" value="inquiry_status"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><input type="hidden" name="status" value="new"><button class="btn small primary" type="submit">Kein Spam</button></form>';
+            echo '<form method="post" class="space-top" data-confirm="Diese Anfrage endgültig löschen?">'.csrf_field().'<input type="hidden" name="action" value="delete_inquiry"><input type="hidden" name="return_tab" value="inquiries"><input type="hidden" name="inquiry_id" value="'.(int)$i['id'].'"><button class="btn small danger" type="submit">Löschen</button></form></div></article>';
+        }
+        echo '</div></details>';
+    }
+    echo $guardInfo;
 }
 
 function render_admin_orders(array $orders): void {
@@ -1487,6 +1525,9 @@ function yw_audit_labels(): array {
         'mail.queue_processed'=>'Mailwarteschlange verarbeitet',
         'products.csv_imported'=>'Produkt-CSV importiert',
         'inquiry.created'=>'Shop-Anfrage eingegangen',
+        'inquiry.spam_held'=>'Anfrage als Spam-Verdacht zurückgehalten',
+        'inquiry.spam_purged'=>'Spam-Anfragen gelöscht',
+        'employee.budget_changed'=>'Eigenes Budget geändert',
         'inquiry.status_updated'=>'Anfragestatus geändert',
         'site.design_updated'=>'Website-Design geändert',
         'site.content_updated'=>'Website-Inhalte geändert',
