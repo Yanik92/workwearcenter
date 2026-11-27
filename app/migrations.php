@@ -564,6 +564,13 @@ function run_schema_updates(PDO $pdo): array {
     // Vier-Augen-Prinzip: Wer für andere bestellt, gibt diese Aufträge nicht selbst frei.
     schema_add_column($pdo,'orders','placed_by_account_id','INT UNSIGNED NULL',$changes);
     schema_mark_version($pdo,'10.18.0',$changes);
+    // 10.27 – Spam-Schutz Anfrageformular: verdächtige Anfragen landen im Spam-Ordner statt im Postfach
+    $st=$pdo->query("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inquiries' AND COLUMN_NAME='status'")->fetchColumn();
+    if(is_string($st)&&!str_contains($st,"'spam'")){$pdo->exec("ALTER TABLE inquiries MODIFY status ENUM('new','contacted','done','spam') NOT NULL DEFAULT 'new'");$changes[]='inquiries.status spam';}
+    schema_add_column($pdo,'inquiries','spam_reason','VARCHAR(500) NULL',$changes);
+    // Jedes Formular-Ticket gilt nur einmal (nach 3 Tagen gelöscht).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yw_form_guard_used (ticket_hash CHAR(64) PRIMARY KEY, used_at DATETIME NOT NULL, INDEX idx_yw_guard_used (used_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    schema_mark_version($pdo,'10.27.0',$changes);
 
     return $changes;
 }

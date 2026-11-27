@@ -94,3 +94,4 @@ try {
 
 require __DIR__ . '/functions.php';
 require_once __DIR__.'/modules/corporate.php';
+require_once __DIR__.'/modules/spam_guard.php'; // 10.27: Spam-Schutz Anfrageformular

@@ -736,9 +736,10 @@ function inquiry_page(): void {
     if(is_post()){
         verify_csrf();
 
-        // einfacher Bot-Schutz
+        // Honigtopf: Menschen sehen das Feld nicht. Bots bekommen still die Dankeseite (10.27: gezählt).
         if(!empty($_POST['website'])){
             $success=true;
+            yw_spam_count('blocked');
         } else {
             if(login_throttled('public-inquiry')){
                 $error='Zu viele Anfragen in kurzer Zeit. Bitte versuche es später erneut oder schreibe uns per E-Mail.';
@@ -765,6 +766,31 @@ function inquiry_page(): void {
             elseif($employees>100000) $error='Die angegebene Mitarbeiterzahl ist ungültig.';
             elseif(mb_strlen($message)>10000) $error='Bitte eine Nachricht mit höchstens 10.000 Zeichen eingeben.';
             elseif(!$privacy) $error='Bitte bestätige die Datenschutzhinweise.';
+            elseif($spam=array_values(array_unique(array_merge(yw_guard_check('inquiry',$_POST),yw_spam_content_reasons(['company'=>$company,'name'=>$name,'email'=>$email,'phone'=>$phone,'message'=>$message]),yw_spam_volume_reasons($email))))){
+                // 10.27: Spam-Verdacht – speichern, aber ohne Mail an uns, ohne Eingangsbestätigung und ohne Probeshop.
+                // Der Absender sieht dieselbe Dankeseite (kein Hinweis, woran es lag).
+                $files=[];
+                if((int)($_FILES['logo']['error']??UPLOAD_ERR_NO_FILE)===UPLOAD_ERR_OK)$files[]='Logo';
+                if((int)($_FILES['article_list']['error']??UPLOAD_ERR_NO_FILE)===UPLOAD_ERR_OK)$files[]='Artikelliste';
+                $details=array_filter(['Branche'=>$industry,'Arbeitskleidung vorhanden'=>$current,'Gewünschte Funktionen'=>implode(', ',$features)],fn($v)=>$v!=='');
+                $stored='';foreach($details as $k=>$v)$stored.=$k.': '.$v."\n";
+                $stored.=($stored!==''?"\n":'')."Nachricht:\n".($message!==''?$message:'(keine Nachricht)');
+                if($files)$stored.="\n\n(".implode(' und ',$files).' mitgeschickt, wegen Spam-Verdacht nicht gespeichert.)';
+                $reason=mb_substr(implode(' · ',$spam),0,500);
+                try{
+                    if(yw_spam_schema_ready()){
+                        $stmt=db()->prepare("INSERT INTO inquiries(company,name,email,phone,employees,message,status,spam_reason) VALUES(?,?,?,?,?,?,'spam',?)");
+                        $stmt->execute([$company,$name,$email,$phone,$employees,$stored,$reason]);
+                    }else{
+                        // Update-Assistent noch nicht gelaufen: als neue Anfrage mit deutlichem Vermerk, aber ebenfalls ohne Mails.
+                        $stmt=db()->prepare("INSERT INTO inquiries(company,name,email,phone,employees,message,status) VALUES(?,?,?,?,?,?,'new')");
+                        $stmt->execute([$company,$name,$email,$phone,$employees,"⚠ SPAM-VERDACHT: ".$reason."\n\n".$stored]);
+                    }
+                    audit_log('inquiry.spam_held','inquiry',(int)db()->lastInsertId(),['reasons'=>count($spam)]);
+                    yw_spam_count('held');
+                }catch(Throwable $e){error_log('Public inquiry (spam): '.$e->getMessage());}
+                $success=true;
+            }
             else {
                 $details=array_filter(['Branche'=>$industry,'Arbeitskleidung vorhanden'=>$current,'Gewünschte Funktionen'=>implode(', ',$features)],fn($v)=>$v!=='');
                 $stored='';foreach($details as $k=>$v)$stored.=$k.': '.$v."\n";

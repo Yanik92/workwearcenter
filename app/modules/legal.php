@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Wer einen eigenen, z. B. anwaltlich erstellten Text verwenden will, stellt dort auf „eigener Text“ um.
  */
 
-const YW_PRIVACY_VERSION_DATE = '16.10.2026'; // 10.23: Du-Form, neue Felder im Anfrageformular, Artikelliste
+const YW_PRIVACY_VERSION_DATE = '27.11.2026'; // 10.27: Spam-Schutz im Anfrageformular (vorher 16.10.2026: Du-Form, Artikelliste)
 const YW_DEFAULT_HOSTER = 'Greenmark IT GmbH (do.de), Leinstraße 3, 31061 Alfeld (Leine), Deutschland';
 
 /** Betreiberangaben aus Admin → Inhalte (mit den bisherigen Standardwerten). */
@@ -114,6 +114,7 @@ function yw_privacy_html(): string {
         .'<p>Lädst du ein Logo hoch, erstellen wir daraus einen Probeshop: eine Vorschau mit deinem Firmennamen und Logo auf Musterartikeln. Er ist nur über einen zufällig erzeugten Link erreichbar, wird von Suchmaschinen nicht erfasst und läuft nach 30 Tagen ab. Danach löschen wir Probeshop und Logo automatisch. Gespeichert werden nur Firmenname, Logo, Farbwahl, Ablaufdatum und die Zahl der Aufrufe.</p>'
         .'<p>Eine hochgeladene Artikelliste speichern wir in einem geschützten, nicht öffentlich erreichbaren Bereich unseres Servers. Nur wir können sie abrufen, und wir löschen sie zusammen mit der Anfrage.</p>'
         .'<p>Zum Schutz vor automatisierten Massenanfragen begrenzen wir die Zahl der Anfragen je Anschluss. Dafür speichern wir einen nicht umkehrbaren Prüfwert (Hash) der IP-Adresse für höchstens 24 Stunden (Art. 6 Abs. 1 lit. f DSGVO).</p>'
+        .'<p><strong>Spam-Schutz.</strong> Damit Bots keine Anfragen abschicken, löst dein Browser beim Ausfüllen unsichtbar eine kleine Rechenaufgabe, und wir prüfen, wie lange das Ausfüllen gedauert hat und ob die Angaben typische Spam-Merkmale enthalten (z. B. Links, Wegwerf-E-Mail-Adressen, eine E-Mail-Domain ohne Mailserver). Dafür nutzen wir keinen fremden Dienst, setzen kein zusätzliches Cookie und speichern keine weiteren Daten über dein Gerät; für die Rechenaufgabe merken wir uns nur eine zufällige Kennung des Formulars für 3 Tage, damit es nicht mehrfach abgeschickt werden kann. Wirkt eine Anfrage verdächtig, wird sie nicht automatisch abgelehnt, sondern bei uns zurückgehalten und von Hand geprüft. Zurückgehaltene Anfragen löschen wir nach 30 Tagen, wenn sie sich nicht als echt herausstellen (Art. 6 Abs. 1 lit. f DSGVO, berechtigtes Interesse an einem funktionierenden, missbrauchsfreien Kontaktweg).</p>'
         .'<p>Anfragen löschen wir automatisch spätestens 24 Monate nach Eingang. Wird aus der Anfrage ein Auftrag, gelten die Fristen aus Abschnitt 7.</p>'];
 
     $sections['geschaeftskunden']=['Geschäftskunden und Vertragsabwicklung',
@@ -156,6 +157,8 @@ function yw_privacy_html(): string {
         .'<tr><td>Anmelde- und Passwort-Links</td><td>nach 2 bzw. 7 Tagen (ungültig bereits nach 15 bzw. 60 Minuten)</td></tr>'
         .'<tr><td>Probeshop mit Logo</td><td>30 Tage nach Erstellung</td></tr>'
         .'<tr><td>Anfragen mit Artikelliste</td><td>24 Monate nach Eingang</td></tr>'
+        .'<tr><td>Anfragen mit Spam-Verdacht</td><td>nach 30 Tagen, wenn sie sich nicht als echt herausstellen</td></tr>'
+        .'<tr><td>Formular-Kennung des Spam-Schutzes</td><td>nach 3 Tagen</td></tr>'
         .'<tr><td>Kopien von System-E-Mails</td><td>90 Tage, nicht zustellbare 180 Tage</td></tr>'
         .'<tr><td>Sicherheits- und Änderungsprotokoll</td><td>'.$auditMonths.' Monate, Abrechnungseinträge 10 Jahre</td></tr>'
         .'<tr><td>Konten von Mitarbeitenden</td><td>Anonymisierung auf Veranlassung des Arbeitgebers, spätestens nach Vertragsende</td></tr>'

@@ -44,8 +44,7 @@ function yw_admin_action(): void {
             $id=(int)($_POST['account_id']??0);$anchor='budget-'.$id; $raw=trim((string)($_POST['budget_override']??''));
             $override=$raw===''?null:yw_money_input($raw);
             $q=db()->prepare('SELECT id FROM employee_accounts WHERE id=? AND company_id=? FOR UPDATE');$q->execute([$id,$companyId]);if(!$q->fetchColumn())throw new DomainException('Mitarbeiter nicht gefunden.');
-            $q=db()->prepare('UPDATE employee_accounts SET budget_override_cents=? WHERE id=? AND company_id=?');
-            $q->execute([$override,$id,$companyId]);
+            yw_budget_override_save($companyId,$id,$override,'admin'); // 10.27: mit Protokoll (vorher / nachher)
         } elseif($action==='yw_limit'){
             $id=(int)($_POST['product_id']??0);$anchor='grenze-'.$id; $raw=trim((string)($_POST['yearly_limit_qty']??''));
             if($raw!=='' && (!ctype_digit($raw) || (int)$raw>100000)) throw new DomainException('Mengenlimit ungültig.');

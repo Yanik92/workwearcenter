@@ -48,3 +48,38 @@ function yw_csv_safe(mixed $value): string {
     $text=(string)$value;
     return preg_match('/^[\s]*[=+@-]/u',$text) ? "'".$text : $text;
 }
+
+/* ---------- 10.27: Individuelles Budget je Person ---------- */
+
+/** Eingabe „eigenes Budget“: leer = Firmenstandard (NULL), sonst Cent-Betrag. */
+function yw_budget_override_input(mixed $raw): ?int {
+    $raw=is_string($raw)?trim($raw):'';
+    return $raw===''?null:yw_money_input($raw);
+}
+
+/** Eigenes Budget speichern und protokollieren. Rückgabe: true, wenn sich etwas geändert hat. */
+function yw_budget_override_save(int $companyId,int $accountId,?int $cents,string $via): bool {
+    $q=db()->prepare('SELECT budget_override_cents FROM employee_accounts WHERE id=? AND company_id=?');$q->execute([$accountId,$companyId]);
+    $before=$q->fetchColumn();if($before===false)throw new DomainException('Mitarbeiter nicht gefunden.');
+    $before=$before===null?null:(int)$before;
+    if($before===$cents)return false;
+    db()->prepare('UPDATE employee_accounts SET budget_override_cents=? WHERE id=? AND company_id=?')->execute([$cents,$accountId,$companyId]);
+    audit_log('employee.budget_changed','employee',$accountId,['company_id'=>$companyId,'before_cents'=>$before,'after_cents'=>$cents,'via'=>$via]);
+    return true;
+}
+
+/**
+ * Eingabefeld „Eigenes Budget“ für eine Person. $t: Texte [label, default (mit {amount}), off, used (mit {used} {limit})].
+ * $disabled sperrt das Feld (eigenes Konto oder andere Verantwortliche im Firmenshop).
+ */
+function yw_budget_override_field(array $company,array $account,array $t,bool $disabled=false,string $lockHint=''): string {
+    $value=$account['budget_override_cents']===null||$account['budget_override_cents']===''?'':number_format((int)$account['budget_override_cents']/100,2,'.','');
+    $enabled=(int)($company['budget_enabled']??0)===1;
+    $default=money((int)($company['annual_budget_company_cents']??0));
+    $hint=$enabled?str_replace('{amount}',$default,$t[1]):$t[2];
+    if($enabled&&!empty($account['id'])&&function_exists('yw_budget_used')){
+        try{$used=yw_budget_used($company,$account);$hint.=' '.str_replace(['{used}','{limit}'],[money($used),money((int)yw_budget_limit($company,$account))],$t[3]);}catch(Throwable $e){}
+    }
+    if($lockHint!=='')$hint.=' '.$lockHint;
+    return '<label class="yw-budget-field">'.e($t[0]).'<input name="budget_override" type="number" min="0" max="9999999" step="0.01" inputmode="decimal" placeholder="'.e($enabled?$default:'').'" value="'.e($value).'"'.($disabled?' disabled':'').'><small class="muted">'.e($hint).'</small></label>';
+}

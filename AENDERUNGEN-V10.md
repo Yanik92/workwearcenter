@@ -1,6 +1,25 @@
 # WorkwearCenter 10 – Änderungen
 
-Stand: 26. Oktober 2026 · enthält alle Korrekturen aus 9.1.0
+Stand: 27. November 2026 · enthält alle Korrekturen aus 9.1.0
+
+## 10.27.0 – Spam-Schutz für Shop-Anfragen, eigenes Budget je Mitarbeiter
+**Datenbank-Update nötig:** Dateien hochladen (immer überschreiben), danach `/update.php` aufrufen. Bis dahin zeigt die Verwaltung einen roten Hinweis; Shops und Website laufen weiter.
+
+Spam-Schutz im Anfrageformular (Startseite und /anfrage), ohne Captcha und ohne Fremddienst:
+- Verstecktes Bot-Feld (wie bisher), dazu Zeitprüfung: Wer schneller als 3 Sekunden abschickt, ist kein Mensch.
+- Der Browser löst beim Ausfüllen unsichtbar eine kleine Rechenaufgabe. Bots ohne JavaScript schaffen das nicht. Jedes Formular gilt nur einmal.
+- Inhaltsprüfung: Links in Firma/Name, mehrere Links in der Nachricht, typische Spam-Wörter (SEO, Krypto usw.), Wegwerf-E-Mail-Adressen, E-Mail-Domain ohne Mailserver, auffällig viele Anfragen.
+- Verdächtige Anfragen werden nicht weggeworfen, sondern unter Verwaltung → Shop-Anfragen → „Spam-Verdacht“ mit Grund abgelegt: keine Mail an dich, keine Eingangsbestätigung an die Adresse, kein Probeshop. Knopf „Kein Spam“ holt eine Anfrage zurück, „Alle löschen“ räumt auf, nach 30 Tagen wird automatisch gelöscht.
+- Normale Anfragen kann man über den Status „Spam“ in den Spam-Ordner verschieben (z. B. die Bot-Anfrage vom 26.11.).
+- Unter den Anfragen steht, wie viele Bots in den letzten 30 Tagen abgewiesen und wie viele Anfragen zurückgehalten wurden.
+- Datenschutzerklärung ergänzt (Abschnitt Anfrageformular und Speicherdauer), Stand 27.11.2026.
+
+Eigenes Budget je Mitarbeiter:
+- Das Firmenbudget bleibt der Standard. Bei jeder Person kann jetzt direkt ein eigenes Jahresbudget eingetragen werden; leer = Firmenstandard, 0 = kein Arbeitgeberbudget. Daneben steht, wie viel im laufenden Budgetjahr schon verbraucht ist.
+- Verwaltung: Kundenakte → Mitarbeiter, Feld „Eigenes Budget pro Jahr (€)“ bei jeder Person (zusätzlich wie bisher unter „Regeln & Budget“).
+- Firmenshop: Verantwortliche sehen das Feld unter „Mitarbeiter“ bei jeder Person; in der Personenliste steht „eigenes Budget …“. Das eigene Budget und das anderer Verantwortlicher ändert nur Yanik Textildruck (Vier-Augen-Schutz, serverseitig geprüft).
+- Mitarbeiter-CSV: neue Spalte „Budget“ (z. B. 450 oder 1.200,50; leer = Firmenstandard), auch im Export.
+- Jede Budgetänderung steht mit altem und neuem Betrag im Aktivitätsprotokoll.
 
 ## 10.26.1 – Startseite mit Werkstattfoto und Anfragefeld
 Kein Datenbank-Update nötig. Dateien hochladen (immer überschreiben), danach Strg+F5.
